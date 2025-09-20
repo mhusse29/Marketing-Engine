@@ -1,0 +1,250 @@
+/* Marketing Engine Theme - Global Design Tokens */
+
+:root {
+  /* Core Colors */
+  --color-navy-base: #0B1220;
+  --color-page-bg-overlay-1: rgba(16, 22, 30, 0.55);
+  --color-page-bg-overlay-2: rgba(10, 14, 20, 0.55);
+  
+  /* Surface & Borders */
+  --color-surface-border: rgba(255, 255, 255, 0.06);
+  --color-surface-subtle: rgba(255, 255, 255, 0.03);
+  --color-surface-subtle-hover: rgba(255, 255, 255, 0.06);
+  
+  /* Text Colors */
+  --color-text-label: rgba(255, 255, 255, 0.60);
+  --color-text-body: rgba(231, 236, 243, 0.90);
+  --color-text-heading: #FFFFFF;
+  --color-text-muted: rgba(255, 255, 255, 0.50);
+  --color-text-hover: rgba(255, 255, 255, 0.80);
+  
+  /* Accent Colors */
+  --color-accent-blue-start: #3E8BFF;
+  --color-accent-blue-end: #6B70FF;
+  --color-focus-ring: rgba(62, 139, 255, 0.35);
+  --color-inner-glow: rgba(114, 137, 218, 0.25);
+  
+  /* Input & Interactive */
+  --color-input-bg: rgba(255, 255, 255, 0.04);
+  --color-input-bg-hover: rgba(255, 255, 255, 0.05);
+  
+  /* Button Colors */
+  --color-button-primary-start: #0D1C2A;
+  --color-button-primary-end: #152A43;
+  --color-button-primary-text: #ECF3FF;
+  --color-button-primary-highlight: rgba(255, 255, 255, 0.08);
+  
+  /* Spacing */
+  --spacing-xs: 8px;
+  --spacing-sm: 16px;
+  --spacing-md: 24px;
+  --spacing-lg: 32px;
+  --spacing-xl: 48px;
+  
+  /* Border Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  
+  /* Transitions */
+  --transition-fast: 90ms ease-out;
+  --transition-base: 140ms ease-out;
+  --transition-slow: 280ms ease-out;
+  --transition-drawer: 180ms ease-out;
+  --transition-accordion: 120ms ease;
+  
+  /* Z-index layers */
+  --z-base: 0;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-drawer: 30;
+  --z-modal: 40;
+  --z-tooltip: 50;
+}
+
+/* Base styles */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-navy-base);
+  color: var(--color-text-body);
+  overflow-x: hidden;
+}
+
+/* Page background gradient */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    to bottom, 
+    var(--color-page-bg-overlay-1), 
+    var(--color-page-bg-overlay-2)
+  );
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Utility classes for commonly used styles */
+.glass-border {
+  border: 1px solid var(--color-surface-border);
+}
+
+.text-label {
+  color: var(--color-text-label);
+}
+
+.text-body {
+  color: var(--color-text-body);
+}
+
+.text-heading {
+  color: var(--color-text-heading);
+}
+
+.bg-surface-subtle {
+  background-color: var(--color-surface-subtle);
+}
+
+.bg-input {
+  background-color: var(--color-input-bg);
+}
+
+/* Accent gradient for special elements */
+.accent-gradient {
+  background: linear-gradient(
+    135deg, 
+    var(--color-accent-blue-start), 
+    var(--color-accent-blue-end)
+  );
+}
+
+/* Focus styles */
+.focus-ring:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+}
+
+/* Inner glow for hover states */
+.inner-glow-hover:hover {
+  box-shadow: inset 0 0 20px var(--color-inner-glow);
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Button base styles */
+.btn-primary {
+  background: linear-gradient(180deg, var(--color-button-primary-start), var(--color-button-primary-end));
+  color: var(--color-button-primary-text);
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--color-button-primary-highlight);
+  pointer-events: none;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* Card styles */
+.card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--color-surface-border);
+  border-radius: var(--radius-xl);
+  backdrop-filter: blur(10px);
+}
+
+/* Shimmer effect for skeletons */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.04),
+    transparent
+  );
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Stagger animation delay utilities */
+.stagger-1 { animation-delay: 40ms; }
+.stagger-2 { animation-delay: 80ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 160ms; }
+.stagger-5 { animation-delay: 200ms; }
+
+/* Animation delay utility */
+.animation-delay-100 { animation-delay: 100ms; }
