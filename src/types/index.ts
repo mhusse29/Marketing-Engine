@@ -1,3 +1,5 @@
+export type CardKey = 'content' | 'pictures' | 'video';
+
 // Settings Types
 export type Goal = 'Awareness' | 'Traffic' | 'Leads' | 'Sales';
 
@@ -124,11 +126,18 @@ export type AiUIState = {
   brief: string;
   uploads: string[]; // object URLs
   generating: boolean;
-  steps: ('content' | 'pictures' | 'video')[];
-  stepStatus: Record<string, 'queued' | 'thinking' | 'rendering' | 'ready' | 'error'>;
+  steps: CardKey[];
+  stepStatus: Partial<Record<CardKey, 'queued' | 'thinking' | 'rendering' | 'ready' | 'error'>>;
   outputs: {
     content?: { versions: GeneratedContent[][] }; // per version -> per platform
     pictures?: { versions: GeneratedPictures[] };
     video?: { versions: GeneratedVideo[] };
   };
+};
+
+export type CardsState = {
+  enabled: Record<CardKey, boolean>;
+  hidden: Record<CardKey, boolean>;
+  order: CardKey[];
+  selected: CardKey | null;
 };

@@ -2,32 +2,39 @@ import { Fragment } from 'react';
 import { Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../../lib/format';
-import type { AiUIState } from '../../types';
+import type { AiUIState, CardKey } from '../../types';
 
 interface StepperProps {
-  steps: ('content' | 'pictures' | 'video')[];
+  steps: CardKey[];
   stepStatus: AiUIState['stepStatus'];
+  hiddenSteps?: Partial<Record<CardKey, boolean>>;
 }
 
-const STEP_LABELS = {
+const STEP_LABELS: Record<CardKey, string> = {
   content: 'Content',
   pictures: 'Pictures',
   video: 'Video',
 };
 
-export function Stepper({ steps, stepStatus }: StepperProps) {
+export function Stepper({ steps, stepStatus, hiddenSteps }: StepperProps) {
   if (steps.length === 0) return null;
 
   return (
     <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
       <div className="flex items-center justify-between gap-4 text-sm">
         {steps.map((step, index) => {
-          const status = stepStatus[step] ?? 'queued';
+          const status = stepStatus?.[step] ?? 'queued';
           const isLast = index === steps.length - 1;
+          const isHidden = hiddenSteps?.[step];
 
           return (
             <Fragment key={step}>
-              <div className="flex flex-1 flex-col items-center gap-2 text-center">
+              <div
+                className={cn(
+                  'flex flex-1 flex-col items-center gap-2 text-center transition-opacity',
+                  isHidden && 'opacity-70'
+                )}
+              >
                 <motion.div
                   className={cn(
                     'flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 transition-all',
@@ -49,9 +56,7 @@ export function Stepper({ steps, stepStatus }: StepperProps) {
                     />
                   )}
                   {status === 'rendering' && (
-                    <motion.div
-                      className="h-2 w-6 overflow-hidden rounded-full bg-white/20"
-                    >
+                    <motion.div className="h-2 w-6 overflow-hidden rounded-full bg-white/20">
                       <motion.div
                         className="h-full w-full bg-gradient-to-r from-[#3E8BFF] to-[#6B70FF]"
                         animate={{ x: ['-100%', '100%'] }}

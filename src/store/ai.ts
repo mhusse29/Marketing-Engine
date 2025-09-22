@@ -5,6 +5,7 @@ import type {
   GeneratedVideo,
   Platform,
   SettingsState,
+  CardKey,
 } from '../types';
 
 export const defaultAiState: AiUIState = {
@@ -231,8 +232,8 @@ export function generateVideo(
 
 // Simulate async generation with progress updates
 export async function simulateGeneration(
-  steps: ('content' | 'pictures' | 'video')[],
-  onProgress: (step: string, status: AiUIState['stepStatus'][string]) => void
+  steps: CardKey[],
+  onProgress: (step: CardKey, status: NonNullable<AiUIState['stepStatus'][CardKey]>) => void
 ): Promise<void> {
   for (const step of steps) {
     // Queued

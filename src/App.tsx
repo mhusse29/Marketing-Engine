@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import * as Tooltip from '@radix-ui/react-tooltip';
 
 import { LayoutShell } from './components/LayoutShell';
 import { SettingsPanel } from './components/SettingsDrawer/SettingsPanel';
@@ -10,20 +9,22 @@ import { SkeletonCard } from './components/AskAI/SkeletonCard';
 import { ContentCard } from './components/Cards/ContentCard';
 import { PicturesCard } from './components/Cards/PicturesCard';
 import { VideoCard } from './components/Cards/VideoCard';
+import { AppMenuBar } from './components/AppMenuBar';
 
-import { 
-  loadSettings, 
+import {
+  loadSettings,
   validateSettings,
   saveSettings,
 } from './store/settings';
-import { 
-  defaultAiState, 
-  generateContent, 
-  generatePictures, 
+import {
+  defaultAiState,
+  generateContent,
+  generatePictures,
   generateVideo,
   simulateGeneration,
 } from './store/ai';
-import type { SettingsState, AiUIState } from './types';
+import { useCardsStore } from './store/useCardsStore';
+import type { SettingsState, AiUIState, CardKey } from './types';
 
 function App() {
   const [settings, setSettings] = useState<SettingsState>(() => loadSettings());
@@ -34,13 +35,54 @@ function App() {
   const hintTimeoutRef = useRef<number | null>(null);
   const isValid = validateSettings(settings);
 
+  const cardsEnabled = useCardsStore((state) => state.enabled);
+  const cardsHidden = useCardsStore((state) => state.hidden);
+  const cardsOrder = useCardsStore((state) => state.order);
+  const selectedCard = useCardsStore((state) => state.selected);
+  const setCardEnabled = useCardsStore((state) => state.setEnabled);
+  const selectCard = useCardsStore((state) => state.select);
+  const toggleHiddenCard = useCardsStore((state) => state.toggleHidden);
+
   useEffect(() => {
     saveSettings(settings);
   }, [settings]);
 
-  // Update AI locked state based on settings validity
   useEffect(() => {
-    setAiState(prev => ({ ...prev, locked: !isValid }));
+    (['content', 'pictures', 'video'] as CardKey[]).forEach((card) => {
+      setCardEnabled(card, settings.cards[card]);
+    });
+  }, [settings.cards.content, settings.cards.pictures, settings.cards.video, setCardEnabled]);
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) {
+        return;
+      }
+
+      const active = cardsOrder.filter((card) => cardsEnabled[card]);
+      if (active.length === 0) {
+        return;
+      }
+
+      if (event.key === '1' || event.key === '2' || event.key === '3') {
+        const index = Number.parseInt(event.key, 10) - 1;
+        const nextCard = active[index];
+        if (nextCard) {
+          event.preventDefault();
+          selectCard(nextCard);
+        }
+      } else if (event.key.toLowerCase() === 'h' && selectedCard) {
+        event.preventDefault();
+        toggleHiddenCard(selectedCard);
+      }
+    };
+
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [cardsOrder, cardsEnabled, selectedCard, selectCard, toggleHiddenCard]);
+
+  useEffect(() => {
+    setAiState((prev) => ({ ...prev, locked: !isValid }));
   }, [isValid]);
 
   useEffect(() => {
@@ -68,14 +110,9 @@ function App() {
   }, [isValid]);
 
   const handleGenerate = async (brief: string, uploads: string[]) => {
-    // Determine which cards to generate
-    const steps: ('content' | 'pictures' | 'video')[] = [];
-    if (settings.cards.content) steps.push('content');
-    if (settings.cards.pictures) steps.push('pictures');
-    if (settings.cards.video) steps.push('video');
+    const steps = cardsOrder.filter((card) => cardsEnabled[card]);
 
-    // Update AI state
-    setAiState(prev => ({
+    setAiState((prev) => ({
       ...prev,
       brief,
       uploads,
@@ -85,15 +122,13 @@ function App() {
       outputs: {},
     }));
 
-    // Simulate generation with progress updates
     await simulateGeneration(steps, (step, status) => {
-      setAiState(prev => ({
+      setAiState((prev) => ({
         ...prev,
         stepStatus: { ...prev.stepStatus, [step]: status },
       }));
     });
 
-    // Generate outputs
     const outputs: AiUIState['outputs'] = {};
 
     if (settings.cards.content) {
@@ -121,19 +156,17 @@ function App() {
       };
     }
 
-    // Update state with outputs
-    setAiState(prev => ({
+    setAiState((prev) => ({
       ...prev,
       generating: false,
       outputs,
     }));
 
-    // Reset current versions
     setCurrentVersions({ content: 0, pictures: 0, video: 0 });
   };
 
   const handleClear = () => {
-    setAiState(prev => ({
+    setAiState((prev) => ({
       ...prev,
       brief: '',
       uploads: [],
@@ -144,21 +177,17 @@ function App() {
   };
 
   const handleCardSave = (type: string) => {
-    // In a real app, this would save to backend
     console.log(`Saving ${type} card`);
   };
 
-  const handleCardRegenerate = async (type: 'content' | 'pictures' | 'video') => {
-    // Mark as regenerating
-    setAiState(prev => ({
+  const handleCardRegenerate = async (type: CardKey) => {
+    setAiState((prev) => ({
       ...prev,
       stepStatus: { ...prev.stepStatus, [type]: 'rendering' },
     }));
 
-    // Simulate regeneration delay
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
 
-    // Generate new output for current version
     const newOutputs = { ...aiState.outputs };
     const currentVersion = currentVersions[type];
 
@@ -182,15 +211,17 @@ function App() {
       )[0];
     }
 
-    setAiState(prev => ({
+    setAiState((prev) => ({
       ...prev,
       outputs: newOutputs,
       stepStatus: { ...prev.stepStatus, [type]: 'ready' },
     }));
   };
 
+  const menuBar = <AppMenuBar settings={settings} onSettingsChange={setSettings} />;
+
   const mainContent = (
-    <div className="space-y-6 lg:space-y-8">
+    <>
       <AnimatePresence>
         {aiReadyHint && (
           <motion.div
@@ -205,6 +236,7 @@ function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
       <AiBox
         aiState={aiState}
         settings={settings}
@@ -220,7 +252,7 @@ function App() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <Stepper steps={aiState.steps} stepStatus={aiState.stepStatus} />
+            <Stepper steps={aiState.steps} stepStatus={aiState.stepStatus} hiddenSteps={cardsHidden} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -229,9 +261,9 @@ function App() {
         <AnimatePresence mode="wait">
           {aiState.generating && (
             <>
-              {settings.cards.content && <SkeletonCard key="s-content" type="content" />}
-              {settings.cards.pictures && <SkeletonCard key="s-pictures" type="pictures" />}
-              {settings.cards.video && <SkeletonCard key="s-video" type="video" />}
+              {cardsEnabled.content && <SkeletonCard key="s-content" type="content" />}
+              {cardsEnabled.pictures && <SkeletonCard key="s-pictures" type="pictures" />}
+              {cardsEnabled.video && <SkeletonCard key="s-video" type="video" />}
             </>
           )}
 
@@ -267,7 +299,7 @@ function App() {
           )}
         </AnimatePresence>
       </div>
-    </div>
+    </>
   );
 
   const sidebarContent = (
@@ -277,11 +309,7 @@ function App() {
     />
   );
 
-  return (
-    <Tooltip.Provider>
-      <LayoutShell main={mainContent} sidebar={sidebarContent} />
-    </Tooltip.Provider>
-  );
+  return <LayoutShell menu={menuBar} main={mainContent} sidebar={sidebarContent} />;
 }
 
 export default App;
