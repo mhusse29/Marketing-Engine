@@ -1,37 +1,29 @@
 import type { ReactNode } from 'react';
 
-import { SettingsDock } from './SettingsDock';
-
 interface LayoutShellProps {
   menu: ReactNode;
   main: ReactNode;
-  sidebar: ReactNode;
 }
 
-export function LayoutShell({ menu, main, sidebar }: LayoutShellProps) {
+export function LayoutShell({ menu, main }: LayoutShellProps) {
   return (
-    <div className="relative min-h-screen w-full bg-[#0B1220]">
-      <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(to_bottom,rgba(16,22,30,0.55),rgba(10,14,20,0.55))]" />
+    <div className="notebook min-h-screen">
+      <div className="grid-walkers" aria-hidden="true" />
 
-      {menu}
+      <div className="relative min-h-screen w-full">
+        <div className="fixed inset-0 pointer-events-none z-10" aria-hidden="true" />
 
-      <div className="relative z-10 pb-16">
-        <div className="mx-auto max-w-[1240px] px-6 lg:px-12">
-          <div className="pt-28 lg:pt-32" />
+        <header
+          className="fixed left-0 right-0 top-0 z-[80] pointer-events-auto"
+          style={{ height: 'var(--topbar-h, 64px)' }}
+        >
+          {menu}
+        </header>
 
-          <div className="grid gap-y-14 gap-x-28 lg:grid-cols-12">
-            <section className="space-y-10 lg:col-span-7">
-              {main}
-            </section>
-            <aside className="lg:col-span-5">
-              <div className="lg:sticky lg:top-40">
-                <SettingsDock>{sidebar}</SettingsDock>
-              </div>
-            </aside>
-          </div>
-        </div>
+        <main className="relative z-[20] pb-24 pt-[var(--topbar-h,64px)]">
+          {main}
+        </main>
       </div>
-
     </div>
   );
 }

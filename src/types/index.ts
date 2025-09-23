@@ -121,10 +121,20 @@ export type GeneratedVideo = {
   fullPrompt: string;
 };
 
+export type AiAttachment = {
+  id: string;
+  url: string;
+  name: string;
+  mime: string;
+  kind: 'image' | 'document';
+  extension: string;
+  size: number;
+};
+
 export type AiUIState = {
   locked: boolean;
   brief: string;
-  uploads: string[]; // object URLs
+  uploads: AiAttachment[];
   generating: boolean;
   steps: CardKey[];
   stepStatus: Partial<Record<CardKey, 'queued' | 'thinking' | 'rendering' | 'ready' | 'error'>>;

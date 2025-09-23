@@ -25,7 +25,8 @@ import {
   MenubarSeparator,
   MenubarTrigger,
 } from './ui/menubar';
-import { menuSurface, menuPanel, tooltipSurface, barHeight, hairline } from '../ui/tokens';
+import { menuSurface, tooltipSurface, barHeight, hairline } from '../ui/tokens';
+import CTAChip from './ui/CTAChip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
@@ -218,13 +219,13 @@ export function AppMenuBar({ settings, onSettingsChange }: AppMenuBarProps) {
   const cards = useMemo(() => order.filter((card) => enabled[card]), [order, enabled]);
 
   return (
-    <div className={cn('fixed inset-x-0 top-0 z-40 bg-white/4 backdrop-blur', hairline)}>
-      <div className="mx-auto max-w-[1240px] px-4">
-        <Menubar className={cn('flex w-full items-center border-0 bg-transparent px-0', barHeight)}>
+    <div className={cn('flex h-full w-full items-center bg-white/4 backdrop-blur', hairline, barHeight)}>
+      <div className="mx-auto flex h-full w-full max-w-[1240px] items-center px-4">
+        <Menubar className="flex h-full w-full items-center border-0 bg-transparent px-0">
           <div className="flex w-full items-center gap-2" role="presentation">
             <MenubarMenu>
               <MenubarTrigger className={trigger}>File</MenubarTrigger>
-              <MenubarContent className={menuSurface} sideOffset={8} align="start">
+              <MenubarContent className={cn(menuSurface, 'pointer-events-auto z-[80] min-w-[220px]')} sideOffset={8} align="start">
                 <MenubarItem onSelect={FILE_ACTIONS.onNewProject}>New Project</MenubarItem>
                 <MenubarItem onSelect={FILE_ACTIONS.onOpen}>Open…</MenubarItem>
                 <MenubarSeparator className="bg-white/10" />
@@ -237,7 +238,7 @@ export function AppMenuBar({ settings, onSettingsChange }: AppMenuBarProps) {
 
             <MenubarMenu>
               <MenubarTrigger className={trigger}>Edit</MenubarTrigger>
-              <MenubarContent className={menuSurface} sideOffset={8} align="start">
+              <MenubarContent className={cn(menuSurface, 'pointer-events-auto z-[80] min-w-[180px]')} sideOffset={8} align="start">
                 <MenubarItem onSelect={EDIT_ACTIONS.onUndo}>Undo</MenubarItem>
                 <MenubarItem onSelect={EDIT_ACTIONS.onRedo}>Redo</MenubarItem>
               </MenubarContent>
@@ -260,7 +261,7 @@ export function AppMenuBar({ settings, onSettingsChange }: AppMenuBarProps) {
 
             <MenubarMenu>
               <MenubarTrigger className={trigger}>Help</MenubarTrigger>
-              <MenubarContent className={menuSurface} sideOffset={8} align="end">
+              <MenubarContent className={cn(menuSurface, 'pointer-events-auto z-[80] min-w-[180px]')} sideOffset={8} align="end">
                 <MenubarItem className="gap-2">
                   <HelpCircle className="h-4 w-4" />
                   Shortcuts
@@ -286,23 +287,27 @@ function CardMenu({
 }) {
   const selectCard = useCardsStore((state) => state.select);
   const selected = useCardsStore((state) => state.selected);
+  const isEnabled = useCardsStore((state) => state.enabled[card]);
   const { justEnabled } = useGlowOnEnable(card);
 
   return (
     <MenubarMenu>
       <MenubarTrigger
-        onClick={() => selectCard(card)}
-        className={cn(
-          trigger,
-          'px-4',
-          selected === card && 'text-white',
-          justEnabled && 'animate-[pulse_1.2s_ease-in-out_2] shadow-[inset_0_0_0_2px_rgba(62,139,255,.25)]'
-        )}
+        asChild
+        onClick={() => {
+          if (!isEnabled) return;
+          selectCard(card);
+        }}
       >
-        {labelFor(card)}
+        <CTAChip
+          label={labelFor(card)}
+          active={selected === card}
+          disabled={!isEnabled}
+          className={cn(justEnabled && 'animate-[pulse_1.2s_ease-in-out_2]')}
+        />
       </MenubarTrigger>
       <MenubarContent
-        className={cn(menuSurface, 'min-w-[580px] space-y-3 p-3')}
+        className={cn(menuSurface, 'menu-sheet min-w-[580px] space-y-3 rounded-2xl p-4 sm:p-5')}
         sideOffset={8}
         align="center"
         onCloseAutoFocus={(event) => event.preventDefault()}
@@ -355,41 +360,23 @@ function labelFor(card: CardKey): string {
   }
 }
 
-function Chip({ active, children, onClick }: { active?: boolean; children: ReactNode; onClick?: () => void }) {
-  return (
-    <button
-      type="button"
-      onMouseDown={(event) => event.stopPropagation()}
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'cursor-pointer h-8 rounded-full border border-white/12 bg-white/6 px-3 text-sm text-white/85 transition-colors',
-        'hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-blue-500/35',
-        active && 'bg-gradient-to-r from-[#3E8BFF] to-[#6B70FF] text-white'
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
 function HintChip({
   label,
   hint,
   active,
   onClick,
+  size = 'default',
 }: {
   label: string;
   hint?: string;
   active?: boolean;
   onClick?: () => void;
+  size?: 'default' | 'small';
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Chip active={active} onClick={onClick}>
-          {label}
-        </Chip>
+        <CTAChip label={label} active={active} onClick={onClick} size={size} />
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" sideOffset={8} className={tooltipSurface}>
         {hint ?? DEFAULT_HINT}
@@ -398,7 +385,7 @@ function HintChip({
   );
 }
 
-function MenuContent({
+export function MenuContent({
   settings,
   onSettingsChange,
 }: {
@@ -420,9 +407,9 @@ function MenuContent({
   };
 
   return (
-    <div className="space-y-3">
-        <MenuPanel title="Persona">
-          <div className="flex flex-wrap gap-2">
+    <div>
+      <MenuPanel title="Persona">
+        <div className="cta-row">
             {PERSONA_OPTIONS.map((persona) => (
               <HintChip
                 key={persona}
@@ -432,11 +419,11 @@ function MenuContent({
                 onClick={() => setQP({ persona })}
               />
             ))}
-          </div>
-        </MenuPanel>
+        </div>
+      </MenuPanel>
 
-        <MenuPanel title="Tone">
-          <div className="flex flex-wrap gap-2">
+      <MenuPanel title="Tone">
+        <div className="cta-row">
             {TONE_OPTIONS.map((tone) => (
               <HintChip
                 key={tone}
@@ -446,11 +433,11 @@ function MenuContent({
                 onClick={() => setQP({ tone })}
               />
             ))}
-          </div>
-        </MenuPanel>
+        </div>
+      </MenuPanel>
 
-        <MenuPanel title="CTA">
-          <div className="flex flex-wrap gap-2">
+      <MenuPanel title="CTA">
+        <div className="cta-row">
             {CTA_OPTIONS.map((cta) => (
               <HintChip
                 key={cta}
@@ -460,11 +447,11 @@ function MenuContent({
                 onClick={() => setQP({ cta })}
               />
             ))}
-          </div>
-        </MenuPanel>
+        </div>
+      </MenuPanel>
 
-        <MenuPanel title="Language">
-          <div className="flex flex-wrap gap-2">
+      <MenuPanel title="Language">
+        <div className="cta-row">
             {LANGUAGE_OPTIONS.map((language) => (
               <HintChip
                 key={language}
@@ -474,24 +461,25 @@ function MenuContent({
                 onClick={() => setQP({ language })}
               />
             ))}
-          </div>
-        </MenuPanel>
+        </div>
+      </MenuPanel>
 
-        <AdvancedSection>
-          <div>
-            <Label>Platform format</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {FORMAT_OPTIONS.map((format) => (
-                <HintChip
-                  key={format}
-                  label={format}
-                  hint={FORMAT_HINTS[format]}
-                  active={qp.format === format}
-                  onClick={() => setQP({ format })}
-                />
-              ))}
-            </div>
+      <AdvancedSection>
+        <div>
+          <Label>Platform format</Label>
+          <div className="cta-row tight">
+            {FORMAT_OPTIONS.map((format) => (
+              <HintChip
+                key={format}
+                label={format}
+                hint={FORMAT_HINTS[format]}
+                active={qp.format === format}
+                onClick={() => setQP({ format })}
+                size="small"
+              />
+            ))}
           </div>
+        </div>
 
           <MenuInput
             label="Keywords"
@@ -516,7 +504,7 @@ function MenuContent({
   );
 }
 
-function MenuPictures({
+export function MenuPictures({
   settings,
   onSettingsChange,
 }: {
@@ -538,9 +526,9 @@ function MenuPictures({
   };
 
   return (
-    <div className="space-y-3">
-        <MenuPanel title="Style">
-          <div className="flex flex-wrap gap-2">
+    <div>
+      <MenuPanel title="Style">
+        <div className="cta-row">
             {PICTURE_STYLE_OPTIONS.map((style) => (
               <HintChip
                 key={style}
@@ -550,11 +538,11 @@ function MenuPictures({
                 onClick={() => setQP({ style })}
               />
             ))}
-          </div>
-        </MenuPanel>
+        </div>
+      </MenuPanel>
 
-        <MenuPanel title="Output">
-          <div className="flex flex-wrap gap-2">
+      <MenuPanel title="Output">
+        <div className="cta-row">
             {PICTURE_MODE_OPTIONS.map((mode) => (
               <HintChip
                 key={mode}
@@ -564,11 +552,11 @@ function MenuPictures({
                 onClick={() => setQP({ mode })}
               />
             ))}
-          </div>
-        </MenuPanel>
+        </div>
+      </MenuPanel>
 
-        <MenuPanel title="Aspect">
-          <div className="flex flex-wrap gap-2">
+      <MenuPanel title="Aspect">
+        <div className="cta-row">
             {PICTURE_ASPECT_OPTIONS.map((aspect) => (
               <HintChip
                 key={aspect}
@@ -578,13 +566,13 @@ function MenuPictures({
                 onClick={() => setQP({ aspect })}
               />
             ))}
-          </div>
-        </MenuPanel>
+        </div>
+      </MenuPanel>
 
         <AdvancedSection>
           <div>
             <Label>Brand palette</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="cta-row tight">
               <HintChip
                 label={qp.lockBrandColors ? 'Brand palette locked' : 'Brand palette unlocked'}
                 hint={BRAND_LOCK_HINT}
@@ -596,7 +584,7 @@ function MenuPictures({
 
           <div>
             <Label>Backdrop</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="cta-row tight">
               {PICTURE_BACKDROP_OPTIONS.map((item) => (
                 <HintChip
                   key={item}
@@ -604,6 +592,7 @@ function MenuPictures({
                   hint={PICTURE_BACKDROP_HINTS[item]}
                   active={qp.backdrop === item}
                   onClick={() => setQP({ backdrop: item })}
+                  size="small"
                 />
               ))}
             </div>
@@ -611,7 +600,7 @@ function MenuPictures({
 
           <div>
             <Label>Lighting</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="cta-row tight">
               {PICTURE_LIGHTING_OPTIONS.map((item) => (
                 <HintChip
                   key={item}
@@ -619,6 +608,7 @@ function MenuPictures({
                   hint={PICTURE_LIGHTING_HINTS[item]}
                   active={qp.lighting === item}
                   onClick={() => setQP({ lighting: item })}
+                  size="small"
                 />
               ))}
             </div>
@@ -626,7 +616,7 @@ function MenuPictures({
 
           <div>
             <Label>Quality hints</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="cta-row tight">
               {PICTURE_QUALITY_OPTIONS.map((item) => (
                 <HintChip
                   key={item}
@@ -634,6 +624,7 @@ function MenuPictures({
                   hint={PICTURE_QUALITY_HINTS[item]}
                   active={qp.quality === item}
                   onClick={() => setQP({ quality: item })}
+                  size="small"
                 />
               ))}
             </div>
@@ -641,7 +632,7 @@ function MenuPictures({
 
           <div>
             <Label>Negative prompts</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="cta-row tight">
               {PICTURE_NEGATIVE_OPTIONS.map((item) => (
                 <HintChip
                   key={item}
@@ -649,6 +640,7 @@ function MenuPictures({
                   hint={PICTURE_NEGATIVE_HINTS[item]}
                   active={qp.negative === item}
                   onClick={() => setQP({ negative: item })}
+                  size="small"
                 />
               ))}
             </div>
@@ -658,7 +650,7 @@ function MenuPictures({
   );
 }
 
-function MenuVideo({
+export function MenuVideo({
   settings,
   onSettingsChange,
 }: {
@@ -680,9 +672,9 @@ function MenuVideo({
   };
 
   return (
-    <div className="space-y-3">
-        <MenuPanel title="Duration">
-          <div className="flex flex-wrap gap-2">
+    <div>
+      <MenuPanel title="Duration">
+        <div className="cta-row">
             {VIDEO_DURATION_OPTIONS.map((duration) => (
               <HintChip
                 key={duration}
@@ -692,11 +684,11 @@ function MenuVideo({
                 onClick={() => setQP({ duration })}
               />
             ))}
-          </div>
-        </MenuPanel>
+        </div>
+      </MenuPanel>
 
-        <MenuPanel title="Hook">
-          <div className="flex flex-wrap gap-2">
+      <MenuPanel title="Hook">
+        <div className="cta-row">
             {VIDEO_HOOK_OPTIONS.map((hook) => (
               <HintChip
                 key={hook}
@@ -706,11 +698,11 @@ function MenuVideo({
                 onClick={() => setQP({ hook })}
               />
             ))}
-          </div>
-        </MenuPanel>
+        </div>
+      </MenuPanel>
 
-        <MenuPanel title="Aspect">
-          <div className="flex flex-wrap gap-2">
+      <MenuPanel title="Aspect">
+        <div className="cta-row">
             {VIDEO_ASPECT_OPTIONS.map((aspect) => (
               <HintChip
                 key={aspect}
@@ -720,25 +712,26 @@ function MenuVideo({
                 onClick={() => setQP({ aspect })}
               />
             ))}
-          </div>
-        </MenuPanel>
+        </div>
+      </MenuPanel>
 
         <AdvancedSection>
           <div>
             <Label>Captions</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="cta-row tight">
               <HintChip
                 label={qp.captions ? 'Captions on' : 'Captions off'}
                 hint={CAPTIONS_HINT}
                 active={qp.captions}
                 onClick={() => setQP({ captions: !qp.captions })}
+                size="small"
               />
             </div>
           </div>
 
           <div>
             <Label>CTA</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="cta-row tight">
               {CTA_OPTIONS.map((cta) => (
                 <HintChip
                   key={cta}
@@ -746,6 +739,7 @@ function MenuVideo({
                   hint={CTA_HINTS[cta]}
                   active={qp.cta === cta}
                   onClick={() => setQP({ cta })}
+                  size="small"
                 />
               ))}
             </div>
@@ -753,7 +747,7 @@ function MenuVideo({
 
           <div>
             <Label>Voiceover</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="cta-row tight">
               {VIDEO_VOICEOVER_OPTIONS.map((option) => (
                 <HintChip
                   key={option}
@@ -761,6 +755,7 @@ function MenuVideo({
                   hint={VIDEO_VOICEOVER_HINTS[option]}
                   active={qp.voiceover === option}
                   onClick={() => setQP({ voiceover: option })}
+                  size="small"
                 />
               ))}
             </div>
@@ -768,7 +763,7 @@ function MenuVideo({
 
           <div>
             <Label>Shot density</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="cta-row tight">
               {VIDEO_DENSITY_OPTIONS.map((option) => (
                 <HintChip
                   key={option}
@@ -776,6 +771,7 @@ function MenuVideo({
                   hint={VIDEO_DENSITY_HINTS[option]}
                   active={qp.density === option}
                   onClick={() => setQP({ density: option })}
+                  size="small"
                 />
               ))}
             </div>
@@ -783,7 +779,7 @@ function MenuVideo({
 
           <div>
             <Label>Proof point</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="cta-row tight">
               {VIDEO_PROOF_OPTIONS.map((option) => (
                 <HintChip
                   key={option}
@@ -791,6 +787,7 @@ function MenuVideo({
                   hint={VIDEO_PROOF_HINTS[option]}
                   active={qp.proof === option}
                   onClick={() => setQP({ proof: option })}
+                  size="small"
                 />
               ))}
             </div>
@@ -798,7 +795,7 @@ function MenuVideo({
 
           <div>
             <Label>Do-nots</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="cta-row tight">
               {VIDEO_DONOT_OPTIONS.map((option) => (
                 <HintChip
                   key={option}
@@ -806,6 +803,7 @@ function MenuVideo({
                   hint={VIDEO_DONOT_HINTS[option]}
                   active={qp.doNots === option}
                   onClick={() => setQP({ doNots: option })}
+                  size="small"
                 />
               ))}
             </div>
@@ -827,13 +825,13 @@ function MenuInput({
   placeholder?: string;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <Label>{label}</Label>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="h-9 w-full rounded-lg border border-white/10 bg-white/10 px-3 text-sm text-white/85 placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-blue-500/35"
+        className="cta-input"
       />
     </div>
   );
@@ -841,37 +839,37 @@ function MenuInput({
 
 function MenuPanel({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <div className={cn(menuPanel, 'space-y-2')}>
-      {title ? (
-        <>
-          <Label>{title}</Label>
-          <div className="mt-1.5">{children}</div>
-        </>
-      ) : (
-        children
-      )}
+    <div className="cta-section">
+      {title ? <Label>{title}</Label> : null}
+      {children}
     </div>
   );
 }
 
 function AdvancedSection({ children }: { children: ReactNode }) {
   return (
-    <MenuPanel>
+    <div className="cta-section">
+      <div className="cta-label">Advanced</div>
       <Collapsible>
-        <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-md bg-white/5 px-2 py-1 text-xs text-white/70 transition-colors hover:text-white focus:outline-none">
-          <span>Advanced</span>
+        <CollapsibleTrigger
+          className={cn(
+            'cta-advanced-toggle group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]'
+          )}
+        >
+          <span className="text-sm text-white/82 group-data-[state=open]:hidden">Show advanced</span>
+          <span className="hidden text-sm text-white/82 group-data-[state=open]:block">Hide advanced</span>
           <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
         </CollapsibleTrigger>
-        <CollapsibleContent className="mt-2 grid grid-rows-[0fr] data-[state=open]:grid-rows-[1fr] transition-[grid-template-rows] duration-300 ease-out relative before:absolute before:inset-x-1 before:top-0 before:h-px before:bg-white/12">
-          <div className="overflow-hidden pt-3 space-y-3">
+        <CollapsibleContent className="mt-3 grid grid-rows-[0fr] transition-[grid-template-rows] duration-300 ease-out data-[state=open]:grid-rows-[1fr]">
+          <div className="overflow-hidden space-y-3 pt-1">
             {children}
           </div>
         </CollapsibleContent>
       </Collapsible>
-    </MenuPanel>
+    </div>
   );
 }
 
 function Label({ children }: { children: ReactNode }) {
-  return <div className="text-[11px] uppercase tracking-wide text-white/55">{children}</div>;
+  return <div className="cta-label">{children}</div>;
 }

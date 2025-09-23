@@ -18,6 +18,33 @@ export const defaultAiState: AiUIState = {
   outputs: {},
 };
 
+const createAbortError = () => {
+  const error = new Error('Generation aborted');
+  error.name = 'AbortError';
+  return error;
+};
+
+const delay = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError());
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener('abort', handleAbort);
+      resolve();
+    }, ms);
+
+    function handleAbort() {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', handleAbort);
+      reject(createAbortError());
+    }
+
+    signal?.addEventListener('abort', handleAbort);
+  });
+
 // Mock content generation
 export function generateContent(
   platforms: Platform[],
@@ -233,23 +260,24 @@ export function generateVideo(
 // Simulate async generation with progress updates
 export async function simulateGeneration(
   steps: CardKey[],
-  onProgress: (step: CardKey, status: NonNullable<AiUIState['stepStatus'][CardKey]>) => void
+  onProgress: (step: CardKey, status: NonNullable<AiUIState['stepStatus'][CardKey]>) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   for (const step of steps) {
     // Queued
     onProgress(step, 'queued');
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
+    await delay(300, signal);
+
     // Thinking
     onProgress(step, 'thinking');
-    await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 400));
-    
+    await delay(800 + Math.random() * 400, signal);
+
     // Rendering
     onProgress(step, 'rendering');
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 500));
-    
+    await delay(1000 + Math.random() * 500, signal);
+
     // Ready
     onProgress(step, 'ready');
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await delay(100, signal);
   }
 }

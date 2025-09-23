@@ -23,7 +23,7 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
   const validityLabel = basicsReady ? 'Ready' : 'Complete basics';
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-5 pb-6 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur lg:p-6 lg:pb-7">
+    <div className="relative z-[1] rounded-3xl border border-white/10 bg-white/[0.05] p-5 pb-6 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur lg:p-6 lg:pb-7">
       <div className="mb-3 flex items-center justify-between text-white/90">
         <h2 className="text-sm font-semibold text-white">Campaign Settings</h2>
         <span
