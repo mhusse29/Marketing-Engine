@@ -132,7 +132,7 @@ export default function ContentVariantCard({
                 <p className="text-white/60 text-sm italic">No content yet for this platform.</p>
               ) : null}
             </div>
-            {(onSave || onRegenerate) && status !== "error" && !loading ? (
+            {(onSave || onRegenerate) && status === "ready" && !loading ? (
               <div className="absolute bottom-4 right-4 flex items-center gap-2">
                 {onSave && (
                   <button

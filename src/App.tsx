@@ -109,7 +109,7 @@ function App() {
   const [contentVariants, setContentVariants] = useState<ContentVariantResult[]>([]);
   const [contentMeta, setContentMeta] = useState<ContentGenerationMeta | null>(null);
   const contentStatusRef = useRef(contentStatus);
-  const contentErrorRef = useRef<string | undefined>();
+  const contentErrorRef = useRef<string | undefined>(undefined);
 
   const cardsEnabled = useCardsStore((state) => state.enabled);
   const cardsHidden = useCardsStore((state) => state.hidden);

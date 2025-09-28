@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react'
-import { motion, useMotionValue, animate } from 'framer-motion'
+import { motion, useMotionValue } from 'framer-motion'
 
 import PlatformPill from '@/ui/PlatformPill'
 
@@ -7,7 +7,7 @@ type PlatformRailProps = {
   platforms: string[]
   selected: string
   onChange: (platform: string) => void
-  targetRef: RefObject<HTMLElement>
+  targetRef: RefObject<HTMLElement | null>
   btnSize?: number
   pad?: number
 }
@@ -37,9 +37,8 @@ export default function PlatformRail({
       const available = Math.max(0, clampedHeight - pad * 2 - count * btnSize)
       const nextGap = count > 1 ? available / (count - 1) : 0
       const gap = Math.max(8, Math.min(32, nextGap))
-      const spring = { type: 'spring', stiffness: 220, damping: 26, mass: 0.85 }
-      animate(heightMV, clampedHeight, spring)
-      animate(gapMV, gap, spring)
+      heightMV.set(clampedHeight)
+      gapMV.set(gap)
     }
 
     roRef.current?.disconnect()

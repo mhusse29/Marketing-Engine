@@ -1,4 +1,3 @@
-import React from "react";
 import { motion } from "framer-motion";
 
 /** Soft “nano grid bloom” overlay. Keep it clipped by a rounded parent. */

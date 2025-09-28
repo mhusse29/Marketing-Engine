@@ -60,6 +60,7 @@ const defaultContentQuickProps: ContentQuickProps = {
 };
 
 const defaultPicturesQuickProps: PicturesQuickProps = {
+  mode: 'images',
   style: 'Product',
   aspect: '1:1',
   lockBrandColors: true,
@@ -154,6 +155,7 @@ function normalizePicturesQuickProps(
     : defaultPicturesQuickProps.quality;
 
   return {
+    mode: defaultPicturesQuickProps.mode,
     style,
     aspect,
     lockBrandColors,

@@ -29,12 +29,14 @@ function write(kind: SaveKind, list: SaveEntry[]) {
 
 export function saveRun(kind: SaveKind, payload: unknown): string {
   const id = crypto.randomUUID()
+  const payloadObj = payload as Record<string, unknown>
+  const metaObj = payloadObj?.meta as Record<string, unknown> || {}
   const meta = {
-    model: (payload as Record<string, unknown>)?.meta?.model,
-    platforms: (payload as Record<string, unknown>)?.meta?.platforms,
-    versions: (payload as Record<string, unknown>)?.meta?.versions,
-    salvaged: (payload as Record<string, unknown>)?.meta?.salvaged || false,
-    backfilled: (payload as Record<string, unknown>)?.meta?.backfilled || false,
+    model: metaObj.model,
+    platforms: metaObj.platforms,
+    versions: metaObj.versions,
+    salvaged: metaObj.salvaged || false,
+    backfilled: metaObj.backfilled || false,
   }
   const entry: SaveEntry = { id, kind, createdAt: Date.now(), meta, payload }
   const list = read(kind)
