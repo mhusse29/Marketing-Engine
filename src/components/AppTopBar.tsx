@@ -1,16 +1,16 @@
-import { ChevronDown, HelpCircle, LogOut, Plus, Save, Settings } from 'lucide-react';
+import { ChevronDown, HelpCircle, LogOut, Plus, Save, Settings } from 'lucide-react'
 
-import { cn } from '../lib/format';
-import SinaiqLogo from './SinaiqLogo';
-import { Button } from './ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { cn } from '../lib/format'
+import SinaiqLogo from './SinaiqLogo'
+import { Button } from './ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from './ui/dropdown-menu';
+} from './ui/dropdown-menu'
 
 type Tab = 'content' | 'pictures' | 'video';
 
@@ -23,6 +23,7 @@ export interface AppTopBarProps {
   onHelp(): void;
   onSignOut(): void;
   enabled?: Partial<Record<Tab, boolean>>;
+  copyLength?: string;
 }
 
 export function AppTopBar({
@@ -34,6 +35,7 @@ export function AppTopBar({
   onHelp,
   onSignOut,
   enabled = {},
+  copyLength,
 }: AppTopBarProps) {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'content', label: 'Content' },
@@ -59,6 +61,8 @@ export function AppTopBar({
           {tabs.map(({ key, label }) => {
             const isActive = active === key;
             const glow = enabled[key];
+            const showLongCue = key === 'content' && copyLength === 'Detailed';
+            const showGlow = glow || showLongCue;
             return (
               <button
                 key={key}
@@ -68,12 +72,19 @@ export function AppTopBar({
                   'relative rounded-full border border-white/10 bg-white/[0.03] px-4 py-1.5 text-sm font-medium text-white/80 transition-all outline-none',
                   'hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-blue-500/35',
                   isActive &&
-                    'border-transparent bg-gradient-to-r from-[#3E8BFF] to-[#6B70FF] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_30px_rgba(0,0,0,0.35)]'
+                    'border-transparent bg-gradient-to-r from-[#3E8BFF] to-[#6B70FF] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_30px_rgba(0,0,0,0.35)]',
+                  !isActive && showLongCue &&
+                    'border-white/20 bg-white/[0.08] shadow-[0_0_24px_rgba(80,160,255,0.25)] text-white/90'
                 )}
                 aria-current={isActive ? 'page' : undefined}
               >
                 {label}
-                {glow && (
+                {showLongCue && (
+                  <span className="ml-2 rounded-full border border-white/20 bg-white/12 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/90">
+                    Long
+                  </span>
+                )}
+                {showGlow && (
                   <span className="pointer-events-none absolute inset-0 rounded-full ring-2 ring-blue-400/0 [animation:tabPulse_2.6s_ease-in-out_infinite]" />
                 )}
               </button>

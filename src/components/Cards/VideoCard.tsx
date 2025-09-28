@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Check, Clock, Copy, Film, Maximize2 } from 'lucide-react';
 
 import { cn } from '../../lib/format';
@@ -7,6 +7,8 @@ import type { GeneratedVideo } from '../../types';
 import type { GridStepState } from '../../state/ui';
 import CardShell from '../Outputs/CardShell';
 import { StepDot } from '../Outputs/StepDot';
+import NanoGridBloom from '@/ui/NanoGridBloom';
+import PerimeterProgressSegmented from '@/ui/PerimeterProgressSegmented';
 
 const BEAT_ICONS: Record<string, string> = {
   Hook: '🎬',
@@ -44,16 +46,10 @@ export function VideoCard({ videos, currentVersion, onSave, onRegenerate, status
   const versionVideo = videos[currentVersion];
   const totalVersions = videos.length;
   const statusLabel = STATUS_LABELS[status];
-  const showSheen = status === 'thinking' || status === 'rendering';
-
-  const timestamp = useMemo(
-    () =>
-      new Date().toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    [videos, currentVersion]
-  );
+  const timestamp = new Date().toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
   const handleSave = () => {
     setIsSaved(true);
@@ -74,8 +70,11 @@ export function VideoCard({ videos, currentVersion, onSave, onRegenerate, status
     window.setTimeout(() => setCopiedPrompt(false), 1200);
   };
 
+  const isBusy = status === 'queued' || status === 'thinking' || status === 'rendering';
+
   return (
-    <CardShell sheen={showSheen}>
+    <CardShell sheen={false} className="relative isolate overflow-hidden">
+      <div className="relative z-10 flex h-full flex-col">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -176,6 +175,10 @@ export function VideoCard({ videos, currentVersion, onSave, onRegenerate, status
           ? `Version ${Math.min(currentVersion + 1, totalVersions)} of ${totalVersions} • Beats sequenced for funnel flow`
           : 'Awaiting first generation'}
       </footer>
+      </div>
+
+      <NanoGridBloom busy={isBusy} />
+      <PerimeterProgressSegmented status={status} />
     </CardShell>
   );
 }

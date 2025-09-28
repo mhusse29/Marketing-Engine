@@ -26,6 +26,17 @@
   --glass-elev: linear-gradient(180deg, rgba(17, 24, 39, 0.7), rgba(11, 18, 30, 0.62));
   --line: rgba(255, 255, 255, 0.08);
   --line-soft: rgba(255, 255, 255, 0.06);
+  --surface-3: rgba(12, 18, 28, 0.88);
+  --surface-4: rgba(10, 15, 24, 0.92);
+  --surface-5: rgba(8, 12, 20, 0.96);
+  --border-1: rgba(255, 255, 255, 0.12);
+  --text-2: rgba(241, 246, 255, 0.88);
+  --text-3: rgba(198, 207, 225, 0.72);
+  --focus: var(--color-focus-ring);
+  --primary: var(--ac-1);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 22px 60px rgba(0, 0, 0, 0.55);
+  --z-cta: 80;
 
   /* Brand tokens */
   --brand-ink: rgba(241, 246, 255, 0.92);
@@ -112,6 +123,11 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+html[data-modal='1'],
+body[data-modal='1'] {
+  overflow: hidden;
 }
 
 @keyframes tabPulse {
@@ -537,10 +553,13 @@ body.ai-generating .notebook > .grid-walkers {
   }
 
   .cta-section {
+    position: relative;
     background: var(--glass-elev);
     border: 1px solid var(--line-soft);
     border-radius: 14px;
     padding: 12px;
+    display: grid;
+    gap: 10px;
     margin-top: 10px;
   }
 
@@ -555,11 +574,16 @@ body.ai-generating .notebook > .grid-walkers {
   }
 
   .cta-label {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     font-size: 12px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.55);
-    margin-bottom: 10px;
+    color: var(--text-3);
+    margin-bottom: 4px;
+    padding: 4px 0 6px;
+    background: linear-gradient(180deg, rgba(17, 24, 39, 0.95), rgba(17, 24, 39, 0.65));
   }
 
   .cta-row {
@@ -651,4 +675,214 @@ body.ai-generating .notebook > .grid-walkers {
   border: 1px solid var(--menu-panel-border);
   box-shadow: 0 12px 50px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
   backdrop-filter: blur(10px);
+}
+
+/* Tooltip */
+.ui-tip {
+  position: fixed;
+  transform: translate(-50%, calc(-100% - 10px));
+  background: var(--surface-4);
+  color: var(--text-2);
+  border: 1px solid var(--border-1);
+  padding: 6px 8px;
+  font: 500 12px/1.2 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  z-index: var(--z-cta);
+  pointer-events: none;
+  white-space: nowrap;
+  backdrop-filter: blur(8px) saturate(1.2);
+}
+
+.ui-tip-arrow {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  background: inherit;
+  border-left: 1px solid var(--border-1);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.tip-anchor:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* CTA Popover */
+.cta-popover {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--topbar-h, 64px) + 16px);
+  transform: translateX(-50%);
+  width: min(92vw, 960px);
+  background: var(--surface-3);
+  border: 1px solid var(--border-1);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px) saturate(1.1);
+  z-index: var(--z-cta);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+}
+
+.cta-head,
+.cta-foot {
+  padding: 12px 16px;
+}
+
+.cta-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-2);
+  background: linear-gradient(180deg, rgba(15, 22, 33, 0.9), rgba(15, 22, 33, 0.55));
+}
+
+.cta-foot {
+  color: var(--text-3);
+  font-size: 12px;
+  text-align: right;
+  background: linear-gradient(180deg, rgba(10, 15, 24, 0.2), rgba(10, 15, 24, 0.55));
+}
+
+.cta-scroll {
+  position: relative;
+  overflow: auto;
+  padding: 12px 16px 18px;
+  max-height: calc(100vh - var(--topbar-h, 64px) - 60px);
+  scroll-padding: 12px;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    rgba(0, 0, 0, 0.92) 12px,
+    rgba(0, 0, 0, 0.92) calc(100% - 12px),
+    transparent 100%
+  );
+}
+
+.cta-scroll.is-top {
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.92) 0,
+    rgba(0, 0, 0, 0.92) calc(100% - 12px),
+    transparent 100%
+  );
+}
+
+.cta-scroll.is-bottom {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    rgba(0, 0, 0, 0.92) 12px,
+    rgba(0, 0, 0, 0.92) 100%
+  );
+}
+
+.cta-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cta-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(99, 147, 255, 0.32), rgba(46, 72, 132, 0.42));
+  border-radius: 8px;
+}
+
+/* Platform badge */
+.platform-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--border-1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease,
+    background 0.18s ease, filter 0.18s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.platform-badge--sm {
+  width: var(--size-sm, 30px);
+  height: var(--size-sm, 30px);
+}
+
+.platform-badge--md {
+  width: 38px;
+  height: 38px;
+}
+
+.platform-badge__icon {
+  width: 60%;
+  height: 60%;
+}
+
+.platform-badge[data-interactive='true'] {
+  cursor: pointer;
+}
+
+.platform-badge[data-interactive='false'] {
+  cursor: default;
+}
+
+.platform-badge[data-interactive='true'][data-state='inactive']:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.platform-badge[data-interactive='true'][data-state='inactive']:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.platform-badge[data-state='active'] {
+  border-color: transparent;
+  background: var(--badge-active-bg, linear-gradient(135deg, rgba(62, 139, 255, 0.95), rgba(107, 112, 255, 0.95)));
+  box-shadow: 0 10px 32px rgba(62, 139, 255, 0.32);
+}
+
+.card-platforms {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 12px;
+}
+
+.card-platforms .platform-badge {
+  --size-sm: 30px;
+  cursor: default;
+}
+
+.card-platforms-more {
+  font: 600 12px/1 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--text-3);
+  background: var(--surface-4);
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  padding: 6px 8px;
+}
+
+.card-platforms .platform-badge[data-state='active'] {
+  box-shadow:
+    0 0 0 3px color-mix(in oklab, var(--brand-accent) 45%, transparent),
+    0 8px 24px -12px rgba(20, 35, 72, 0.6);
+}
+
+
+svg[aria-hidden="true"] {
+  opacity: 1;
+}
+
+.glass {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
 }

@@ -45,127 +45,267 @@ const delay = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener('abort', handleAbort);
   });
 
-// Mock content generation
-export function generateContent(
+const GATEWAY_DEFAULT_URL = 'http://localhost:8787';
+
+const PROVIDER_PLATFORM_LABELS: Record<Platform, string> = {
+  facebook: 'FBIG',
+  instagram: 'FBIG',
+  tiktok: 'TikTok',
+  linkedin: 'LinkedIn',
+  x: 'X',
+  youtube: 'YouTube',
+};
+
+const LANGUAGE_LABELS = {
+  EN: 'English',
+  AR: 'AR',
+  FR: 'French',
+} as const;
+
+const VALID_STATUSES: Array<NonNullable<AiUIState['stepStatus'][CardKey]>> = [
+  'queued',
+  'thinking',
+  'rendering',
+  'ready',
+  'error',
+];
+
+type StepStatus = (typeof VALID_STATUSES)[number];
+
+type ContentGenerationOptions = {
+  signal?: AbortSignal;
+  onStatus?: (status: StepStatus) => void;
+  gatewayUrl?: string;
+};
+
+const toStepStatus = (value: unknown): StepStatus | null => {
+  if (typeof value !== 'string') return null;
+  return VALID_STATUSES.includes(value as StepStatus) ? (value as StepStatus) : null;
+};
+
+const sanitizeList = (value?: string) =>
+  value
+    ? value
+        .split(/[,|\n]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+
+const normalizeHashtag = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const withoutHash = trimmed.replace(/^#+/, '');
+  return withoutHash ? `#${withoutHash}` : '';
+};
+
+const asNonEmptyString = (value: unknown) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const buildCaption = (primary?: unknown, hashtags?: unknown): string => {
+  const parts: string[] = [];
+  const primaryText = asNonEmptyString(primary);
+  if (primaryText) {
+    parts.push(primaryText);
+  }
+
+  if (Array.isArray(hashtags)) {
+    const tags = hashtags
+      .map((tag) => (typeof tag === 'string' ? normalizeHashtag(tag) : ''))
+      .filter(Boolean);
+    if (tags.length > 0) {
+      parts.push(tags.join(' '));
+    }
+  }
+
+  return parts.join('\n\n');
+};
+
+const mapVariantsToContent = (
+  variants: unknown,
+  platforms: Platform[],
+  versionCount: number,
+  fallbackHeadlineBase: string,
+  fallbackCaption: string,
+  fallbackCta: string
+): GeneratedContent[][] => {
+  const variantArray = Array.isArray(variants)
+    ? variants.filter((item) => item && typeof item === 'object')
+    : [];
+
+  if (variantArray.length === 0) {
+    variantArray.push({});
+  }
+
+  const ensureVariant = (index: number) =>
+    variantArray[index] ?? variantArray[variantArray.length - 1] ?? {};
+
+  return Array.from({ length: versionCount }, (_, versionIndex) => {
+    const variant = ensureVariant(versionIndex) as Record<string, unknown>;
+    const fallbackHeadline =
+      versionCount > 1
+        ? `${fallbackHeadlineBase} #${versionIndex + 1}`
+        : fallbackHeadlineBase;
+    const headline =
+      asNonEmptyString(variant.headline) ??
+      fallbackHeadline ??
+      `Campaign concept #${versionIndex + 1}`;
+    const caption = buildCaption(variant.primary_text ?? variant.caption, variant.hashtags) || fallbackCaption;
+    const cta = asNonEmptyString(variant.cta_label) ?? fallbackCta;
+
+    return platforms.map((platform) => ({
+      platform,
+      headline,
+      caption,
+      cta,
+    }));
+  });
+};
+
+export async function generateContent(
   platforms: Platform[],
   versions: number,
-  props: SettingsState['quickProps']['content']
-): GeneratedContent[][] {
-  const contentVersions: GeneratedContent[][] = [];
-  
-  const contentTemplates = {
-    facebook: {
-      headlines: [
-        'Transform Your Business Today',
-        'Unlock New Growth Opportunities',
-        'Scale Smarter, Not Harder',
-      ],
-      captions: [
-        'Discover how leading companies are revolutionizing their approach.',
-        'Join thousands of businesses already seeing results.',
-        'The future of business starts here.',
-      ],
-      ctas: ['Learn More', 'Get Started', 'See How'],
-    },
-    instagram: {
-      headlines: [
-        '✨ Level Up Your Game',
-        '🚀 Ready for Growth?',
-        '💡 Smart Solutions Inside',
-      ],
-      captions: [
-        'Swipe up to see how we\'re changing the game.',
-        'Your success story starts with one tap.',
-        'Real results from real businesses.',
-      ],
-      ctas: ['Shop Now', 'Swipe Up', 'Link in Bio'],
-    },
-    tiktok: {
-      headlines: [
-        'POV: You Found the Secret',
-        'This Changes Everything',
-        'Wait for It...',
-      ],
-      captions: [
-        'The hack everyone\'s talking about 👀',
-        'Why didn\'t I know this sooner?',
-        'Game changer alert 🚨',
-      ],
-      ctas: ['Try It', 'Get Yours', 'Start Now'],
-    },
-    linkedin: {
-      headlines: [
-        'Driving Innovation in Your Industry',
-        'Strategic Growth Solutions',
-        'Enterprise-Ready Solutions',
-      ],
-      captions: [
-        'Learn how industry leaders are staying ahead of the curve.',
-        'Data-driven insights for sustainable growth.',
-        'Transform your business with proven strategies.',
-      ],
-      ctas: ['Download Report', 'Schedule Demo', 'Learn More'],
-    },
-    'google.search': {
-      headlines: [
-        'Best Solutions for Your Business',
-        'Top-Rated by Industry Leaders',
-        'Transform Your Results Today',
-      ],
-      captions: [
-        'Trusted by over 10,000 businesses worldwide.',
-        'See why we\'re the #1 choice.',
-        'Get started in minutes.',
-      ],
-      ctas: ['Get Quote', 'Start Free', 'Learn More'],
-    },
-    'google.display': {
-      headlines: [
-        'Upgrade Your Business',
-        'Smart Solutions, Real Results',
-        'Join Industry Leaders',
-      ],
-      captions: [
-        'See the difference quality makes.',
-        'Proven results you can trust.',
-        'Start your journey today.',
-      ],
-      ctas: ['Explore', 'Discover', 'Get Started'],
-    },
-    'google.youtube': {
-      headlines: [
-        'See It In Action',
-        'Watch How It Works',
-        'Real Results, Real Stories',
-      ],
-      captions: [
-        'Discover what makes us different.',
-        'Join thousands of satisfied customers.',
-        'Your success story starts here.',
-      ],
-      ctas: ['Watch Now', 'Learn More', 'Subscribe'],
+  props: SettingsState['quickProps']['content'],
+  brief: string,
+  options: ContentGenerationOptions = {}
+): Promise<GeneratedContent[][]> {
+  const trimmedBrief = brief.trim();
+  if (!trimmedBrief) {
+    throw new Error('Brief is required for generation');
+  }
+
+  const { signal, onStatus } = options;
+  const gatewayUrl = options.gatewayUrl ?? import.meta.env?.VITE_AI_GATEWAY_URL ?? GATEWAY_DEFAULT_URL;
+
+  const requestedPlatforms: Platform[] =
+    platforms.length > 0 ? platforms : (['linkedin'] as Platform[]);
+  const providerPlatforms = Array.from(
+    new Set(requestedPlatforms.map((platform) => PROVIDER_PLATFORM_LABELS[platform] ?? platform))
+  );
+
+  const tones = props?.tone ? [props.tone] : [];
+  const ctas = props?.cta ? [props.cta] : [];
+  const keywords = sanitizeList(props?.keywords);
+  const avoid = sanitizeList(props?.avoid);
+  const hashtags = sanitizeList(props?.hashtags).map((tag) => tag.replace(/^#+/, ''));
+
+  const language = props?.language
+    ? LANGUAGE_LABELS[props.language] ?? props.language
+    : LANGUAGE_LABELS.EN;
+
+  const payload = {
+    brief: trimmedBrief,
+    versions: Math.max(1, Number.isFinite(versions) ? Number(versions) : 1),
+    options: {
+      persona: props?.persona,
+      tones,
+      ctas,
+      language,
+      platforms: providerPlatforms,
+      keywords,
+      avoid,
+      hashtags,
     },
   };
-  
-  for (let v = 0; v < versions; v++) {
-    const versionContent: GeneratedContent[] = [];
-    
-    for (const platform of platforms) {
-      const template = contentTemplates[platform] || contentTemplates.facebook;
-      const randomIndex = Math.floor(Math.random() * template.headlines.length);
-      
-      versionContent.push({
-        platform,
-        headline: template.headlines[randomIndex],
-        caption: template.captions[randomIndex],
-        cta: props?.cta || template.ctas[randomIndex],
-      });
-    }
-    
-    contentVersions.push(versionContent);
+
+  const startResponse = await fetch(`${gatewayUrl.replace(/\/$/, '')}/v1/generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  if (!startResponse.ok) {
+    const text = await startResponse.text();
+    throw new Error(`Failed to start content generation (${startResponse.status}): ${text}`);
   }
-  
-  return contentVersions;
+
+  const { runId } = (await startResponse.json()) as { runId: string };
+  if (!runId) {
+    throw new Error('Gateway did not return a run ID');
+  }
+
+  const eventsUrl = `${gatewayUrl.replace(/\/$/, '')}/v1/runs/${runId}/events`;
+
+  return new Promise<GeneratedContent[][]>((resolve, reject) => {
+    let settled = false;
+    const source = new EventSource(eventsUrl);
+
+    const cleanup = () => {
+      settled = true;
+      source.close();
+      signal?.removeEventListener('abort', handleAbort);
+    };
+
+    const handleAbort = () => {
+      cleanup();
+      reject(createAbortError());
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        handleAbort();
+        return;
+      }
+      signal.addEventListener('abort', handleAbort);
+    }
+
+    source.addEventListener('status', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data ?? '{}');
+        const nextStatus = toStepStatus(data.status);
+        if (nextStatus) {
+          onStatus?.(nextStatus);
+        }
+      } catch (error) {
+        console.warn('Failed to parse gateway status event', error);
+      }
+    });
+
+    source.addEventListener('result', (event) => {
+      if (settled) return;
+      try {
+        const data = JSON.parse((event as MessageEvent).data ?? '{}');
+        const versionCount = Math.max(1, Number.isFinite(versions) ? Number(versions) : 1);
+        const fallbackHeadline = 'Campaign concept';
+        const fallbackCaption = 'Fresh copy is ready to ship.';
+        const fallbackCta = props?.cta || 'Learn more';
+        const mapped = mapVariantsToContent(
+          data?.variants,
+          requestedPlatforms,
+          versionCount,
+          fallbackHeadline,
+          fallbackCaption,
+          fallbackCta
+        );
+        cleanup();
+        onStatus?.('ready');
+        resolve(mapped);
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    });
+
+    source.addEventListener('error', (event) => {
+      if (settled) return;
+      try {
+        const payload = (event as MessageEvent).data ? JSON.parse((event as MessageEvent).data) : {};
+        const message = payload?.message || 'Gateway error';
+        onStatus?.('error');
+        cleanup();
+        reject(new Error(message));
+      } catch {
+        onStatus?.('error');
+        cleanup();
+        reject(new Error('Gateway connection error'));
+      }
+    });
+  });
 }
 
 // Mock picture generation

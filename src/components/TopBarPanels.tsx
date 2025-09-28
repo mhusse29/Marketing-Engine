@@ -1,43 +1,27 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 import { cn } from '../lib/format';
-
-type Tab = 'content' | 'pictures' | 'video';
+import { PANEL_TITLES, type TopBarPanelTab } from './TopBarPanels.helpers';
 
 type PanelsProps = {
-  open: Tab | null;
+  open: TopBarPanelTab | null;
   close: () => void;
   renderContent: ReactNode;
   renderPictures: ReactNode;
   renderVideo: ReactNode;
 };
 
-type PanelsHook = {
-  open: Tab | null;
-  toggle: (tab: Tab) => void;
-  close: () => void;
-};
-
-export function useTopBarPanels(): PanelsHook {
-  const [open, setOpen] = useState<Tab | null>(null);
-
-  const toggle = useCallback((tab: Tab) => {
-    setOpen((prev) => (prev === tab ? null : tab));
-  }, []);
-
-  const close = useCallback(() => {
-    setOpen(null);
-  }, []);
-
-  return { open, toggle, close };
-}
-
 export function TopBarPanels({ open, close, renderContent, renderPictures, renderVideo }: PanelsProps) {
-  if (typeof document === 'undefined') {
-    return null;
-  }
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      setMountNode(document.body);
+    }
+  }, []);
 
   const content = useMemo(() => {
     switch (open) {
@@ -51,6 +35,28 @@ export function TopBarPanels({ open, close, renderContent, renderPictures, rende
         return null;
     }
   }, [open, renderContent, renderPictures, renderVideo]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return () => undefined;
+    }
+
+    const root = document.documentElement;
+    const body = document.body;
+
+    if (open) {
+      root.dataset.modal = '1';
+      body.dataset.modal = '1';
+    } else {
+      delete root.dataset.modal;
+      delete body.dataset.modal;
+    }
+
+    return () => {
+      delete root.dataset.modal;
+      delete body.dataset.modal;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -67,6 +73,36 @@ export function TopBarPanels({ open, close, renderContent, renderPictures, rende
     return () => window.removeEventListener('keydown', handleKey);
   }, [open, close]);
 
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const container = scrollRef.current;
+    if (!container) {
+      return undefined;
+    }
+
+    const updateMask = () => {
+      container.classList.toggle('is-top', container.scrollTop <= 0);
+      container.classList.toggle(
+        'is-bottom',
+        container.scrollHeight - container.clientHeight - container.scrollTop <= 1
+      );
+    };
+
+    container.scrollTop = 0;
+    updateMask();
+    container.addEventListener('scroll', updateMask, { passive: true });
+    return () => container.removeEventListener('scroll', updateMask);
+  }, [open]);
+
+  if (!mountNode) {
+    return null;
+  }
+
+  const panelTitle = open ? PANEL_TITLES[open] : '';
+
   return createPortal(
     <>
       <div
@@ -80,35 +116,34 @@ export function TopBarPanels({ open, close, renderContent, renderPictures, rende
       />
       <div
         className={cn(
-          'cta-panel fixed left-1/2 z-[70] w-[min(980px,92vw)] -translate-x-1/2 transition-all duration-200 ease-out',
+          'cta-popover transition-all duration-200 ease-out',
           open ? 'pointer-events-auto opacity-100 translate-y-0' : 'pointer-events-none opacity-0 -translate-y-2'
         )}
-        style={{ top: 'calc(var(--topbar-h, 64px) + 12px)' }}
         role="dialog"
         aria-modal="true"
-        aria-label={open ? `${open} quick settings` : undefined}
+        aria-label={panelTitle}
       >
-        <div className="cta-header">
-          <div className="text-sm text-white/60">
-            {open === 'content' && 'Content options'}
-            {open === 'pictures' && 'Pictures prompt options'}
-            {open === 'video' && 'Video prompt options'}
-          </div>
+        <header className="cta-head">
+          <div className="text-sm">{panelTitle}</div>
           <button
             type="button"
             onClick={close}
-            className="rounded-md p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35"
+            className="rounded-md p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--focus)]"
             aria-label="Close quick settings"
           >
             <X className="h-4 w-4" />
           </button>
+        </header>
+
+        <div ref={scrollRef} className="cta-scroll">
+          {content}
         </div>
 
-        {content}
+        <footer className="cta-foot">Press Esc to close</footer>
       </div>
     </>,
-    document.body
+    mountNode
   );
 }
 
-export type { Tab as TopBarPanelTab };
+export type { TopBarPanelTab };

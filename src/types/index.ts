@@ -8,9 +8,8 @@ export type Platform =
   | 'instagram'
   | 'tiktok'
   | 'linkedin'
-  | 'google.search'
-  | 'google.display'
-  | 'google.youtube';
+  | 'x'
+  | 'youtube';
 
 export type Persona =
   | 'Generic'
@@ -30,6 +29,7 @@ export type Tone =
 export type Language = 'EN' | 'AR' | 'FR';
 
 export type ContentFormat = 'Auto' | 'FB/IG' | 'LinkedIn' | 'TikTok' | 'X';
+export type CopyLength = 'Compact' | 'Standard' | 'Detailed';
 
 export type PicStyle = 'Product' | 'Lifestyle' | 'UGC' | 'Abstract';
 export type PicAspect = '1:1' | '4:5' | '16:9';
@@ -43,6 +43,7 @@ export type ContentQuickProps = {
   cta: string;
   language: Language;
   format?: ContentFormat;
+  copyLength?: CopyLength;
   keywords?: string;
   avoid?: string;
   hashtags?: string;
@@ -143,6 +144,31 @@ export type AiUIState = {
     pictures?: { versions: GeneratedPictures[] };
     video?: { versions: GeneratedVideo[] };
   };
+};
+
+export type ContentVariantResult = {
+  platform?: string;
+  headline?: string;
+  primary_text?: string;
+  cta_label?: string;
+  hashtags?: string[];
+  alt_text?: string;
+  approx_length?: number;
+  [key: string]: unknown;
+};
+
+export type ContentGenerationMeta = {
+  model?: string;
+  promptVersion?: string;
+  platforms?: string[];
+  versions?: number;
+  salvaged?: boolean;
+  triedPlain?: boolean;
+  backfilled?: boolean;
+  counts?: Record<string, number>;
+  mock?: boolean;
+  runId?: string;
+  [key: string]: unknown;
 };
 
 export type CardsState = {

@@ -1,16 +1,17 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import { LayoutShell } from './components/LayoutShell';
 import { SettingsPanel } from './components/SettingsDrawer/SettingsPanel';
 import { AiBox } from './components/AskAI/AiBox';
 import { Stepper } from './components/AskAI/Stepper';
-import { ContentCard } from './components/Cards/ContentCard';
+import ContentCard from './components/Cards/ContentCard';
 import { PicturesCard } from './components/Cards/PicturesCard';
 import { VideoCard } from './components/Cards/VideoCard';
 import { SkeletonCard } from './components/AskAI/SkeletonCard';
 import AppTopBar from './components/AppTopBar';
-import { TopBarPanels, useTopBarPanels } from './components/TopBarPanels';
+import { TopBarPanels } from './components/TopBarPanels';
+import { useTopBarPanels } from './components/useTopBarPanels';
 import { MenuContent, MenuPictures, MenuVideo } from './components/AppMenuBar';
 
 import {
@@ -20,14 +21,21 @@ import {
 } from './store/settings';
 import {
   defaultAiState,
-  generateContent,
   generatePictures,
   generateVideo,
-  simulateGeneration,
 } from './store/ai';
 import { useCardsStore } from './store/useCardsStore';
-import type { SettingsState, AiUIState, CardKey, AiAttachment } from './types';
+import type {
+  SettingsState,
+  AiUIState,
+  CardKey,
+  AiAttachment,
+  Platform,
+  ContentVariantResult,
+  ContentGenerationMeta,
+} from './types';
 import type { GridStepState } from './state/ui';
+import { useContentAI } from './useContentAI';
 
 const clampVersionIndex = (index: number, total: number) => {
   if (total <= 0) {
@@ -54,6 +62,32 @@ const setAiGeneratingState = (generating: boolean) => {
   document.body.classList.toggle('ai-generating', generating);
 };
 
+const mapContentStatusToGrid = (status: string): GridStepState => {
+  switch (status) {
+    case 'thinking':
+      return 'thinking';
+    case 'rendering':
+      return 'rendering';
+    case 'ready':
+      return 'ready';
+    case 'error':
+      return 'error';
+    case 'queued':
+    case 'idle':
+    default:
+      return 'queued';
+  }
+};
+
+const PLATFORM_GATEWAY_LABELS: Record<Platform, string> = {
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  linkedin: 'LinkedIn',
+  x: 'X',
+  youtube: 'YouTube',
+};
+
 function App() {
   const [settings, setSettings] = useState<SettingsState>(() => loadSettings());
   const [aiState, setAiState] = useState<AiUIState>(defaultAiState);
@@ -63,6 +97,19 @@ function App() {
   const hintTimeoutRef = useRef<number | null>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
   const isValid = validateSettings(settings);
+
+  const {
+    status: contentStatus,
+    result: contentResult,
+    error: contentError,
+    run: runContent,
+    regenerate: regenerateContent,
+    runId: contentRunId,
+  } = useContentAI();
+  const [contentVariants, setContentVariants] = useState<ContentVariantResult[]>([]);
+  const [contentMeta, setContentMeta] = useState<ContentGenerationMeta | null>(null);
+  const contentStatusRef = useRef(contentStatus);
+  const contentErrorRef = useRef<string | undefined>();
 
   const cardsEnabled = useCardsStore((state) => state.enabled);
   const cardsHidden = useCardsStore((state) => state.hidden);
@@ -122,6 +169,43 @@ function App() {
   }, [isValid]);
 
   useEffect(() => {
+    contentStatusRef.current = contentStatus;
+  }, [contentStatus]);
+
+  useEffect(() => {
+    contentErrorRef.current = contentError;
+  }, [contentError]);
+
+  useEffect(() => {
+    if (contentStatus === 'ready' && contentResult) {
+      if (import.meta.env?.DEV) {
+        console.log('[App] applying contentResult', contentResult)
+      }
+      setContentVariants(contentResult.variants ?? []);
+      setContentMeta(contentResult.meta ?? null);
+    } else if (contentStatus === 'queued') {
+      setContentVariants([]);
+      setContentMeta(null);
+    } else if (contentStatus === 'error') {
+      setContentMeta(null);
+    }
+  }, [contentStatus, contentResult]);
+
+  useEffect(() => {
+    if (!settings.cards.content) return;
+    const mapped = mapContentStatusToGrid(contentStatus);
+    setAiState((prev) => {
+      if (prev.stepStatus.content === mapped) {
+        return prev;
+      }
+      return {
+        ...prev,
+        stepStatus: { ...prev.stepStatus, content: mapped },
+      };
+    });
+  }, [contentStatus, settings.cards.content]);
+
+  useEffect(() => {
     if (isValid && !wasValidRef.current) {
       wasValidRef.current = true;
       setAiReadyHint(true);
@@ -163,15 +247,114 @@ function App() {
 
   useEffect(() => {
     setCurrentVersions((prev) => ({
-      content: clampVersionIndex(prev.content, aiState.outputs.content?.versions.length ?? 0),
+      content: clampVersionIndex(prev.content, contentVariants.length),
       pictures: clampVersionIndex(prev.pictures, aiState.outputs.pictures?.versions.length ?? 0),
       video: clampVersionIndex(prev.video, aiState.outputs.video?.versions.length ?? 0),
     }));
   }, [
-    aiState.outputs.content?.versions.length,
+    contentVariants.length,
     aiState.outputs.pictures?.versions.length,
     aiState.outputs.video?.versions.length,
   ]);
+
+  const makeAbortError = () => {
+    const error = new Error('Generation aborted');
+    error.name = 'AbortError';
+    return error;
+  };
+
+  const waitWithAbort = (signal: AbortSignal, ms: number) =>
+    new Promise<void>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(makeAbortError());
+        return;
+      }
+
+      const onAbort = () => {
+        window.clearTimeout(timeoutId);
+        signal.removeEventListener('abort', onAbort);
+        reject(makeAbortError());
+      };
+
+      const timeoutId = window.setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+
+      signal.addEventListener('abort', onAbort);
+    });
+
+  const parseCsv = (value?: string | string[]) => {
+    if (Array.isArray(value)) {
+      return value.filter((item) => typeof item === 'string' && item.trim().length > 0);
+    }
+    if (!value) return [];
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  };
+
+  const contentOptions = useMemo(() => {
+    const contentProps = settings.quickProps.content;
+    const persona = contentProps.persona ?? 'Generic';
+    const tones = contentProps.tone ? [contentProps.tone] : ['Professional'];
+    const ctas = contentProps.cta ? [contentProps.cta] : ['Learn more'];
+    const language = contentProps.language ?? 'EN';
+    const ALLOWED_LABELS = ['Facebook', 'Instagram', 'TikTok', 'LinkedIn', 'X', 'YouTube'] as const;
+    const allowedSet = new Set<string>(ALLOWED_LABELS);
+    const platforms = settings.platforms.length
+      ? settings.platforms
+          .map((platform) => PLATFORM_GATEWAY_LABELS[platform])
+          .filter((label): label is (typeof ALLOWED_LABELS)[number] => Boolean(label) && allowedSet.has(label))
+      : ['LinkedIn', 'Facebook', 'X'];
+    const keywords = parseCsv(contentProps.keywords);
+    const avoid = parseCsv(contentProps.avoid);
+    const hashtags = parseCsv(contentProps.hashtags).map((tag) =>
+      tag.replace(/^#/, '').trim()
+    );
+    const copyLength = contentProps.copyLength ?? 'Standard';
+
+    return {
+      persona,
+      tones,
+      ctas,
+      language,
+      platforms,
+      keywords,
+      avoid,
+      hashtags,
+      copyLength,
+    };
+  }, [settings]);
+
+  const waitForContentCompletion = (signal: AbortSignal) =>
+    new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        window.clearInterval(intervalId);
+        signal.removeEventListener('abort', onAbort);
+      };
+
+      const onAbort = () => {
+        cleanup();
+        reject(makeAbortError());
+      };
+
+      const check = () => {
+        const current = contentStatusRef.current;
+        if (current === 'ready') {
+          cleanup();
+          resolve();
+        } else if (current === 'error') {
+          cleanup();
+          reject(new Error(contentErrorRef.current ?? 'provider_error'));
+        }
+      };
+
+      const intervalId = window.setInterval(check, 200);
+      signal.addEventListener('abort', onAbort);
+      check();
+    });
 
   const handleGenerate = async (brief: string, attachments: AiAttachment[]) => {
     const steps = cardsOrder.filter((card) => cardsEnabled[card]);
@@ -184,6 +367,11 @@ function App() {
     const imageUploads = attachmentSnapshot
       .filter((item) => item.kind === 'image')
       .map((item) => item.url);
+
+    if (settings.cards.content) {
+      setContentVariants([]);
+      setContentMeta(null);
+    }
 
     setAiState((prev) => ({
       ...prev,
@@ -198,19 +386,141 @@ function App() {
       outputs: {},
     }));
 
-    try {
-      await simulateGeneration(
-        steps,
-        (step, status) => {
-          setAiState((prev) => ({
-            ...prev,
-            stepStatus: { ...prev.stepStatus, [step]: status },
-          }));
-        },
-        controller.signal
+    if (settings.cards.content) {
+      const options = {
+        ...contentOptions,
+        copyLength: contentOptions.copyLength ?? 'Standard',
+      };
+      runContent(brief, options, settings.versions ?? 2);
+    }
+
+    const tasks: Promise<void>[] = [];
+
+    if (settings.cards.content) {
+      tasks.push(
+        (async () => {
+          try {
+            await waitForContentCompletion(controller.signal);
+          } catch (error) {
+            console.error('Content generation task failed:', error);
+            console.error('Content error details:', {
+              message: (error as Error).message,
+              stack: (error as Error).stack,
+              name: (error as Error).name
+            });
+            throw error; // Re-throw to be caught by Promise.all
+          }
+        })()
       );
+    }
+
+    if (settings.cards.pictures) {
+      tasks.push(
+        (async () => {
+          try {
+            setAiState((prev) => ({
+              ...prev,
+              stepStatus: { ...prev.stepStatus, pictures: 'thinking' },
+            }));
+
+            await waitWithAbort(controller.signal, 700);
+
+            setAiState((prev) => ({
+              ...prev,
+              stepStatus: { ...prev.stepStatus, pictures: 'rendering' },
+            }));
+
+            await waitWithAbort(controller.signal, 900);
+
+            const versions = generatePictures(
+              settings.versions,
+              imageUploads.length > 0,
+              imageUploads,
+              settings.quickProps.pictures
+            );
+
+            setAiState((prev) => ({
+              ...prev,
+              outputs: { ...prev.outputs, pictures: { versions } },
+              stepStatus: { ...prev.stepStatus, pictures: 'ready' },
+            }));
+          } catch (error) {
+            if ((error as Error).name === 'AbortError') {
+              return;
+            }
+            console.error('Picture generation failed', error);
+            setAiState((prev) => ({
+              ...prev,
+              stepStatus: { ...prev.stepStatus, pictures: 'error' },
+            }));
+          }
+        })()
+      );
+    }
+
+    if (settings.cards.video) {
+      tasks.push(
+        (async () => {
+          try {
+            setAiState((prev) => ({
+              ...prev,
+              stepStatus: { ...prev.stepStatus, video: 'thinking' },
+            }));
+
+            await waitWithAbort(controller.signal, 700);
+
+            setAiState((prev) => ({
+              ...prev,
+              stepStatus: { ...prev.stepStatus, video: 'rendering' },
+            }));
+
+            await waitWithAbort(controller.signal, 900);
+
+            const versions = generateVideo(settings.versions, settings.quickProps.video);
+
+            setAiState((prev) => ({
+              ...prev,
+              outputs: { ...prev.outputs, video: { versions } },
+              stepStatus: { ...prev.stepStatus, video: 'ready' },
+            }));
+          } catch (error) {
+            if ((error as Error).name === 'AbortError') {
+              return;
+            }
+            console.error('Video generation failed', error);
+            setAiState((prev) => ({
+              ...prev,
+              stepStatus: { ...prev.stepStatus, video: 'error' },
+            }));
+          }
+        })()
+      );
+    }
+
+    try {
+      await Promise.all(tasks);
     } catch (error) {
-      if ((error as Error).name === 'AbortError') {
+      if ((error as Error).name !== 'AbortError') {
+        console.error('Generation run failed', error);
+        console.error('Error details:', {
+          message: (error as Error).message,
+          stack: (error as Error).stack,
+          name: (error as Error).name
+        });
+        
+        // Set error status for all active steps
+        setAiState((prev) => ({
+          ...prev,
+          stepStatus: Object.keys(prev.stepStatus).reduce(
+            (acc, step) => ({ ...acc, [step]: 'error' as GridStepState }),
+            {} as Partial<AiUIState['stepStatus']>
+          ),
+        }));
+      }
+    } finally {
+      const aborted = controller.signal.aborted;
+
+      if (aborted) {
         setAiState((prev) => ({
           ...prev,
           generating: false,
@@ -218,65 +528,16 @@ function App() {
           stepStatus: {},
         }));
       } else {
-        console.error(error);
-        const errorStatuses = steps.reduce(
-          (acc, step) => ({
-            ...acc,
-            [step]: 'error' as GridStepState,
-          }),
-          {} as Partial<AiUIState['stepStatus']>
-        );
-
         setAiState((prev) => ({
           ...prev,
           generating: false,
-          stepStatus: { ...prev.stepStatus, ...errorStatuses },
         }));
+        setCurrentVersions({ content: 0, pictures: 0, video: 0 });
       }
 
       if (generationAbortRef.current === controller) {
         generationAbortRef.current = null;
       }
-      return;
-    }
-
-    const outputs: AiUIState['outputs'] = {};
-
-    if (settings.cards.content) {
-      outputs.content = {
-        versions: Array.from({ length: settings.versions }, () =>
-          generateContent(settings.platforms, 1, settings.quickProps.content)[0]
-        ),
-      };
-    }
-
-    if (settings.cards.pictures) {
-      outputs.pictures = {
-        versions: generatePictures(
-          settings.versions,
-          imageUploads.length > 0,
-          imageUploads,
-          settings.quickProps.pictures
-        ),
-      };
-    }
-
-    if (settings.cards.video) {
-      outputs.video = {
-        versions: generateVideo(settings.versions, settings.quickProps.video),
-      };
-    }
-
-    setAiState((prev) => ({
-      ...prev,
-      generating: false,
-      outputs,
-    }));
-
-    setCurrentVersions({ content: 0, pictures: 0, video: 0 });
-
-    if (generationAbortRef.current === controller) {
-      generationAbortRef.current = null;
     }
   };
 
@@ -296,6 +557,8 @@ function App() {
       steps: [],
       stepStatus: {},
     }));
+    setContentVariants([]);
+    setContentMeta(null);
   };
 
   const handleNewCampaign = () => {
@@ -333,55 +596,85 @@ function App() {
   };
 
   const handleCardRegenerate = async (type: CardKey) => {
+    if (type === 'content') {
+      const briefText = aiState.brief.trim();
+      if (!briefText) {
+        console.warn('Cannot regenerate content without a brief.');
+        setAiState((prev) => ({
+          ...prev,
+          stepStatus: { ...prev.stepStatus, content: 'error' },
+        }));
+        return;
+      }
+      if (settings.cards.content) {
+        setContentVariants([]);
+        setContentMeta(null);
+        const options = {
+          ...contentOptions,
+          copyLength: contentOptions.copyLength ?? 'Standard',
+        };
+        regenerateContent(briefText, options, settings.versions ?? 2, 'try a new hook and angle');
+      }
+      return;
+    }
+
     setAiState((prev) => ({
       ...prev,
       stepStatus: { ...prev.stepStatus, [type]: 'rendering' },
     }));
 
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
 
-    const newOutputs = { ...aiState.outputs };
-    const currentVersion = currentVersions[type];
+    setAiState((prev) => {
+      const outputs = { ...prev.outputs };
 
-    if (type === 'content' && newOutputs.content) {
-      newOutputs.content.versions[currentVersion] = generateContent(
-        settings.platforms,
-        1,
-        settings.quickProps.content
-      )[0];
-    } else if (type === 'pictures' && newOutputs.pictures) {
-      const imageUploads = aiState.uploads
-        .filter((item) => item.kind === 'image')
-        .map((item) => item.url);
-      newOutputs.pictures.versions[currentVersion] = generatePictures(
-        1,
-        imageUploads.length > 0,
-        imageUploads,
-        settings.quickProps.pictures
-      )[0];
-    } else if (type === 'video' && newOutputs.video) {
-      newOutputs.video.versions[currentVersion] = generateVideo(
-        1,
-        settings.quickProps.video
-      )[0];
-    }
+      if (type === 'pictures' && outputs.pictures) {
+        const imageUploads = prev.uploads
+          .filter((item) => item.kind === 'image')
+          .map((item) => item.url);
+        const refreshed = generatePictures(
+          1,
+          imageUploads.length > 0,
+          imageUploads,
+          settings.quickProps.pictures
+        )[0];
+        const index = clampVersionIndex(
+          currentVersions.pictures,
+          outputs.pictures.versions.length || 1
+        );
+        const versions = [...outputs.pictures.versions];
+        versions[index] = refreshed;
+        outputs.pictures = { versions };
+      } else if (type === 'video' && outputs.video) {
+        const refreshed = generateVideo(1, settings.quickProps.video)[0];
+        const index = clampVersionIndex(
+          currentVersions.video,
+          outputs.video.versions.length || 1
+        );
+        const versions = [...outputs.video.versions];
+        versions[index] = refreshed;
+        outputs.video = { versions };
+      }
 
-    setAiState((prev) => ({
-      ...prev,
-      outputs: newOutputs,
-      stepStatus: { ...prev.stepStatus, [type]: 'ready' },
-    }));
+      return {
+        ...prev,
+        outputs,
+        stepStatus: { ...prev.stepStatus, [type]: 'ready' },
+      };
+    });
   };
 
   const getCardStatus = (card: CardKey): GridStepState => {
+    if (card === 'content') {
+      return mapContentStatusToGrid(contentStatus);
+    }
+
     const status = aiState.stepStatus[card];
     if (status) {
       return status;
     }
 
     switch (card) {
-      case 'content':
-        return aiState.outputs.content ? 'ready' : 'queued';
       case 'pictures':
         return aiState.outputs.pictures ? 'ready' : 'queued';
       case 'video':
@@ -391,11 +684,9 @@ function App() {
     }
   };
 
-  const contentVersions = aiState.outputs.content?.versions ?? [];
   const picturesVersions = aiState.outputs.pictures?.versions ?? [];
   const videoVersions = aiState.outputs.video?.versions ?? [];
 
-  const contentIndex = clampVersionIndex(currentVersions.content, contentVersions.length);
   const picturesIndex = clampVersionIndex(currentVersions.pictures, picturesVersions.length);
   const videoIndex = clampVersionIndex(currentVersions.video, videoVersions.length);
 
@@ -409,16 +700,24 @@ function App() {
       cardItems.push({ id: `${card}-skeleton`, element: <SkeletonCard title={title} /> });
     });
   } else {
-    if (cardsEnabled.content && contentVersions.length > 0) {
+    const shouldShowContentCard =
+      cardsEnabled.content && (contentVariants.length > 0 || contentStatus !== 'idle');
+
+    if (shouldShowContentCard) {
       cardItems.push({
         id: 'content-card',
         element: (
           <ContentCard
-            content={contentVersions}
-            currentVersion={contentIndex}
-            onSave={() => handleCardSave('content')}
-            onRegenerate={() => handleCardRegenerate('content')}
-            status={getCardStatus('content')}
+            status={contentStatus}
+            variants={contentVariants}
+            meta={contentMeta}
+            error={contentError}
+            briefText={aiState.brief}
+            options={contentOptions}
+            platformIds={settings.platforms}
+            versions={settings.versions}
+            runId={contentRunId}
+            onRegenerate={regenerateContent}
           />
         ),
       });
@@ -460,6 +759,7 @@ function App() {
     <AppTopBar
       active={activeTab}
       enabled={cardsEnabled}
+      copyLength={settings.quickProps.content.copyLength}
       onChange={(tab) => {
         selectCard(tab);
         togglePanel(tab);
@@ -508,6 +808,8 @@ function App() {
                 onClear={handleClear}
                 onCancel={handleCancelGeneration}
                 highlight={aiReadyHint}
+                contentStatus={contentStatus}
+                contentError={contentError}
               />
             </div>
           </div>

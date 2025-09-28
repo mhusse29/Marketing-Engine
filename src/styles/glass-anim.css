@@ -1,0 +1,27 @@
+.glass-loading {
+  position: relative;
+  overflow: hidden;
+}
+.glass-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 60% at 10% 0%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 60%),
+    linear-gradient(120deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 60%);
+  animation: glassWave 1.2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes glassWave {
+  0% {
+    transform: translateX(-30%);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateX(0%);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateX(30%);
+    opacity: 0.8;
+  }
+}

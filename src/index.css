@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "./theme.css";
-
+@import "./styles/glass-anim.css";
 html,
 body,
 #root {
@@ -40,4 +40,22 @@ body {
   100% {
     transform: translateX(100%);
   }
+}
+
+/* Skeleton shimmer for first-run placeholders */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.08) 37%, rgba(255,255,255,.04) 63%);
+  background-size: 400% 100%;
+  animation: skeletonShimmer 1.18s cubic-bezier(.22,.61,.36,1) infinite;
+}
+@keyframes skeletonShimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+.ai-live .settings-platform-pill[data-selected="false"] {
+  opacity: 0.75;
 }

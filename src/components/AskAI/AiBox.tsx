@@ -19,6 +19,8 @@ interface AiBoxProps {
   onClear: () => void;
   onCancel?: () => void;
   highlight?: boolean;
+  contentStatus?: string;
+  contentError?: string;
 }
 
 const SMART_PROMPTS = [
@@ -54,9 +56,8 @@ const PLATFORM_LABELS: Record<string, string> = {
   instagram: 'Instagram',
   tiktok: 'TikTok',
   linkedin: 'LinkedIn',
-  'google.search': 'Search',
-  'google.display': 'Display',
-  'google.youtube': 'YouTube',
+  x: 'X',
+  youtube: 'YouTube',
 };
 
 const STEP_LABELS: Record<CardKey, string> = {
@@ -97,6 +98,8 @@ export function AiBox({
   onClear,
   onCancel,
   highlight = false,
+  contentStatus,
+  contentError,
 }: AiBoxProps) {
   const [brief, setBrief] = useState(aiState.brief);
   const [uploads, setUploads] = useState<AiAttachment[]>(() =>
@@ -583,6 +586,13 @@ export function AiBox({
                 </span>
               )}
             </button>
+          </div>
+
+          <div className="text-xs text-white/60">
+            Status: {contentStatus ?? 'idle'}
+            {contentError && contentStatus === 'error' && (
+              <span className="ml-2 text-red-300">• {contentError}</span>
+            )}
           </div>
 
           {remoteError && (

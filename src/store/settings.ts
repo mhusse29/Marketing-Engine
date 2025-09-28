@@ -24,6 +24,16 @@ const PERSONAS: readonly Persona[] = ['Generic', 'First-time', 'Warm lead', 'B2B
 const TONES: readonly Tone[] = ['Friendly', 'Informative', 'Bold', 'Premium', 'Playful', 'Professional'];
 const LANGUAGES: readonly Language[] = ['EN', 'AR', 'FR'];
 const CONTENT_FORMATS: readonly ContentFormat[] = ['Auto', 'FB/IG', 'LinkedIn', 'TikTok', 'X'];
+// const STANDARD_CTAS = [
+//   'Learn more',
+//   'Get a demo',
+//   'Sign up',
+//   'Shop now',
+//   'Start free trial',
+//   'Book a call',
+//   'Download guide',
+// ] as const;
+
 const PICTURE_STYLES: readonly PicStyle[] = ['Product', 'Lifestyle', 'UGC', 'Abstract'];
 const PICTURE_ASPECTS: readonly PicAspect[] = ['1:1', '4:5', '16:9'];
 const PICTURE_BACKDROPS = ['Clean', 'Gradient', 'Real-world'] as const;
@@ -50,7 +60,6 @@ const defaultContentQuickProps: ContentQuickProps = {
 };
 
 const defaultPicturesQuickProps: PicturesQuickProps = {
-  mode: 'images',
   style: 'Product',
   aspect: '1:1',
   lockBrandColors: true,
@@ -115,8 +124,6 @@ function normalizePicturesQuickProps(
     ...pictures,
   };
 
-  const mode = candidate.mode === 'prompt' ? 'prompt' : 'images';
-
   const style = PICTURE_STYLES.includes(candidate.style as PicStyle)
     ? (candidate.style as PicStyle)
     : defaultPicturesQuickProps.style;
@@ -147,7 +154,6 @@ function normalizePicturesQuickProps(
     : defaultPicturesQuickProps.quality;
 
   return {
-    mode,
     style,
     aspect,
     lockBrandColors,

@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Copy, Image as ImageIcon, Upload } from 'lucide-react';
 
 import { cn } from '../../lib/format';
@@ -7,6 +7,8 @@ import type { GeneratedPictures } from '../../types';
 import type { GridStepState } from '../../state/ui';
 import CardShell from '../Outputs/CardShell';
 import { StepDot } from '../Outputs/StepDot';
+import NanoGridBloom from '@/ui/NanoGridBloom';
+import PerimeterProgressSegmented from '@/ui/PerimeterProgressSegmented';
 
 interface PicturesCardProps {
   pictures: GeneratedPictures[];
@@ -46,22 +48,16 @@ export function PicturesCard({
   const versionPictures = pictures[currentVersion];
   const totalVersions = pictures.length;
   const statusLabel = STATUS_LABELS[status];
-  const showSheen = status === 'thinking' || status === 'rendering';
-
   useEffect(() => {
     if (versionPictures) {
       setMode(versionPictures.mode);
     }
   }, [versionPictures]);
 
-  const timestamp = useMemo(
-    () =>
-      new Date().toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    [pictures, currentVersion]
-  );
+  const timestamp = new Date().toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
   const handleSave = () => {
     setIsSaved(true);
@@ -83,8 +79,11 @@ export function PicturesCard({
     }, 1200);
   };
 
+  const isBusy = status === 'queued' || status === 'thinking' || status === 'rendering';
+
   return (
-    <CardShell sheen={showSheen}>
+    <CardShell sheen={false} className="relative isolate overflow-hidden">
+      <div className="relative z-10 flex h-full flex-col">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -234,6 +233,10 @@ export function PicturesCard({
           ? `Version ${Math.min(currentVersion + 1, totalVersions)} of ${totalVersions} • Prompts synced with brand palette`
           : 'Awaiting first generation'}
       </footer>
+      </div>
+
+      <NanoGridBloom busy={isBusy} />
+      <PerimeterProgressSegmented status={status} />
     </CardShell>
   );
 }

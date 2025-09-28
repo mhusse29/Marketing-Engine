@@ -25,10 +25,11 @@ import {
   MenubarSeparator,
   MenubarTrigger,
 } from './ui/menubar';
-import { menuSurface, tooltipSurface, barHeight, hairline } from '../ui/tokens';
+import { menuSurface, barHeight, hairline } from '../ui/tokens';
 import CTAChip from './ui/CTAChip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
+import TooltipPrimitive from './primitives/Tooltip';
+import * as Tooltip from '@radix-ui/react-tooltip';
 
 interface AppMenuBarProps {
   settings: SettingsState;
@@ -51,7 +52,6 @@ const trigger =
   'focus:outline-none focus:ring-2 focus:ring-blue-500/35 data-[state=open]:text-white ' +
   'data-[state=open]:bg-gradient-to-r data-[state=open]:from-[#3E8BFF]/25 data-[state=open]:to-[#6B70FF]/25';
 
-const DEFAULT_HINT = 'Adjusts prompt guidance for this option.';
 const PERSONA_OPTIONS: Persona[] = ['Generic', 'First-time', 'Warm lead', 'B2B DM', 'Returning'];
 const PERSONA_HINTS: Record<Persona, string> = {
   Generic: 'Balanced messaging that works across broad audiences.',
@@ -105,6 +105,8 @@ const FORMAT_HINTS: Record<ContentFormat, string> = {
   TikTok: 'Short-form video copy patterns.',
   X: 'Concise formats optimised for X/Twitter.',
 };
+
+// const COPY_LENGTH_OPTIONS = ['Compact', 'Standard', 'Detailed'] as const;
 
 const PICTURE_STYLE_OPTIONS: PicStyle[] = ['Product', 'Lifestyle', 'UGC', 'Abstract'];
 const PICTURE_STYLE_HINTS: Record<PicStyle, string> = {
@@ -374,14 +376,9 @@ function HintChip({
   size?: 'default' | 'small';
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <CTAChip label={label} active={active} onClick={onClick} size={size} />
-      </TooltipTrigger>
-      <TooltipContent side="bottom" align="center" sideOffset={8} className={tooltipSurface}>
-        {hint ?? DEFAULT_HINT}
-      </TooltipContent>
-    </Tooltip>
+    <TooltipPrimitive label={hint ?? label}>
+      <CTAChip label={label} active={active} onClick={onClick} size={size} />
+    </TooltipPrimitive>
   );
 }
 
@@ -405,6 +402,8 @@ export function MenuContent({
       },
     });
   };
+  const copyLength = qp.copyLength ?? 'Standard';
+  const setCopyLength = (value: 'Compact' | 'Standard' | 'Detailed') => setQP({ copyLength: value });
 
   return (
     <div>
@@ -463,6 +462,45 @@ export function MenuContent({
             ))}
         </div>
       </MenuPanel>
+
+      <div className="mt-4">
+        <div className="text-xs uppercase tracking-wide text-white/60 mb-2">Copy length</div>
+        <div className="flex gap-2 flex-wrap">
+          {(
+            [
+              { k: 'Compact', tip: 'Fast scroll; 1–2 sentences; tight hooks. Great for FB/IG/TikTok/X.' },
+              { k: 'Standard', tip: 'Balanced; 2–3 sentences. Good default.' },
+              { k: 'Detailed', tip: 'Richer; 3–5 sentences. Best for LinkedIn/YouTube.' },
+            ] as const
+          ).map(({ k, tip }) => {
+            const active = copyLength === k
+            return (
+              <Tooltip.Root key={k} delayDuration={120}>
+                <Tooltip.Trigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setCopyLength(k)}
+                    title={tip}
+                    className={cn(
+                      'px-3 py-1.5 rounded-full text-sm border transition-shadow',
+                      active
+                        ? 'bg-white/15 border-white/25 shadow-[0_0_24px_rgba(80,160,255,0.25)]'
+                        : 'bg-white/8 hover:bg-white/12 border-white/10'
+                    )}
+                  >
+                    {k}
+                  </button>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content className="z-[1000] text-[11px] px-2 py-1 rounded bg-black/90 text-white/90 shadow-lg">
+                    {tip}
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+            )
+          })}
+        </div>
+      </div>
 
       <AdvancedSection>
         <div>
