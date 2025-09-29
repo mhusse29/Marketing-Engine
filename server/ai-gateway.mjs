@@ -379,6 +379,52 @@ const bus = {
 }
 const id = () => Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
 
+const IMAGE_ASPECT_SPECS = {
+  '1:1': { size: '1024x1024', width: 1024, height: 1024 },
+  '4:5': { size: '1024x1536', width: 1024, height: 1536 },
+  '16:9': { size: '1536x1024', width: 1536, height: 1024 },
+}
+
+const IMAGE_FALLBACK_URLS = [
+  'https://images.unsplash.com/photo-1526045612212-70caf35c14df?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1531297484001-80022131f5a1?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1454165205744-3b78555e5572?auto=format&fit=crop&w=1200&q=80',
+]
+
+function mockImageAssets({ prompt, aspect, count }) {
+  const dims = IMAGE_ASPECT_SPECS[aspect] || IMAGE_ASPECT_SPECS['1:1']
+  return Array.from({ length: count }).map((_, idx) => {
+    const url = IMAGE_FALLBACK_URLS[(idx + Math.floor(Math.random() * 5)) % IMAGE_FALLBACK_URLS.length]
+    return {
+      id: id(),
+      url,
+      thumbUrl: `${url}&w=480`,
+      width: dims.width,
+      height: dims.height,
+      mimeType: 'image/jpeg',
+      prompt: `${prompt} (variation ${idx + 1})`,
+      seed: `${Date.now()}-${idx}`,
+    }
+  })
+}
+
+function assetFromOpenAI(item, dims, prompt) {
+  const url = item?.url || (item?.b64_json ? `data:image/png;base64,${item.b64_json}` : null)
+  if (!url) return null
+  return {
+    id: id(),
+    url,
+    thumbUrl: item?.url || undefined,
+    width: dims.width,
+    height: dims.height,
+    mimeType: 'image/png',
+    prompt: item?.revised_prompt || prompt,
+    seed: item?.seed ? String(item.seed) : undefined,
+  }
+}
+
 const platformGuides = {
   Facebook: 'Facebook feed: conversational 1–2 sentences; optional emoji; 3–6 hashtags.',
   Instagram: 'Instagram: visual tone; 1–2 sentences; 3–6 hashtags; emojis ok.',
@@ -638,6 +684,51 @@ app.get('/health', (req, res) => {
     hasAnthropic: false,
     hasOpenAI: !!process.env.OPENAI_API_KEY,
   })
+})
+
+app.post('/v1/images/generate', async (req, res) => {
+  const prompt = req.body?.prompt
+  const aspect = req.body?.aspect || '1:1'
+  const countInput = Number(req.body?.count ?? 1)
+  const count = Math.max(1, Math.min(Number.isFinite(countInput) ? Math.floor(countInput) : 1, 1))
+  const dims = IMAGE_ASPECT_SPECS[aspect] || IMAGE_ASPECT_SPECS['1:1']
+
+  if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+    return res.status(400).json({ error: 'missing_prompt' })
+  }
+
+  if (MOCK_OPENAI) {
+    return res.json({ assets: mockImageAssets({ prompt, aspect, count }) })
+  }
+
+  if (!openai) {
+    return res.status(503).json({ error: 'openai_not_configured' })
+  }
+
+  try {
+    const response = await openai.images.generate({
+      model: 'dall-e-3',
+      prompt,
+      n: count,
+      size: dims.size,
+    })
+
+    const assets = (response?.data || [])
+      .map((item) => assetFromOpenAI(item, dims, prompt))
+      .filter(Boolean)
+
+    if (!assets.length) {
+      return res.status(502).json({ error: 'openai_image_empty' })
+    }
+
+    res.json({ assets })
+  } catch (error) {
+    console.error('[images] openai generation failed', error)
+    res.status(502).json({
+      error: 'openai_image_error',
+      message: error?.message || 'unknown_error',
+    })
+  }
 })
 
 app.post('/v1/generate', async (req, res) => {

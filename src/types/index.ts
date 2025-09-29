@@ -108,9 +108,56 @@ export type GeneratedContent = {
   cta?: string;
 };
 
+export type PicturePromptIntent = 'hero' | 'variation' | 'detail';
+
+export type PicturePrompt = {
+  id: string;
+  text: string;
+  intent: PicturePromptIntent;
+};
+
+export type PictureAsset = {
+  id: string;
+  url: string;
+  thumbUrl?: string;
+  prompt: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  seed?: string;
+};
+
+export type PictureResultMeta = {
+  style: PicStyle;
+  aspect: PicAspect;
+  lockBrandColors: boolean;
+  createdAt: string;
+};
+
+export type PictureProvider = 'gpt' | 'openai';
+
+export type PictureRemixOptions = {
+  mode?: 'prompt' | 'image';
+  aspect?: PicAspect;
+  versionCount?: number;
+  prompt?: string;
+};
+
 export type GeneratedPictures =
-  | { mode: 'prompt'; prompts: string[] }
-  | { mode: 'uploads'; images: { src: string; enhancement: string }[] };
+  | {
+      id: string;
+      mode: 'prompt';
+      provider: Extract<PictureProvider, 'gpt'>;
+      prompts: PicturePrompt[];
+      meta: PictureResultMeta;
+    }
+  | {
+      id: string;
+      mode: 'image';
+      provider: Extract<PictureProvider, 'openai'>;
+      assets: PictureAsset[];
+      meta: PictureResultMeta & { prompt: string };
+    };
 
 export type GeneratedVideo = {
   aspect: '9:16' | '1:1' | '16:9';

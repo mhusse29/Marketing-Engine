@@ -1,12 +1,12 @@
 import type {
   AiUIState,
   GeneratedContent,
-  GeneratedPictures,
   GeneratedVideo,
   Platform,
   SettingsState,
   CardKey,
 } from '../types';
+export { generatePictureOutputs as generatePictures } from '../lib/pictureGeneration';
 
 export const defaultAiState: AiUIState = {
   locked: true,
@@ -306,52 +306,6 @@ export async function generateContent(
       }
     });
   });
-}
-
-// Mock picture generation
-export function generatePictures(
-  versions: number,
-  hasUploads: boolean,
-  uploads: string[],
-  props: SettingsState['quickProps']['pictures']
-): GeneratedPictures[] {
-  const pictureVersions: GeneratedPictures[] = [];
-  const mode = props?.mode === 'prompt' ? 'prompt' : 'images';
-  
-  for (let v = 0; v < versions; v++) {
-    if (mode === 'images' && hasUploads && uploads.length > 0) {
-      pictureVersions.push({
-        mode: 'uploads',
-        images: uploads.map((src) => ({
-          src,
-          enhancement: `Enhance with ${props?.style || 'Product'} style, ${
-            props?.lockBrandColors ? 'maintaining brand colors' : 'vibrant colors'
-          }`,
-        })),
-      });
-    } else {
-      const prompts = [
-        `Create a ${props?.style || 'Product'} photography shot with ${
-          props?.aspect || '1:1'
-        } aspect ratio, featuring modern aesthetics and ${
-          props?.lockBrandColors ? 'brand color palette' : 'dynamic colors'
-        }`,
-        `Design a compelling visual in ${props?.style || 'Product'} style, optimized for social media in ${
-          props?.aspect || '1:1'
-        } format`,
-        `Generate an eye-catching ${props?.style || 'Product'} image that tells a story, formatted as ${
-          props?.aspect || '1:1'
-        }`,
-      ];
-      
-      pictureVersions.push({
-        mode: 'prompt',
-        prompts: prompts.slice(0, Math.max(1, Math.floor(Math.random() * 3) + 1)),
-      });
-    }
-  }
-  
-  return pictureVersions;
 }
 
 // Mock video generation

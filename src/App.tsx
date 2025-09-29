@@ -33,6 +33,7 @@ import type {
   Platform,
   ContentVariantResult,
   ContentGenerationMeta,
+  PictureRemixOptions,
 } from './types';
 import type { GridStepState } from './state/ui';
 import { useContentAI } from './useContentAI';
@@ -432,12 +433,18 @@ function App() {
 
             await waitWithAbort(controller.signal, 900);
 
-            const versions = generatePictures(
-              settings.versions,
-              imageUploads.length > 0,
-              imageUploads,
-              settings.quickProps.pictures
-            );
+            const versions = await generatePictures({
+              versions: settings.versions ?? 1,
+              brief,
+              quickProps: settings.quickProps.pictures,
+              uploads: imageUploads,
+              attachments: attachmentSnapshot,
+              signal: controller.signal,
+            });
+
+            if (!versions.length) {
+              throw new Error('Picture generation yielded no outputs.');
+            }
 
             setAiState((prev) => ({
               ...prev,
@@ -595,7 +602,7 @@ function App() {
     console.log(`Saving ${type} card`);
   };
 
-  const handleCardRegenerate = async (type: CardKey) => {
+  const handleCardRegenerate = async (type: CardKey, pictureOptions?: PictureRemixOptions) => {
     if (type === 'content') {
       const briefText = aiState.brief.trim();
       if (!briefText) {
@@ -625,27 +632,55 @@ function App() {
 
     await new Promise((resolve) => window.setTimeout(resolve, 1200));
 
+    if (type === 'pictures') {
+      try {
+        const imageUploads = aiState.uploads
+          .filter((item) => item.kind === 'image')
+          .map((item) => item.url);
+
+        const quickProps = {
+          ...settings.quickProps.pictures,
+          ...(pictureOptions?.aspect ? { aspect: pictureOptions.aspect } : {}),
+          ...(pictureOptions?.mode
+            ? { mode: pictureOptions.mode === 'image' ? 'images' : 'prompt' }
+            : {}),
+        };
+
+        const versionCount = Math.max(1, pictureOptions?.versionCount ?? settings.versions ?? 1);
+
+        const versions = await generatePictures({
+          versions: versionCount,
+          brief: aiState.brief,
+          quickProps,
+          uploads: imageUploads,
+          attachments: aiState.uploads,
+          remixPrompt: pictureOptions?.prompt,
+        });
+
+        if (!versions.length) {
+          throw new Error('Picture regeneration returned no result.');
+        }
+
+        setAiState((prev) => ({
+          ...prev,
+          outputs: { ...prev.outputs, pictures: { versions } },
+          stepStatus: { ...prev.stepStatus, pictures: 'ready' },
+        }));
+        setCurrentVersions((prev) => ({ ...prev, pictures: 0 }));
+      } catch (error) {
+        console.error('Picture regeneration failed', error);
+        setAiState((prev) => ({
+          ...prev,
+          stepStatus: { ...prev.stepStatus, pictures: 'error' },
+        }));
+      }
+      return;
+    }
+
     setAiState((prev) => {
       const outputs = { ...prev.outputs };
 
-      if (type === 'pictures' && outputs.pictures) {
-        const imageUploads = prev.uploads
-          .filter((item) => item.kind === 'image')
-          .map((item) => item.url);
-        const refreshed = generatePictures(
-          1,
-          imageUploads.length > 0,
-          imageUploads,
-          settings.quickProps.pictures
-        )[0];
-        const index = clampVersionIndex(
-          currentVersions.pictures,
-          outputs.pictures.versions.length || 1
-        );
-        const versions = [...outputs.pictures.versions];
-        versions[index] = refreshed;
-        outputs.pictures = { versions };
-      } else if (type === 'video' && outputs.video) {
+      if (type === 'video' && outputs.video) {
         const refreshed = generateVideo(1, settings.quickProps.video)[0];
         const index = clampVersionIndex(
           currentVersions.video,
@@ -732,7 +767,7 @@ function App() {
             currentVersion={picturesIndex}
             brandLocked={settings.quickProps.pictures.lockBrandColors ?? true}
             onSave={() => handleCardSave('pictures')}
-            onRegenerate={() => handleCardRegenerate('pictures')}
+            onRegenerate={(options) => handleCardRegenerate('pictures', options)}
             status={getCardStatus('pictures')}
           />
         ),
