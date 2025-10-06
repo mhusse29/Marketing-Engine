@@ -595,6 +595,8 @@ export function MenuContent({
     [handleAttachmentAdd]
   );
 
+  const setCardEnabled = useCardsStore((state) => state.setEnabled);
+  
   const handleValidate = useCallback(() => {
     const currentSettings = latestSettingsRef.current;
     const trimmedBrief = currentSettings.quickProps.content.brief.trim();
@@ -603,7 +605,9 @@ export function MenuContent({
     }
     setContent({ validated: true, validatedAt: new Date().toISOString() });
     setValidationNotice('');
-  }, [setContent]);
+    // Enable Content card when validated
+    setCardEnabled('content', true);
+  }, [setContent, setCardEnabled]);
 
   const handleRefineBrief = useCallback(async () => {
     const currentSettings = latestSettingsRef.current;
@@ -1034,10 +1038,14 @@ export function MenuPictures({
     }
   }, [isSuggesting, qp, setPictures]);
 
+  const setCardEnabled = useCardsStore((state) => state.setEnabled);
+  
   const handleValidate = useCallback(() => {
     setPictures({ validated: true }, { resetValidation: false });
     setValidationNotice('Settings locked. Ready to generate images.');
-  }, [setPictures]);
+    // Enable Pictures card when validated
+    setCardEnabled('pictures', true);
+  }, [setPictures, setCardEnabled]);
 
   const providers = [
     { id: 'openai', label: 'DALL·E 3', desc: 'Fast, vivid' },
