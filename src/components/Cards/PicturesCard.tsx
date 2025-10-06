@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Download, ExternalLink, Image as ImageIcon, Upload } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Check, Copy, Download, ExternalLink, RefreshCw, Sparkles } from 'lucide-react';
 
 import { cn } from '../../lib/format';
-import type { GeneratedPictures, PicAspect, PictureAsset, PictureRemixOptions } from '../../types';
+import type { GeneratedPictures, PictureAsset, PictureRemixOptions } from '../../types';
 import type { GridStepState } from '../../state/ui';
 import CardShell from '../Outputs/CardShell';
 import { StepDot } from '../Outputs/StepDot';
@@ -16,16 +16,6 @@ const STATUS_LABELS: Record<GridStepState, string> = {
   ready: 'Ready',
   error: 'Needs attention',
 };
-
-const MODE_OPTIONS: Array<'prompt' | 'image'> = ['prompt', 'image'];
-const ASPECT_OPTIONS: PicAspect[] = ['1:1', '16:9', '2:3', '3:2', '7:9', '9:7', '4:5'];
-const VERSION_OPTIONS = [1, 2, 3, 4];
-
-const ACTION_BUTTON =
-  'inline-flex h-9 items-center rounded-full border border-white/12 bg-white/10 px-3 text-sm font-medium text-white/80 transition-all hover:border-white/20 hover:bg-white/16 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-60';
-
-const CONTROL_PILL =
-  'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors';
 
 const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
   flux: 'FLUX Pro 1.1',
@@ -74,61 +64,24 @@ export function PicturesCard({
   brandLocked,
   onSave,
   onRegenerate,
-  onReplaceImages,
+  onReplaceImages: _onReplaceImages,
   status,
 }: PicturesCardProps) {
   const [isSaved, setIsSaved] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
-  const [isRemixOpen, setIsRemixOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
+  const [selectedAssetIndex, setSelectedAssetIndex] = useState(0);
 
   const versionPictures = pictures[currentVersion];
   const totalVersions = pictures.length;
   const statusLabel = STATUS_LABELS[status];
   const isBusy = status === 'queued' || status === 'thinking' || status === 'rendering';
 
-  const [modeSelection, setModeSelection] = useState<'prompt' | 'image'>(versionPictures?.mode || 'prompt');
-  const [aspectSelection, setAspectSelection] = useState<PicAspect>(versionPictures?.meta.aspect || '1:1');
-  const [versionCount, setVersionCount] = useState(Math.max(1, totalVersions || 1));
-  const [remixDraft, setRemixDraft] = useState(extractBasePrompt(versionPictures));
-
-  const availableModes = useMemo<Array<'prompt' | 'image'>>(() => {
-    if (!versionPictures) {
-      return ['prompt'];
-    }
-    return versionPictures.mode === 'image' ? MODE_OPTIONS : ['prompt'];
-  }, [versionPictures]);
-
-  const promptDirtyRef = useRef(false);
-  const versionIdRef = useRef<string | undefined>(versionPictures?.id);
-
-  useEffect(() => {
-    if (!versionPictures) return;
-    if (versionIdRef.current === versionPictures.id) return;
-    versionIdRef.current = versionPictures.id;
-    const nextMode = versionPictures.mode;
-    setModeSelection(nextMode);
-    setAspectSelection(versionPictures.meta.aspect);
-    setVersionCount(Math.max(1, pictures.length || 1));
-    const basePrompt = extractBasePrompt(versionPictures);
-    setRemixDraft(basePrompt);
-    promptDirtyRef.current = false;
-    setCopiedPrompt(false);
-    setDownloadError('');
-    setIsDownloading(false);
-  }, [pictures.length, versionPictures]);
-
-  useEffect(() => {
-    if (!versionPictures || promptDirtyRef.current) return;
-    setRemixDraft(extractBasePrompt(versionPictures));
-  }, [modeSelection, versionPictures]);
-
   const providerLabel = useMemo(() => {
     if (!versionPictures) return '';
-    const base = PROVIDER_LABELS[versionPictures.provider] ?? versionPictures.provider;
-    return versionPictures.mode === 'image' ? `${base} renders` : `${base} prompt`;
+    return PROVIDER_LABELS[versionPictures.provider] ?? versionPictures.provider;
   }, [versionPictures]);
 
   const createdAtLabel = useMemo(() => {
@@ -149,44 +102,34 @@ export function PicturesCard({
     if (!versionPictures) {
       return [] as Array<{ label: string; value: string }>;
     }
-
+    const meta = versionPictures.meta;
     const items: Array<{ label: string; value: string }> = [
-      { label: 'Provider', value: PROVIDER_LABELS[versionPictures.provider] ?? versionPictures.provider },
-      { label: 'Mode', value: versionPictures.mode === 'image' ? 'Images' : 'Prompt' },
-      { label: 'Aspect', value: versionPictures.meta.aspect },
-      { label: 'Style', value: versionPictures.meta.style },
-      { label: 'Versions', value: versionCount.toString() },
-      { label: 'Palette', value: brandLocked ? 'Brand locked' : 'Adaptive' },
+      { label: 'Provider', value: providerLabel },
+      { label: 'Mode', value: meta.mode === 'image' ? 'Images' : 'Prompt' },
+      { label: 'Aspect', value: meta.aspect },
+      { label: 'Style', value: meta.style },
     ];
 
-    if (versionPictures.meta.quality) {
-      items.push({ label: 'Quality', value: String(versionPictures.meta.quality) });
+    if (meta.quality) {
+      items.push({ label: 'Quality', value: meta.quality });
     }
-
-    if (versionPictures.meta.model) {
-      items.push({ label: 'Model', value: String(versionPictures.meta.model) });
+    if (meta.model) {
+      items.push({ label: 'Model', value: meta.model });
     }
 
     return items;
-  }, [brandLocked, versionCount, versionPictures]);
+  }, [versionPictures, providerLabel]);
 
-  const handleCopyPrompt = async (prompt: string) => {
-    await navigator.clipboard.writeText(prompt);
-    setCopiedPrompt(true);
-    window.setTimeout(() => {
-      setCopiedPrompt(false);
-    }, 1200);
-  };
-
-  const handleOpenAll = () => {
-    if (versionPictures?.mode !== 'image') return;
-    versionPictures.assets.forEach((asset) => {
-      window.open(asset.url, '_blank', 'noopener,noreferrer');
+  const handleCopyPrompt = (text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 1200);
     });
   };
 
   const handleDownloadAll = async () => {
-    if (versionPictures?.mode !== 'image') return;
+    if (versionPictures?.mode !== 'image' || !('assets' in versionPictures)) return;
     setIsDownloading(true);
     setDownloadError('');
     try {
@@ -207,314 +150,214 @@ export function PicturesCard({
     window.setTimeout(() => setIsSaved(false), 1200);
   };
 
-  const handleRemixChange = (value: string) => {
-    promptDirtyRef.current = true;
-    setRemixDraft(value);
-  };
-
-  const handleApplyRemix = async () => {
+  const handleRegenerate = async () => {
     if (!onRegenerate) return;
     setIsRegenerating(true);
     try {
-      await onRegenerate({
-        mode: modeSelection,
-        aspect: aspectSelection,
-        versionCount,
-        prompt: remixDraft.trim() ? remixDraft.trim() : undefined,
-      });
-      promptDirtyRef.current = false;
-      setIsRemixOpen(false);
+      await onRegenerate();
     } finally {
       setIsRegenerating(false);
     }
   };
 
+  useEffect(() => {
+    setSelectedAssetIndex(0);
+  }, [currentVersion]);
+
+  const selectedAsset =
+    versionPictures?.mode === 'image' && 'assets' in versionPictures
+      ? versionPictures.assets[selectedAssetIndex]
+      : undefined;
+
   return (
     <CardShell sheen={false} className="relative isolate overflow-hidden">
-      <div className="relative z-10 flex h-full flex-col gap-5">
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-sm font-medium text-white/80">
-              <h3 className="text-lg font-semibold text-white">Pictures / Prompt</h3>
+      <div className="relative z-10 flex h-full flex-col">
+        {/* Header */}
+        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-3">
+              <h3 className="text-xl font-semibold text-white/95">Pictures / Prompt</h3>
               <StepDot state={status} />
-              <span className="text-xs uppercase tracking-[0.18em] text-white/55">{statusLabel}</span>
+              <span className="text-xs font-medium uppercase tracking-wider text-white/40">{statusLabel}</span>
             </div>
-            <p className="text-xs text-white/55">Generated at {createdAtLabel || '—'}</p>
+            <p className="text-sm text-white/50">Generated at {createdAtLabel || '—'}</p>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={handleSave}
               disabled={isSaved || isBusy}
-              className={cn(ACTION_BUTTON, isSaved && 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200')}
+              className={cn(
+                'inline-flex h-9 items-center gap-2 rounded-lg border px-4 text-sm font-medium transition-all',
+                isSaved
+                  ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
+                  : 'border-white/10 bg-white/5 text-white/80 hover:border-white/20 hover:bg-white/10 hover:text-white'
+              )}
               type="button"
             >
-              {isSaved ? 'Saved' : 'Save'}
+              {isSaved ? (
+                <>
+                  <Check className="h-4 w-4" />
+                  Saved
+                </>
+              ) : (
+                'Save'
+              )}
             </button>
             <button
-              onClick={handleApplyRemix}
+              onClick={handleRegenerate}
               disabled={isBusy || isRegenerating}
-              className={ACTION_BUTTON}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-medium text-white/80 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white disabled:opacity-50"
               type="button"
             >
+              <RefreshCw className={cn('h-4 w-4', isRegenerating && 'animate-spin')} />
               {isRegenerating ? 'Regenerating…' : 'Regenerate'}
             </button>
           </div>
         </header>
 
-        <div className="rounded-[28px] border border-white/10 bg-white/[0.02] p-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
-          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs text-white/70">
-            <div className="flex items-center gap-1">
-              {availableModes.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setModeSelection(mode)}
-                  className={cn(
-                    CONTROL_PILL,
-                    modeSelection === mode
-                      ? 'border-transparent bg-white/20 text-white'
-                      : 'border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:text-white'
-                  )}
-                >
-                  {mode === 'image' ? 'Images' : 'Prompt'}
-                </button>
-              ))}
-            </div>
-
-            <span className="h-6 w-px bg-white/10" aria-hidden />
-
-            <label className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-[0.2em] text-white/45">Aspect</span>
-              <select
-                value={aspectSelection}
-                onChange={(event) => setAspectSelection(event.target.value as PicAspect)}
-                className="rounded-lg border border-white/10 bg-transparent px-2 py-1 text-xs text-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
-              >
-                {ASPECT_OPTIONS.map((aspect) => (
-                  <option key={aspect} value={aspect} className="bg-[#101827] text-white">
-                    {aspect}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <span className="h-6 w-px bg-white/10" aria-hidden />
-
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-[0.2em] text-white/45">Versions</span>
-              <div className="inline-flex rounded-full bg-white/5 p-1">
-                {VERSION_OPTIONS.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setVersionCount(option)}
-                    className={cn(
-                      'mx-[1px] rounded-full px-2 py-1 text-xs transition-colors',
-                      versionCount === option ? 'bg-white/25 text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'
-                    )}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <span className="h-6 w-px bg-white/10" aria-hidden />
-
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsRemixOpen((prev) => !prev)}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/75 transition-colors hover:border-white/20 hover:text-white"
-              >
-                Remix prompt
-              </button>
-              <button
-                type="button"
-                onClick={handleOpenAll}
-                disabled={versionPictures?.mode !== 'image'}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/75 transition-colors hover:border-white/20 hover:text-white disabled:opacity-50"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Open all
-              </button>
-              <button
-                type="button"
-                onClick={handleDownloadAll}
-                disabled={versionPictures?.mode !== 'image' || isDownloading}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/75 transition-colors hover:border-white/20 hover:text-white disabled:opacity-50"
-              >
-                <Download className="h-3.5 w-3.5" />
-                {isDownloading ? 'Downloading…' : 'Download'}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-5 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-            <div className="space-y-4">
-              {modeSelection === 'prompt' && versionPictures ? (
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-medium text-white/75">
-                      <ImageIcon className="h-4 w-4" />
-                      Prompt
-                    </div>
-                    <button
-                      onClick={() => handleCopyPrompt(promptText)}
-                      disabled={!promptText}
-                      className={cn(
-                        'inline-flex items-center gap-1 text-xs text-white/60 transition-colors hover:text-white',
-                        !promptText && 'cursor-not-allowed opacity-50 hover:text-white/60'
-                      )}
-                      type="button"
-                    >
-                      {copiedPrompt ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                      Copy
-                    </button>
-                  </div>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/70">
-                    {promptText || 'Prompt will appear after generation.'}
-                  </p>
-                </div>
-              ) : null}
-
-              {modeSelection === 'image' && versionPictures?.mode === 'image' ? (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {versionPictures.assets.map((asset, index) => (
-                      <div key={asset.id} className="group relative overflow-hidden rounded-2xl border border-white/10">
-                        <img src={asset.url} alt={`Generated ${index + 1}`} className="h-full w-full object-cover" />
-                        <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/75 via-black/20 to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100">
-                          <p className="line-clamp-3 text-xs text-white/80">{asset.prompt}</p>
-                          <div className="mt-3 flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => window.open(asset.url, '_blank', 'noopener,noreferrer')}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/80 transition-colors hover:border-white/30 hover:text-white"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  await downloadAsset(asset, index);
-                                } catch (error) {
-                                  setDownloadError((error as Error).message || 'Download failed');
-                                }
-                              }}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/80 transition-colors hover:border-white/30 hover:text-white"
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {onReplaceImages ? (
-                    <button
-                      onClick={onReplaceImages}
-                      className="inline-flex items-center gap-2 text-sm text-[color:var(--ac-1)] transition-colors hover:text-[color:var(--ac-2)]"
-                      type="button"
-                    >
-                      <Upload className="h-4 w-4" />
-                      Replace images
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {modeSelection !== versionPictures?.mode && (
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/60">
-                  Selected mode will take effect on the next regenerate.
-                </div>
-              )}
-            </div>
-
-            <aside className="space-y-4">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/45">Snapshot</span>
-                <dl className="mt-3 space-y-2">
-                  {summaryItems.map((item) => (
-                    <div key={item.label} className="flex items-center justify-between gap-4 text-sm text-white/70">
-                      <dt className="text-white/50">{item.label}</dt>
-                      <dd className="font-medium text-white/80">{item.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-
-              {isRemixOpen ? (
-                <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/50">
-                      Remix prompt
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRemixDraft(extractBasePrompt(versionPictures));
-                        promptDirtyRef.current = false;
-                      }}
-                      className="text-xs text-white/60 underline-offset-4 transition-colors hover:text-white"
-                    >
-                      Reset
-                    </button>
-                  </div>
-                  <textarea
-                    value={remixDraft}
-                    onChange={(event) => handleRemixChange(event.target.value)}
-                    rows={8}
-                    className="w-full rounded-xl border border-white/12 bg-[#0f172a]/60 p-3 text-sm text-white/80 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+        {/* Main Content Grid */}
+        <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_320px]">
+          {/* Left: Image Preview */}
+          <div className="space-y-4">
+            {versionPictures?.mode === 'image' && selectedAsset ? (
+              <>
+                {/* Large Preview */}
+                <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
+                  <img
+                    src={selectedAsset.url}
+                    alt="Generated preview"
+                    className="h-auto w-full object-contain"
+                    style={{ maxHeight: '600px' }}
                   />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsRemixOpen(false)}
-                      className="inline-flex items-center rounded-full border border-white/10 bg-transparent px-3 py-1.5 text-xs font-medium text-white/70 transition-colors hover:border-white/20 hover:text-white"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleApplyRemix}
-                      disabled={isRegenerating || isBusy}
-                      className="inline-flex items-center rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[#0d1420] transition-colors hover:bg-white/90 disabled:opacity-50"
-                    >
-                      {isRegenerating ? 'Sending…' : 'Apply remix'}
-                    </button>
+                  
+                  {/* Overlay Controls */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/0 to-black/0 opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="absolute bottom-0 left-0 right-0 p-6">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => window.open(selectedAsset.url, '_blank', 'noopener,noreferrer')}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white backdrop-blur-sm transition-all hover:bg-white/20"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await downloadAsset(selectedAsset, selectedAssetIndex);
+                            } catch (error) {
+                              setDownloadError((error as Error).message || 'Download failed');
+                            }
+                          }}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white backdrop-blur-sm transition-all hover:bg-white/20"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDownloadAll}
+                          disabled={isDownloading}
+                          className="ml-auto inline-flex h-10 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-4 text-sm font-medium text-white backdrop-blur-sm transition-all hover:bg-white/20 disabled:opacity-50"
+                        >
+                          <Download className="h-4 w-4" />
+                          {isDownloading ? 'Downloading…' : 'Download All'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              ) : (
-                <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 text-sm leading-relaxed text-white/65">
-                  <span className="block text-[10px] font-semibold uppercase tracking-[0.24em] text-white/45">
-                    Active prompt
-                  </span>
-                  <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-white/70">
-                    {promptText || 'Prompt will appear after generation.'}
-                  </p>
-                </div>
-              )}
 
-              {downloadError ? (
-                <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-xs text-amber-100">
-                  {downloadError}
+                {/* Thumbnail Grid */}
+                <div className="grid grid-cols-3 gap-3">
+                  {versionPictures.mode === 'image' && 'assets' in versionPictures && versionPictures.assets.map((asset, index) => (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      onClick={() => setSelectedAssetIndex(index)}
+                      className={cn(
+                        'relative overflow-hidden rounded-xl border transition-all',
+                        selectedAssetIndex === index
+                          ? 'border-blue-500 ring-2 ring-blue-500/30'
+                          : 'border-white/10 hover:border-white/30'
+                      )}
+                    >
+                      <img src={asset.url} alt={`Thumbnail ${index + 1}`} className="aspect-square w-full object-cover" />
+                      {selectedAssetIndex === index && (
+                        <div className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-white">
+                          <Check className="h-3.5 w-3.5" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
                 </div>
-              ) : null}
-            </aside>
+              </>
+            ) : (
+              <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.02] p-12">
+                <div className="text-center">
+                  <Sparkles className="mx-auto mb-3 h-12 w-12 text-white/20" />
+                  <p className="text-sm text-white/50">No images generated yet</p>
+                </div>
+              </div>
+            )}
+
+            {downloadError && (
+              <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-200">
+                {downloadError}
+              </div>
+            )}
           </div>
+
+          {/* Right: Metadata & Prompt */}
+          <aside className="space-y-4">
+            {/* Snapshot */}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+              <div className="mb-4 flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-widest text-white/40">Snapshot</span>
+              </div>
+              <dl className="space-y-3">
+                {summaryItems.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between gap-4">
+                    <dt className="text-sm text-white/50">{item.label}</dt>
+                    <dd className="text-sm font-medium text-white/90">{item.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+
+            {/* Active Prompt */}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-widest text-white/40">Active Prompt</span>
+                <button
+                  onClick={() => handleCopyPrompt(promptText)}
+                  disabled={!promptText}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 text-xs text-white/50 transition-colors hover:text-white',
+                    !promptText && 'cursor-not-allowed opacity-40 hover:text-white/50'
+                  )}
+                  type="button"
+                >
+                  {copiedPrompt ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copiedPrompt ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/70">
+                {promptText || 'Prompt will appear after generation.'}
+              </p>
+            </div>
+
+            {brandLocked && (
+              <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-xs text-white/60">
+                🎨 Brand palette enforced
+              </div>
+            )}
+          </aside>
         </div>
 
-        {brandLocked && (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3 text-xs text-white/60">
-            Brand palette enforced
-          </div>
-        )}
-
-        <footer className="border-t border-white/10 pt-3 text-xs text-white/60">
+        {/* Footer */}
+        <footer className="mt-6 border-t border-white/10 pt-4 text-xs text-white/50">
           {totalVersions > 0 && versionPictures
             ? `Version ${Math.min(currentVersion + 1, totalVersions)} of ${totalVersions} • ${providerLabel}`
             : 'Awaiting first generation'}
