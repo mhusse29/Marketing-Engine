@@ -342,8 +342,10 @@ const IDEOGRAM_API_KEY = process.env.IDEOGRAM_API_KEY || null
 
 const PRIMARY = 'openai'
 // Force OpenAI models to avoid Anthropic model conflicts
-const OPENAI_PRIMARY_MODEL = 'gpt-4o-mini'
-const OPENAI_FALLBACK_MODEL = 'gpt-4o'
+// GPT-5 Models (upgraded from GPT-4o)
+const OPENAI_PRIMARY_MODEL = 'gpt-5'  // Content Panel - advanced reasoning & quality
+const OPENAI_FALLBACK_MODEL = 'gpt-4o'  // Keep GPT-4o as safe fallback
+const OPENAI_CHAT_MODEL = 'gpt-5-chat'  // BADU Assistant - conversational AI
 const promptVersion = 'content-v1.3'
 const MAX_TOKENS_STANDARD = Number(process.env.MAX_TOKENS_STANDARD || 420)
 const MAX_TOKENS_LONGFORM = Number(process.env.MAX_TOKENS_LONGFORM || 850)
@@ -684,7 +686,8 @@ app.get('/health', (req, res) => {
     ok: true,
     events: ['/events', '/ai/events'],
     providerPrimary: PRIMARY,
-    primaryModel: OPENAI_PRIMARY_MODEL,
+    primaryModel: OPENAI_PRIMARY_MODEL,  // GPT-5 for content
+    chatModel: OPENAI_CHAT_MODEL,  // GPT-5-chat for BADU
     fallbackModel: OPENAI_FALLBACK_MODEL,
     hasAnthropic: false,
     hasOpenAI: !!process.env.OPENAI_API_KEY,
@@ -1168,7 +1171,7 @@ Remember: You're here to make their marketing life smoother, smarter, and way mo
     ];
 
     const completion = await openai.chat.completions.create({
-      model: OPENAI_PRIMARY_MODEL,
+      model: OPENAI_CHAT_MODEL,  // Using GPT-5-chat for optimized conversations
       messages,
       temperature: 0.7,
       max_tokens: 300,
