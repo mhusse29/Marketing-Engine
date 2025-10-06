@@ -267,19 +267,23 @@ async function generateBatch({
       model: modelId,
       temperature,
       top_p: 1,
-      max_tokens: maxTokens,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
       ],
     }
+    
+    // GPT-5 uses different parameter names
+    if (modelId.startsWith('gpt-5')) {
+      payload.max_completion_tokens = maxTokens;  // GPT-5 parameter name
+      payload.reasoning_effort = 'high';  // Maximum quality for marketing content
+      payload.verbosity = 'high';  // Detailed, comprehensive responses
+    } else {
+      payload.max_tokens = maxTokens;  // GPT-4 and earlier parameter name
+    }
+    
     if (!forcePlain) {
       payload.response_format = { type: 'json_object' }
-    }
-    // Add GPT-5 enhanced parameters for better content quality
-    if (modelId.startsWith('gpt-5')) {
-      payload.reasoning_effort = 'high'  // Maximum quality for marketing content
-      payload.verbosity = 'high'  // Detailed, comprehensive responses
     }
     const r = await openai.chat.completions.create(payload)
     const finish = r.choices?.[0]?.finish_reason || 'stop'
@@ -347,10 +351,11 @@ const IDEOGRAM_API_KEY = process.env.IDEOGRAM_API_KEY || null
 
 const PRIMARY = 'openai'
 // Force OpenAI models to avoid Anthropic model conflicts
-// GPT-5 Models (Released August 2025 - Now Available)
-const OPENAI_PRIMARY_MODEL = 'gpt-5'  // Content Panel - highest quality for marketing content
-const OPENAI_FALLBACK_MODEL = 'gpt-4o'  // Stable fallback if GPT-5 fails
-const OPENAI_CHAT_MODEL = 'gpt-5-chat'  // BADU Assistant - optimized for conversations
+// Best Available Models (GPT-5 rate limits visible but not yet accessible)
+// Will auto-upgrade to GPT-5 when released - parameter handling ready
+const OPENAI_PRIMARY_MODEL = 'chatgpt-4o-latest'  // Content Panel - auto-updates to newest GPT-4o
+const OPENAI_FALLBACK_MODEL = 'gpt-4o'  // Stable fallback
+const OPENAI_CHAT_MODEL = 'gpt-4o'  // BADU Assistant - full GPT-4o for quality conversations
 const promptVersion = 'content-v1.3'
 const MAX_TOKENS_STANDARD = Number(process.env.MAX_TOKENS_STANDARD || 420)
 const MAX_TOKENS_LONGFORM = Number(process.env.MAX_TOKENS_LONGFORM || 850)
@@ -1175,15 +1180,24 @@ Remember: You're here to make their marketing life smoother, smarter, and way mo
       { role: 'user', content: contextMessage }
     ];
 
-    const completion = await openai.chat.completions.create({
-      model: OPENAI_CHAT_MODEL,  // Using GPT-5-chat for optimized conversations
+    // Configure parameters based on model type
+    const isGPT5 = OPENAI_CHAT_MODEL.startsWith('gpt-5');
+    const completionParams = {
+      model: OPENAI_CHAT_MODEL,
       messages,
       temperature: 0.7,
-      max_tokens: 300,
-      // GPT-5 enhanced parameters
-      reasoning_effort: 'medium',  // Balanced reasoning for conversations
-      verbosity: 'medium',  // Natural response length
-    });
+    };
+    
+    // GPT-5 uses different parameter names
+    if (isGPT5) {
+      completionParams.max_completion_tokens = 300;
+      completionParams.reasoning_effort = 'medium';
+      completionParams.verbosity = 'medium';
+    } else {
+      completionParams.max_tokens = 300;
+    }
+    
+    const completion = await openai.chat.completions.create(completionParams);
 
     const reply = completion.choices[0]?.message?.content || 'Sorry, I couldn\'t process that.';
 
