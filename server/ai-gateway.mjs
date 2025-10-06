@@ -342,10 +342,10 @@ const IDEOGRAM_API_KEY = process.env.IDEOGRAM_API_KEY || null
 
 const PRIMARY = 'openai'
 // Force OpenAI models to avoid Anthropic model conflicts
-// GPT-5 Models (upgraded from GPT-4o)
-const OPENAI_PRIMARY_MODEL = 'gpt-5'  // Content Panel - advanced reasoning & quality
-const OPENAI_FALLBACK_MODEL = 'gpt-4o'  // Keep GPT-4o as safe fallback
-const OPENAI_CHAT_MODEL = 'gpt-5-chat'  // BADU Assistant - conversational AI
+// Best Available OpenAI Models (GPT-5 not yet released)
+const OPENAI_PRIMARY_MODEL = 'chatgpt-4o-latest'  // Content Panel - always latest GPT-4o
+const OPENAI_FALLBACK_MODEL = 'gpt-4o'  // Stable fallback
+const OPENAI_CHAT_MODEL = 'gpt-4o'  // BADU Assistant - high quality conversations
 const promptVersion = 'content-v1.3'
 const MAX_TOKENS_STANDARD = Number(process.env.MAX_TOKENS_STANDARD || 420)
 const MAX_TOKENS_LONGFORM = Number(process.env.MAX_TOKENS_LONGFORM || 850)
