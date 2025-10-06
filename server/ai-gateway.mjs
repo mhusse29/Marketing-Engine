@@ -871,6 +871,17 @@ async function generateFluxImage({ prompt, aspect, mode, guidance, steps, safety
     payload.steps = steps
   }
 
+  console.log('[FLUX] Generating with settings:', {
+    mode,
+    guidance: mode !== 'ultra' ? guidance : 'N/A',
+    steps: mode !== 'ultra' ? steps : 'N/A',
+    promptUpsampling,
+    raw,
+    outputFormat,
+    aspect,
+    dims
+  });
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -926,6 +937,16 @@ async function generateStabilityImage({ prompt, aspect, model, cfg, steps, negat
   }
 
   const dims = IMAGE_ASPECT_SPECS[aspect] || IMAGE_ASPECT_SPECS['1:1']
+  
+  console.log('[Stability] Generating with settings:', {
+    model,
+    cfg,
+    steps,
+    negativePrompt: negativePrompt ? `"${negativePrompt.slice(0, 50)}..."` : 'none',
+    stylePreset: stylePreset || 'none',
+    aspect,
+    dims
+  });
   
   // Map model names to Stability API endpoints
   const modelMap = {
