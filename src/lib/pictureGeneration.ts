@@ -88,20 +88,19 @@ const throwAbort = (): never => {
 };
 
 const resolveImageGatewayEndpoint = () => {
+  // Check for explicit image gateway URL first
   const explicit = import.meta.env?.VITE_IMAGE_GATEWAY_URL as string | undefined;
   if (explicit && explicit.trim().length > 0) {
     return explicit.replace(/\/$/, '');
   }
 
+  // Use AI gateway base URL (same as content generation)
   const base = import.meta.env?.VITE_AI_GATEWAY_URL as string | undefined;
   if (base && base.trim().length > 0) {
     return `${base.replace(/\/$/, '')}/v1/images/generate`;
   }
 
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin.replace(/\/$/, '')}/v1/images/generate`;
-  }
-
+  // Default to localhost gateway (not the Vite dev server)
   return 'http://localhost:8787/v1/images/generate';
 };
 
