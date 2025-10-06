@@ -273,11 +273,11 @@ async function generateBatch({
       ],
     }
     
-    // GPT-5 uses different parameter names
+    // GPT-5 uses different parameter names and requirements
     if (modelId.startsWith('gpt-5')) {
-      payload.max_completion_tokens = maxTokens;  // GPT-5 parameter name
-      payload.reasoning_effort = 'high';  // Maximum quality for marketing content
-      payload.verbosity = 'high';  // Detailed, comprehensive responses
+      payload.max_completion_tokens = maxTokens;  // GPT-5 requires this parameter name
+      // Note: GPT-5 only supports temperature=1 (default) - omit or set to 1
+      payload.temperature = 1;  // Override to GPT-5 requirement
     } else {
       payload.max_tokens = maxTokens;  // GPT-4 and earlier parameter name
     }
@@ -351,11 +351,10 @@ const IDEOGRAM_API_KEY = process.env.IDEOGRAM_API_KEY || null
 
 const PRIMARY = 'openai'
 // Force OpenAI models to avoid Anthropic model conflicts
-// Best Available Models (GPT-5 rate limits visible but not yet accessible)
-// Will auto-upgrade to GPT-5 when released - parameter handling ready
-const OPENAI_PRIMARY_MODEL = 'chatgpt-4o-latest'  // Content Panel - auto-updates to newest GPT-4o
+// GPT-5 Models (Verified and Tested - Oct 2025)
+const OPENAI_PRIMARY_MODEL = 'gpt-5'  // Content Panel - highest quality, reasoning-enhanced
 const OPENAI_FALLBACK_MODEL = 'gpt-4o'  // Stable fallback
-const OPENAI_CHAT_MODEL = 'gpt-4o'  // BADU Assistant - full GPT-4o for quality conversations
+const OPENAI_CHAT_MODEL = 'gpt-5-chat-latest'  // BADU Assistant - chat-optimized GPT-5
 const promptVersion = 'content-v1.3'
 const MAX_TOKENS_STANDARD = Number(process.env.MAX_TOKENS_STANDARD || 420)
 const MAX_TOKENS_LONGFORM = Number(process.env.MAX_TOKENS_LONGFORM || 850)
@@ -1185,16 +1184,15 @@ Remember: You're here to make their marketing life smoother, smarter, and way mo
     const completionParams = {
       model: OPENAI_CHAT_MODEL,
       messages,
-      temperature: 0.7,
     };
     
-    // GPT-5 uses different parameter names
+    // GPT-5 uses different parameter names and only supports temperature=1
     if (isGPT5) {
       completionParams.max_completion_tokens = 300;
-      completionParams.reasoning_effort = 'medium';
-      completionParams.verbosity = 'medium';
+      // GPT-5 only supports temperature=1 (default), so we omit it
     } else {
       completionParams.max_tokens = 300;
+      completionParams.temperature = 0.7;
     }
     
     const completion = await openai.chat.completions.create(completionParams);
