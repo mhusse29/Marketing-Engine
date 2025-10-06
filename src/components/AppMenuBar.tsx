@@ -1056,7 +1056,8 @@ export function MenuPictures({
   const activeProvider = qp.imageProvider === 'auto' ? 'openai' : qp.imageProvider;
   const availableAspects = aspectsByProvider[activeProvider] || aspectsByProvider.openai;
 
-  const isValidateDisabled = promptLength < 10;
+  const MIN_PROMPT_LENGTH = 10;
+  const isValidateDisabled = promptLength < MIN_PROMPT_LENGTH;
   const isValidated = qp.validated && !isValidateDisabled;
 
   const validateButtonClass = cn(
@@ -1069,9 +1070,9 @@ export function MenuPictures({
   );
 
   const validationHint = isValidated
-    ? 'Validated and ready to generate images.'
+    ? '✓ Validated and ready to generate images.'
     : isValidateDisabled
-    ? 'Add a prompt (10+ chars) to validate.'
+    ? `Prompt needs ${MIN_PROMPT_LENGTH - promptLength} more character${MIN_PROMPT_LENGTH - promptLength === 1 ? '' : 's'} (${promptLength}/${MIN_PROMPT_LENGTH})`
     : 'Validate to lock in these settings for generation.';
 
   const sectionLabel = (label: string) => (
@@ -1141,8 +1142,20 @@ export function MenuPictures({
                 {isSuggesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
               </button>
             </div>
-            <div className="mt-1.5 text-xs text-white/40">
-              {promptLength} / {MAX_PICTURE_PROMPT_LENGTH}
+            <div className="mt-1.5 flex items-center justify-between text-xs">
+              <span className={cn(
+                'font-medium',
+                promptLength < MIN_PROMPT_LENGTH
+                  ? 'text-amber-400'
+                  : 'text-emerald-400'
+              )}>
+                {promptLength < MIN_PROMPT_LENGTH
+                  ? `Need ${MIN_PROMPT_LENGTH - promptLength} more chars to validate`
+                  : '✓ Ready to validate'}
+              </span>
+              <span className="text-white/40">
+                {promptLength} / {MAX_PICTURE_PROMPT_LENGTH}
+              </span>
             </div>
           </div>
 
