@@ -5,7 +5,7 @@ import path from 'node:path';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/Marketing-Engine/',
+  base: '/',
   resolve: {
     alias: {
       '@': path.resolve(path.dirname(fileURLToPath(import.meta.url)), './src'),

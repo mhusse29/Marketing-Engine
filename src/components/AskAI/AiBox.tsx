@@ -11,6 +11,11 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Check, CircleStop, FileText, Lock, Paperclip, Sparkles, X } from 'lucide-react';
 import { cn } from '../../lib/format';
 import type { AiAttachment, AiUIState, CardKey, SettingsState } from '../../types';
+import {
+  createAttachment,
+  isAcceptedFile,
+  revokeAttachmentUrl,
+} from '../../lib/attachments';
 
 interface AiBoxProps {
   aiState: AiUIState;
@@ -30,25 +35,6 @@ const SMART_PROMPTS = [
 ] as const;
 const MAX_ATTACHMENTS = 5;
 
-const ACCEPTED_MIME_TYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-  'image/jpg',
-  'application/pdf',
-]);
-
-const ACCEPTED_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'pdf']);
-
-const isAcceptedFile = (file: File) => {
-  if (ACCEPTED_MIME_TYPES.has(file.type)) {
-    return true;
-  }
-
-  const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
-  return ACCEPTED_EXTENSIONS.has(extension);
-};
-
 const ATTACHMENTS_HELPER_ID = 'ai-attachments-helper';
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -64,31 +50,6 @@ const STEP_LABELS: Record<CardKey, string> = {
   content: 'Content',
   pictures: 'Pictures/Prompt',
   video: 'Video Prompt',
-};
-
-const makeId = () =>
-  typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-const isBlobUrl = (url: string) => url.startsWith('blob:');
-
-const createAttachment = (file: File): AiAttachment => {
-  const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
-  const mime = file.type || (extension ? `application/${extension}` : 'application/octet-stream');
-  const url = URL.createObjectURL(file);
-  const isImageMime = mime.startsWith('image/');
-  const isImageExtension = ['png', 'jpg', 'jpeg', 'webp'].includes(extension);
-
-  return {
-    id: makeId(),
-    url,
-    name: file.name,
-    mime,
-    kind: isImageMime || isImageExtension ? 'image' : 'document',
-    extension,
-    size: file.size,
-  };
 };
 
 export function AiBox({
@@ -118,7 +79,13 @@ export function AiBox({
 
   const isLocked = aiState.locked;
   const isBusy = aiState.generating;
-  const canSubmit = !isLocked && !isBusy && brief.trim().length >= 10;
+  const contentCardEnabled = settings.cards.content;
+  const contentValidated = settings.quickProps.content.validated && settings.platforms.length > 0;
+  const canSubmit =
+    !isLocked &&
+    !isBusy &&
+    brief.trim().length >= 10 &&
+    (!contentCardEnabled || contentValidated);
 
   useEffect(() => {
     uploadsRef.current = uploads;
@@ -126,11 +93,7 @@ export function AiBox({
 
   useEffect(() => {
     return () => {
-      uploadsRef.current.forEach((item) => {
-        if (isBlobUrl(item.url)) {
-          URL.revokeObjectURL(item.url);
-        }
-      });
+      uploadsRef.current.forEach((item) => revokeAttachmentUrl(item));
     };
   }, []);
 
@@ -266,8 +229,8 @@ export function AiBox({
     setUploads((prev) => {
       const next = prev.filter((item) => item.id !== id);
       const removed = prev.find((item) => item.id === id);
-      if (removed && isBlobUrl(removed.url)) {
-        URL.revokeObjectURL(removed.url);
+      if (removed) {
+        revokeAttachmentUrl(removed);
       }
       return next;
     });
@@ -275,11 +238,7 @@ export function AiBox({
 
   const clearAll = useCallback(() => {
     if (isLocked) return;
-    uploads.forEach((item) => {
-      if (isBlobUrl(item.url)) {
-        URL.revokeObjectURL(item.url);
-      }
-    });
+    uploads.forEach((item) => revokeAttachmentUrl(item));
     setUploads([]);
     setBrief('');
     setFieldError('');
@@ -301,9 +260,21 @@ export function AiBox({
       return;
     }
 
+    if (contentCardEnabled && !contentValidated) {
+      setFieldError('Validate the content panel before generating.');
+      return;
+    }
+
     setFieldError('');
     onGenerate(nextBrief, uploads.map((item) => ({ ...item })));
-  }, [brief, isBusy, isLocked, onGenerate, uploads]);
+  }, [brief, contentCardEnabled, contentValidated, isBusy, isLocked, onGenerate, uploads]);
+
+  useEffect(() => {
+    if (!contentCardEnabled) return;
+    if (contentValidated && fieldError.includes('Validate')) {
+      setFieldError('');
+    }
+  }, [contentCardEnabled, contentValidated, fieldError]);
 
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
@@ -562,15 +533,15 @@ export function AiBox({
             <button
               type="button"
               onClick={handleGenerateClick}
-              disabled={isLocked || isBusy || brief.trim().length < 10}
+              disabled={!canSubmit}
               className="ml-auto inline-flex h-11 min-w-[140px] items-center justify-center gap-2 rounded-xl bg-[linear-gradient(180deg,#3E8BFF,#6B70FF)] px-6 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(62,139,255,0.35)] transition-all duration-150 hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1420] focus-visible:ring-[rgba(62,139,255,0.6)] disabled:pointer-events-none disabled:opacity-55"
             >
-              {isBusy ? (
-                <span className="inline-flex items-center gap-2">
-                  <motion.span
-                    aria-hidden
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, ease: 'linear', repeat: Infinity }}
+                {isBusy ? (
+                  <span className="inline-flex items-center gap-2">
+                    <motion.span
+                      aria-hidden
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, ease: 'linear', repeat: Infinity }}
                     className="inline-flex h-4 w-4 items-center justify-center"
                   >
                     <Sparkles className="h-4 w-4" />
@@ -592,6 +563,9 @@ export function AiBox({
             Status: {contentStatus ?? 'idle'}
             {contentError && contentStatus === 'error' && (
               <span className="ml-2 text-red-300">• {contentError}</span>
+            )}
+            {contentCardEnabled && !contentValidated && !isLocked && !isBusy && brief.trim().length >= 10 && (
+              <span className="ml-2 text-amber-200">• Validate content before generating</span>
             )}
           </div>
 

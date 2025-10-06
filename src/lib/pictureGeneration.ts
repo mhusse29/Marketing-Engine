@@ -2,12 +2,13 @@ import type {
   AiAttachment,
   GeneratedPictures,
   PictureAsset,
-  PicturePrompt,
   PictureResultMeta,
+  PictureProvider,
   PicturesQuickProps,
 } from '../types';
+import { getActivePicturesPrompt } from '../store/picturesPrompts';
 
-type PictureGenerationMode = PicturesQuickProps['mode'];
+type PictureGenerationMode = 'images' | 'prompt';
 
 type PictureGenerationConfig = {
   brief: string;
@@ -21,17 +22,42 @@ type PictureGenerationConfig = {
 
 type ImageGatewayRequest = {
   prompt: string;
+  provider: string;
   aspect: PicturesQuickProps['aspect'];
-  style: PicturesQuickProps['style'];
-  referenceImages: string[];
-  count: number;
+  style?: PicturesQuickProps['style'];
+  referenceImages?: string[];
+  count?: number;
+  // DALL-E specific
+  dalleQuality?: string;
+  dalleStyle?: string;
+  // FLUX specific
+  fluxMode?: string;
+  fluxGuidance?: number;
+  fluxSteps?: number;
+  fluxSafetyTolerance?: number;
+  fluxPromptUpsampling?: boolean;
+  fluxRaw?: boolean;
+  fluxOutputFormat?: string;
+  fluxSeed?: number;
+  // Stability specific
+  stabilityModel?: string;
+  stabilityCfg?: number;
+  stabilitySteps?: number;
+  stabilityNegativePrompt?: string;
+  stabilityStylePreset?: string;
+  stabilityOutputFormat?: string;
+  stabilitySeed?: number;
+  // Ideogram specific
+  ideogramModel?: string;
+  ideogramMagicPrompt?: boolean;
+  ideogramStyleType?: string;
+  ideogramNegativePrompt?: string;
+  ideogramSeed?: number;
 };
 
 type ImageGatewayResponse = {
   assets: PictureAsset[];
 };
-
-const PROMPT_INTENTS: PicturePrompt['intent'][] = ['hero', 'variation', 'detail'];
 
 const FALLBACK_IMAGE_URLS = [
   'https://images.unsplash.com/photo-1526045612212-70caf35c14df?auto=format&fit=crop&w=1200&q=80',
@@ -41,13 +67,14 @@ const FALLBACK_IMAGE_URLS = [
   'https://images.unsplash.com/photo-1454165205744-3b78555e5572?auto=format&fit=crop&w=1200&q=80',
 ];
 
-const ASPECT_DIMENSIONS: Record<
-  PicturesQuickProps['aspect'],
-  { width: number; height: number; size: '1024x1024' | '1024x1536' | '1536x1024' }
-> = {
+const ASPECT_DIMENSIONS: Record<PicturesQuickProps['aspect'], { width: number; height: number; size: string }> = {
   '1:1': { width: 1024, height: 1024, size: '1024x1024' },
-  '4:5': { width: 1024, height: 1536, size: '1024x1536' },
-  '16:9': { width: 1536, height: 1024, size: '1536x1024' },
+  '4:5': { width: 1024, height: 1280, size: '1024x1280' },
+  '16:9': { width: 1536, height: 864, size: '1536x864' },
+  '2:3': { width: 1024, height: 1536, size: '1024x1536' },
+  '3:2': { width: 1536, height: 1024, size: '1536x1024' },
+  '7:9': { width: 1120, height: 1440, size: '1120x1440' },
+  '9:7': { width: 1440, height: 1120, size: '1440x1120' },
 };
 
 const pick = <T,>(list: T[], index: number) => list[index % list.length];
@@ -59,13 +86,6 @@ const throwAbort = (): never => {
   error.name = 'AbortError';
   throw error;
 };
-
-const toMeta = (quickProps: PicturesQuickProps): PictureResultMeta => ({
-  style: quickProps.style,
-  aspect: quickProps.aspect,
-  lockBrandColors: quickProps.lockBrandColors,
-  createdAt: new Date().toISOString(),
-});
 
 const resolveImageGatewayEndpoint = () => {
   const explicit = import.meta.env?.VITE_IMAGE_GATEWAY_URL as string | undefined;
@@ -102,42 +122,12 @@ const basePromptFromQuickProps = (brief: string, quickProps: PicturesQuickProps,
   return segments.filter(Boolean).join(' ');
 };
 
-const buildPromptVariants = (
-  basePrompt: string,
-  quickProps: PicturesQuickProps,
-  versionIndex: number
-): PicturePrompt[] => {
-  const variants: PicturePrompt[] = [
-    {
-      id: createId('prompt'),
-      intent: 'hero',
-      text: `${basePrompt} Focus on a hero composition with the primary subject centered, framed for ${quickProps.aspect}.`,
-    },
-    {
-      id: createId('prompt'),
-      intent: 'variation',
-      text: `${basePrompt} Provide an alternative angle that feels candid and ready for organic social placements.`,
-    },
-    {
-      id: createId('prompt'),
-      intent: 'detail',
-      text: `${basePrompt} Zoom into product details with tactile textures while maintaining narrative cohesion.`,
-    },
-  ];
-
-  if (versionIndex % 2 === 1) {
-    variants.reverse();
-  }
-
-  return variants;
-};
-
 const simulateOpenAIAssets = (
   request: ImageGatewayRequest,
   versionIndex: number
-): PictureAsset[] => {
+): PictureAsset[]=> {
   const dims = ASPECT_DIMENSIONS[request.aspect] ?? ASPECT_DIMENSIONS['1:1'];
-  const count = Math.max(2, Math.min(request.count, 6));
+  const count = Math.max(2, Math.min(request.count ?? 3, 6));
   return Array.from({ length: count }).map((_, idx) => {
     const url = pick(FALLBACK_IMAGE_URLS, versionIndex + idx);
     return {
@@ -160,15 +150,7 @@ const parseGatewayResponse = (payload: unknown): PictureAsset[] => {
   return data.assets.filter((asset): asset is PictureAsset => Boolean(asset && asset.url));
 };
 
-const splitPromptVariants = (source?: string) =>
-  source
-    ? source
-        .split(/\n{2,}/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-    : [];
-
-const requestOpenAIImages = async (
+const requestUnifiedImages = async (
   payload: ImageGatewayRequest,
   versionIndex: number,
   signal?: AbortSignal
@@ -186,12 +168,15 @@ const requestOpenAIImages = async (
     });
 
     if (!response.ok) {
-      throw new Error(`Image gateway responded with ${response.status}`);
+      const errorText = await response.text();
+      console.error(`Image gateway error (${response.status}):`, errorText);
+      throw new Error(`Image gateway responded with ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
     const assets = parseGatewayResponse(data);
     if (!assets.length) {
+      console.warn(`No assets returned from ${payload.provider}, using fallback`);
       return simulateOpenAIAssets(payload, versionIndex);
     }
     return assets;
@@ -199,7 +184,7 @@ const requestOpenAIImages = async (
     if (error instanceof Error && error.name === 'AbortError') {
       throw error;
     }
-    console.error('Image gateway request failed, falling back to simulated assets', error);
+    console.error(`Image gateway request failed for ${payload.provider}, falling back to simulated assets:`, error);
     return simulateOpenAIAssets(payload, versionIndex);
   }
 };
@@ -225,83 +210,187 @@ const buildImagePrompt = (
     .trim();
 };
 
-const generatePromptMode = (
-  config: PictureGenerationConfig,
-  uploads: string[]
-): GeneratedPictures[] => {
-  const results: GeneratedPictures[] = [];
-  const remixVariants = splitPromptVariants(config.remixPrompt);
-
-  for (let version = 0; version < config.versions; version += 1) {
-    if (config.signal?.aborted) {
-      throwAbort();
-    }
-    const basePrompt = config.remixPrompt?.trim() || basePromptFromQuickProps(config.brief, config.quickProps, uploads);
-    const prompts = remixVariants.length
-      ? remixVariants.slice(0, 3).map((text, idx) => ({
-          id: createId(`prompt-remix-${version}-${idx}`),
-          intent: PROMPT_INTENTS[Math.min(idx, PROMPT_INTENTS.length - 1)],
-          text,
-        }))
-      : buildPromptVariants(basePrompt, config.quickProps, version);
-
-    results.push({
-      id: createId('prompt-result'),
-      mode: 'prompt',
-      provider: 'gpt',
-      prompts,
-      meta: toMeta(config.quickProps),
-    });
+function resolveProvider(quickProps: PicturesQuickProps): PictureProvider {
+  switch (quickProps.imageProvider) {
+    case 'flux':
+    case 'stability':
+    case 'openai':
+    case 'ideogram':
+      return quickProps.imageProvider;
+    default:
+      return 'openai';
   }
-  return results;
-};
+}
 
-const generateImageMode = async (
+function resolvePrompt(
   config: PictureGenerationConfig,
+  _provider: PictureProvider,
+  uploads: string[],
+  versionIndex = 0
+): string {
+  const remix = config.remixPrompt?.trim();
+  if (remix) {
+    return remix;
+  }
+
+  const providerPrompt = getActivePicturesPrompt(config.quickProps).trim();
+  if (providerPrompt.length > 0) {
+    return providerPrompt;
+  }
+
+  const genericPrompt = (config.quickProps.promptText ?? '').trim();
+  if (genericPrompt.length > 0) {
+    return genericPrompt;
+  }
+
+  return buildImagePrompt(config.brief, config.quickProps, uploads, versionIndex);
+}
+
+function buildMeta(
+  provider: PictureProvider,
+  mode: PictureGenerationMode,
+  prompt: string,
+  quickProps: PicturesQuickProps
+): PictureResultMeta {
+  const normalizedMode = mode === 'images' ? 'image' : 'prompt';
+  const meta: PictureResultMeta = {
+    style: quickProps.style,
+    aspect: quickProps.aspect,
+    lockBrandColors: quickProps.lockBrandColors,
+    createdAt: new Date().toISOString(),
+    provider,
+    mode: normalizedMode,
+    prompt,
+  };
+
+  switch (provider) {
+    case 'flux':
+      meta.model = `flux-pro-1.1-${quickProps.fluxMode}`;
+      meta.quality = quickProps.fluxMode;
+      meta.outputFormat = 'png';
+      meta.guidance = quickProps.fluxGuidance;
+      meta.steps = quickProps.fluxSteps;
+      break;
+    case 'stability':
+      meta.model = quickProps.stabilityModel;
+      meta.outputFormat = 'png';
+      meta.guidance = quickProps.stabilityCfg;
+      meta.steps = quickProps.stabilitySteps;
+      break;
+    case 'openai':
+      meta.model = 'dall-e-3';
+      meta.quality = quickProps.dalleQuality;
+      meta.outputFormat = 'png';
+      break;
+    case 'ideogram':
+      meta.model = quickProps.ideogramModel;
+      meta.quality = quickProps.ideogramMagicPrompt ? 'on' : 'off';
+      meta.outputFormat = 'png';
+      break;
+    default:
+      break;
+  }
+
+  return meta;
+}
+
+async function requestAssetsForProvider(
+  provider: PictureProvider,
+  prompt: string,
+  config: PictureGenerationConfig,
+  uploads: string[],
+  versionIndex: number
+): Promise<PictureAsset[]> {
+  const referenceImages = provider === 'flux' ? uploads.slice(0, 1) : uploads;
+  const qp = config.quickProps;
+  
+  const payload: ImageGatewayRequest = {
+    prompt,
+    provider,
+    aspect: qp.aspect,
+    style: qp.style,
+    referenceImages,
+    count: 3,
+  };
+
+  // Add provider-specific settings
+  switch (provider) {
+    case 'openai':
+      payload.dalleQuality = qp.dalleQuality;
+      payload.dalleStyle = qp.dalleStyle;
+      break;
+    case 'flux':
+      payload.fluxMode = qp.fluxMode;
+      payload.fluxGuidance = qp.fluxGuidance;
+      payload.fluxSteps = qp.fluxSteps;
+      payload.fluxSafetyTolerance = 2; // Default value
+      payload.fluxPromptUpsampling = qp.fluxPromptUpsampling;
+      payload.fluxRaw = qp.fluxRaw;
+      payload.fluxOutputFormat = qp.fluxOutputFormat;
+      break;
+    case 'stability':
+      payload.stabilityModel = qp.stabilityModel;
+      payload.stabilityCfg = qp.stabilityCfg;
+      payload.stabilitySteps = qp.stabilitySteps;
+      payload.stabilityNegativePrompt = qp.stabilityNegativePrompt;
+      payload.stabilityStylePreset = qp.stabilityStylePreset;
+      payload.stabilityOutputFormat = 'png';
+      break;
+    case 'ideogram':
+      payload.ideogramModel = qp.ideogramModel;
+      payload.ideogramMagicPrompt = qp.ideogramMagicPrompt;
+      payload.ideogramStyleType = qp.ideogramStyleType;
+      payload.ideogramNegativePrompt = qp.ideogramNegativePrompt;
+      break;
+  }
+
+  return requestUnifiedImages(payload, versionIndex, config.signal);
+}
+
+// Removed generatePromptResults - always generate images now
+
+const generateImageResults = async (
+  config: PictureGenerationConfig,
+  provider: PictureProvider,
+  prompt: string,
   uploads: string[]
 ): Promise<GeneratedPictures[]> => {
   const results: GeneratedPictures[] = [];
-  for (let version = 0; version < config.versions; version += 1) {
+  const count = Math.max(1, config.versions);
+  const dims = ASPECT_DIMENSIONS[config.quickProps.aspect] ?? ASPECT_DIMENSIONS['1:1'];
+
+  for (let version = 0; version < count; version += 1) {
     if (config.signal?.aborted) {
       throwAbort();
     }
-    const prompt = config.remixPrompt?.trim() || buildImagePrompt(config.brief, config.quickProps, uploads, version);
-    const dims = ASPECT_DIMENSIONS[config.quickProps.aspect] ?? ASPECT_DIMENSIONS['1:1'];
-    const assets = await requestOpenAIImages(
-      {
-        prompt,
-        aspect: config.quickProps.aspect,
-        style: config.quickProps.style,
-        referenceImages: uploads,
-        count: 3,
-      },
-      version,
-      config.signal
-    );
+    const promptForVersion = version === 0 ? prompt : resolvePrompt(config, provider, uploads, version);
+    const assets = await requestAssetsForProvider(provider, promptForVersion, config, uploads, version);
 
     results.push({
-      id: createId('openai-result'),
+      id: createId(`${provider}-result`),
       mode: 'image',
-      provider: 'openai',
+      provider,
       assets: assets.map((asset) => ({
         ...asset,
         width: asset.width || dims.width,
         height: asset.height || dims.height,
         mimeType: asset.mimeType || 'image/png',
       })),
-      meta: { ...toMeta(config.quickProps), prompt },
+      meta: {
+        ...buildMeta(provider, 'images', promptForVersion, config.quickProps),
+        prompt: promptForVersion,
+      },
     });
   }
+
   return results;
 };
 
 export async function generatePictureOutputs(config: PictureGenerationConfig): Promise<GeneratedPictures[]> {
   const uploads = normalizeUploads(config.uploads);
-  const mode: PictureGenerationMode = config.quickProps.mode;
-
-  if (mode === 'prompt') {
-    return generatePromptMode(config, uploads);
-  }
-
-  return generateImageMode(config, uploads);
+  const provider = resolveProvider(config.quickProps);
+  const prompt = resolvePrompt(config, provider, uploads);
+  
+  // Always generate images now that Output section was removed
+  return generateImageResults(config, provider, prompt, uploads);
 }

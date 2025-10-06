@@ -6,13 +6,20 @@ import type {
   Persona,
   Tone,
   ContentFormat,
+  CopyLength,
   PicturesQuickProps,
   PicStyle,
   PicAspect,
+  PicturesProviderKey,
+  FluxMode,
+  StabilityModel,
+  IdeogramModel,
   VideoQuickProps,
   VideoHook,
   VideoAspect,
+  AiAttachment,
 } from '../types';
+import { MAX_PICTURE_PROMPT_LENGTH } from './picturesPrompts';
 
 const STORAGE_KEY = 'marketingEngine.settings.v1';
 
@@ -35,7 +42,7 @@ const CONTENT_FORMATS: readonly ContentFormat[] = ['Auto', 'FB/IG', 'LinkedIn', 
 // ] as const;
 
 const PICTURE_STYLES: readonly PicStyle[] = ['Product', 'Lifestyle', 'UGC', 'Abstract'];
-const PICTURE_ASPECTS: readonly PicAspect[] = ['1:1', '4:5', '16:9'];
+const PICTURE_ASPECTS: readonly PicAspect[] = ['1:1', '4:5', '16:9', '2:3', '3:2', '7:9', '9:7'];
 const PICTURE_BACKDROPS = ['Clean', 'Gradient', 'Real-world'] as const;
 const PICTURE_LIGHTING = ['Soft', 'Hard', 'Neon'] as const;
 const PICTURE_NEGATIVE_OPTIONS = ['None', 'Logos', 'Busy background', 'Extra hands', 'Glare'] as const;
@@ -54,20 +61,56 @@ const defaultContentQuickProps: ContentQuickProps = {
   cta: 'Learn more',
   language: 'EN',
   format: 'Auto',
+  copyLength: 'Standard',
   keywords: '',
   avoid: '',
   hashtags: '',
+  brief: '',
+  attachments: [],
+  validated: false,
+  validatedAt: null,
 };
 
 const defaultPicturesQuickProps: PicturesQuickProps = {
+  imageProvider: 'auto',
   mode: 'images',
   style: 'Product',
   aspect: '1:1',
+  promptText: '',
+  validated: false,
+  // DALL-E
+  dalleQuality: 'standard',
+  dalleStyle: 'vivid',
+  // FLUX
+  fluxMode: 'standard',
+  fluxGuidance: 3,
+  fluxSteps: 40,
+  fluxPromptUpsampling: false,
+  fluxRaw: false,
+  fluxOutputFormat: 'jpeg',
+  // Stability
+  stabilityModel: 'large',
+  stabilityCfg: 7,
+  stabilitySteps: 40,
+  stabilityNegativePrompt: '',
+  stabilityStylePreset: '',
+  // Ideogram
+  ideogramModel: 'v2',
+  ideogramMagicPrompt: true,
+  ideogramStyleType: 'AUTO',
+  ideogramNegativePrompt: '',
+  // Advanced
   lockBrandColors: true,
   backdrop: 'Clean',
   lighting: 'Soft',
   negative: 'None',
   quality: 'High detail',
+  composition: '',
+  camera: '',
+  mood: '',
+  colourPalette: '',
+  finish: '',
+  texture: '',
 };
 
 const defaultVideoQuickProps: VideoQuickProps = {
@@ -80,7 +123,39 @@ const defaultVideoQuickProps: VideoQuickProps = {
   density: 'Medium (5–6)',
   proof: 'Social proof',
   doNots: 'No claims',
+  validated: false,
 };
+
+function asCopyLength(value: unknown, fallback: CopyLength): CopyLength {
+  return (['Compact', 'Standard', 'Detailed'] as CopyLength[]).includes(value as CopyLength)
+    ? (value as CopyLength)
+    : fallback;
+}
+
+function sanitizeAttachments(items: unknown): AiAttachment[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .filter((item): item is AiAttachment => {
+      if (!item || typeof item !== 'object') return false;
+      const record = item as Partial<AiAttachment>;
+      return (
+        typeof record.id === 'string' &&
+        typeof record.url === 'string' &&
+        typeof record.name === 'string' &&
+        typeof record.mime === 'string' &&
+        typeof record.kind === 'string' &&
+        typeof record.extension === 'string' &&
+        typeof record.size === 'number'
+      );
+    })
+    .map((item) => ({
+      ...item,
+      dataUrl: typeof item.dataUrl === 'string' ? item.dataUrl : undefined,
+    }));
+}
 
 function normalizeContentQuickProps(
   content: Partial<ContentQuickProps> | undefined
@@ -103,6 +178,12 @@ function normalizeContentQuickProps(
     ? candidate.cta.trim().slice(0, CTA_MAX_LENGTH)
     : defaultContentQuickProps.cta;
 
+  const copyLength = asCopyLength(candidate.copyLength, defaultContentQuickProps.copyLength);
+  const brief = typeof candidate.brief === 'string' ? candidate.brief : defaultContentQuickProps.brief;
+  const attachments = sanitizeAttachments(candidate.attachments);
+  const validated = typeof candidate.validated === 'boolean' ? candidate.validated : false;
+  const validatedAt = typeof candidate.validatedAt === 'string' ? candidate.validatedAt : null;
+
   return {
     ...defaultContentQuickProps,
     ...candidate,
@@ -111,9 +192,14 @@ function normalizeContentQuickProps(
     language,
     format,
     cta,
+    copyLength,
     keywords: typeof candidate.keywords === 'string' ? candidate.keywords : '',
     avoid: typeof candidate.avoid === 'string' ? candidate.avoid : '',
     hashtags: typeof candidate.hashtags === 'string' ? candidate.hashtags : '',
+    brief,
+    attachments,
+    validated,
+    validatedAt,
   };
 }
 
@@ -125,44 +211,131 @@ function normalizePicturesQuickProps(
     ...pictures,
   };
 
+  const providerOptions: PicturesProviderKey[] = ['auto', 'flux', 'stability', 'openai', 'ideogram'];
+  const fluxModes: FluxMode[] = ['standard', 'ultra'];
+  const stabilityModels: StabilityModel[] = ['large-turbo', 'large', 'medium'];
+  const ideogramModels: IdeogramModel[] = ['v1', 'v2', 'turbo'];
+  const dalleQualities = ['standard', 'hd'] as const;
+  const dalleStyles = ['vivid', 'natural'] as const;
+
+  const clampNumber = (value: unknown, min: number, max: number, fallback: number) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return fallback;
+    }
+    const rounded = Math.round(value * 10) / 10; // One decimal place
+    if (!Number.isFinite(rounded)) {
+      return fallback;
+    }
+    return Math.min(max, Math.max(min, rounded));
+  };
+
+  const asBoolean = (value: unknown, fallback: boolean) =>
+    typeof value === 'boolean' ? value : fallback;
+
+  const sanitizePrompt = (value: unknown) =>
+    typeof value === 'string' ? value.trim().slice(0, MAX_PICTURE_PROMPT_LENGTH) : '';
+
+  const ADVANCED_LIMIT = 200;
+  const sanitizeFreeText = (value: unknown, fallback: string) => {
+    if (typeof value !== 'string') {
+      return fallback;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return '';
+    }
+    return trimmed.slice(0, ADVANCED_LIMIT);
+  };
+
   const style = PICTURE_STYLES.includes(candidate.style as PicStyle)
     ? (candidate.style as PicStyle)
     : defaultPicturesQuickProps.style;
+
   const aspect = PICTURE_ASPECTS.includes(candidate.aspect as PicAspect)
     ? (candidate.aspect as PicAspect)
     : defaultPicturesQuickProps.aspect;
-  const lockBrandColors =
-    typeof candidate.lockBrandColors === 'boolean'
-      ? candidate.lockBrandColors
-      : defaultPicturesQuickProps.lockBrandColors;
 
-  const backdrop = candidate.backdrop && (PICTURE_BACKDROPS as readonly string[]).includes(candidate.backdrop)
-    ? candidate.backdrop
-    : defaultPicturesQuickProps.backdrop;
-  const lighting = candidate.lighting && (PICTURE_LIGHTING as readonly string[]).includes(candidate.lighting)
-    ? candidate.lighting
-    : defaultPicturesQuickProps.lighting;
+  const backdrop =
+    candidate.backdrop && (PICTURE_BACKDROPS as readonly string[]).includes(candidate.backdrop)
+      ? candidate.backdrop
+      : defaultPicturesQuickProps.backdrop;
+
+  const lighting =
+    candidate.lighting && (PICTURE_LIGHTING as readonly string[]).includes(candidate.lighting)
+      ? candidate.lighting
+      : defaultPicturesQuickProps.lighting;
 
   const negativeRaw = typeof candidate.negative === 'string' ? candidate.negative.trim() : '';
-  const negative = negativeRaw.length === 0
-    ? defaultPicturesQuickProps.negative
-    : (PICTURE_NEGATIVE_OPTIONS as readonly string[]).includes(negativeRaw)
-      ? negativeRaw
-      : negativeRaw.slice(0, CTA_MAX_LENGTH);
+  const negative =
+    negativeRaw.length === 0
+      ? defaultPicturesQuickProps.negative
+      : (PICTURE_NEGATIVE_OPTIONS as readonly string[]).includes(negativeRaw)
+        ? negativeRaw
+        : negativeRaw.slice(0, CTA_MAX_LENGTH);
 
-  const quality = candidate.quality && (PICTURE_QUALITY_OPTIONS as readonly string[]).includes(candidate.quality)
-    ? candidate.quality
-    : defaultPicturesQuickProps.quality;
+  const quality =
+    candidate.quality && (PICTURE_QUALITY_OPTIONS as readonly string[]).includes(candidate.quality)
+      ? candidate.quality
+      : defaultPicturesQuickProps.quality;
 
   return {
-    mode: defaultPicturesQuickProps.mode,
+    imageProvider: providerOptions.includes(candidate.imageProvider as PicturesProviderKey)
+      ? (candidate.imageProvider as PicturesProviderKey)
+      : defaultPicturesQuickProps.imageProvider,
+    mode: candidate.mode === 'prompt' ? 'prompt' : 'images',
     style,
     aspect,
-    lockBrandColors,
+    promptText: sanitizePrompt(candidate.promptText),
+    validated: asBoolean(candidate.validated, false),
+    // DALL-E
+    dalleQuality: dalleQualities.includes(candidate.dalleQuality as (typeof dalleQualities)[number])
+      ? (candidate.dalleQuality as (typeof dalleQualities)[number])
+      : defaultPicturesQuickProps.dalleQuality,
+    dalleStyle: dalleStyles.includes(candidate.dalleStyle as (typeof dalleStyles)[number])
+      ? (candidate.dalleStyle as (typeof dalleStyles)[number])
+      : defaultPicturesQuickProps.dalleStyle,
+    // FLUX
+    fluxMode: fluxModes.includes(candidate.fluxMode as FluxMode)
+      ? (candidate.fluxMode as FluxMode)
+      : defaultPicturesQuickProps.fluxMode,
+    fluxGuidance: clampNumber(candidate.fluxGuidance, 1.5, 5, defaultPicturesQuickProps.fluxGuidance),
+    fluxSteps: clampNumber(candidate.fluxSteps, 20, 50, defaultPicturesQuickProps.fluxSteps),
+    fluxPromptUpsampling: asBoolean(candidate.fluxPromptUpsampling, defaultPicturesQuickProps.fluxPromptUpsampling),
+    fluxRaw: asBoolean(candidate.fluxRaw, defaultPicturesQuickProps.fluxRaw),
+    fluxOutputFormat: ['jpeg', 'png', 'webp'].includes(candidate.fluxOutputFormat as string)
+      ? (candidate.fluxOutputFormat as 'jpeg' | 'png' | 'webp')
+      : defaultPicturesQuickProps.fluxOutputFormat,
+    // Stability
+    stabilityModel: stabilityModels.includes(candidate.stabilityModel as StabilityModel)
+      ? (candidate.stabilityModel as StabilityModel)
+      : defaultPicturesQuickProps.stabilityModel,
+    stabilityCfg: clampNumber(candidate.stabilityCfg, 1, 20, defaultPicturesQuickProps.stabilityCfg),
+    stabilitySteps: clampNumber(candidate.stabilitySteps, 20, 60, defaultPicturesQuickProps.stabilitySteps),
+    stabilityNegativePrompt: sanitizeFreeText(candidate.stabilityNegativePrompt, defaultPicturesQuickProps.stabilityNegativePrompt ?? ''),
+    stabilityStylePreset: typeof candidate.stabilityStylePreset === 'string' 
+      ? candidate.stabilityStylePreset.trim().slice(0, 50)
+      : defaultPicturesQuickProps.stabilityStylePreset,
+    // Ideogram
+    ideogramModel: ideogramModels.includes(candidate.ideogramModel as IdeogramModel)
+      ? (candidate.ideogramModel as IdeogramModel)
+      : defaultPicturesQuickProps.ideogramModel,
+    ideogramMagicPrompt: asBoolean(candidate.ideogramMagicPrompt, defaultPicturesQuickProps.ideogramMagicPrompt),
+    ideogramStyleType: ['AUTO', 'GENERAL', 'REALISTIC', 'DESIGN', 'RENDER_3D', 'ANIME'].includes(candidate.ideogramStyleType as string)
+      ? (candidate.ideogramStyleType as 'AUTO' | 'GENERAL' | 'REALISTIC' | 'DESIGN' | 'RENDER_3D' | 'ANIME')
+      : defaultPicturesQuickProps.ideogramStyleType,
+    ideogramNegativePrompt: sanitizeFreeText(candidate.ideogramNegativePrompt, defaultPicturesQuickProps.ideogramNegativePrompt ?? ''),
+    // Advanced
+    lockBrandColors: asBoolean(candidate.lockBrandColors, defaultPicturesQuickProps.lockBrandColors),
     backdrop,
     lighting,
     negative,
     quality,
+    composition: sanitizeFreeText(candidate.composition, defaultPicturesQuickProps.composition ?? ''),
+    camera: sanitizeFreeText(candidate.camera, defaultPicturesQuickProps.camera ?? ''),
+    mood: sanitizeFreeText(candidate.mood, defaultPicturesQuickProps.mood ?? ''),
+    colourPalette: sanitizeFreeText(candidate.colourPalette, defaultPicturesQuickProps.colourPalette ?? ''),
+    finish: sanitizeFreeText(candidate.finish, defaultPicturesQuickProps.finish ?? ''),
+    texture: sanitizeFreeText(candidate.texture, defaultPicturesQuickProps.texture ?? ''),
   };
 }
 
@@ -206,6 +379,8 @@ function normalizeVideoQuickProps(
       ? doNotsRaw
       : doNotsRaw.slice(0, CTA_MAX_LENGTH);
 
+  const validated = typeof candidate.validated === 'boolean' ? candidate.validated : defaultVideoQuickProps.validated;
+
   return {
     duration,
     hook,
@@ -216,6 +391,7 @@ function normalizeVideoQuickProps(
     density,
     proof,
     doNots,
+    validated,
   };
 }
 

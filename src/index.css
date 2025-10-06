@@ -5,15 +5,29 @@ html,
 body,
 #root {
   min-height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+  position: relative;
 }
 
 body {
   background-color: var(--bg-deep-1);
   color: var(--text-body);
+  margin: 0;
+  padding: 0;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+img,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
 }
 
 @keyframes halo {
@@ -54,6 +68,16 @@ body {
 @keyframes skeletonShimmer {
   0% { background-position: 100% 0; }
   100% { background-position: 0 0; }
+}
+
+@keyframes contentHaloDrift {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 160% 0%; }
+}
+
+@keyframes contentHaloPulse {
+  0%, 100% { opacity: 0.12; }
+  50% { opacity: 0.28; }
 }
 
 .ai-live .settings-platform-pill[data-selected="false"] {

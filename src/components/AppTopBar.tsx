@@ -1,4 +1,4 @@
-import { ChevronDown, HelpCircle, LogOut, Plus, Save, Settings } from 'lucide-react'
+import { ChevronDown, HelpCircle, LogOut, Plus, Save, Settings, Loader2 } from 'lucide-react'
 
 import { cn } from '../lib/format'
 import SinaiqLogo from './SinaiqLogo'
@@ -22,8 +22,13 @@ export interface AppTopBarProps {
   onOpenSettings(): void;
   onHelp(): void;
   onSignOut(): void;
+  onGenerate?(): void;
   enabled?: Partial<Record<Tab, boolean>>;
   copyLength?: string;
+  contentValidated?: boolean;
+  picturesValidated?: boolean;
+  videoValidated?: boolean;
+  isGenerating?: boolean;
 }
 
 export function AppTopBar({
@@ -34,8 +39,13 @@ export function AppTopBar({
   onOpenSettings,
   onHelp,
   onSignOut,
+  onGenerate,
   enabled = {},
   copyLength,
+  contentValidated = false,
+  picturesValidated = false,
+  videoValidated = false,
+  isGenerating = false,
 }: AppTopBarProps) {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'content', label: 'Content' },
@@ -45,7 +55,7 @@ export function AppTopBar({
 
   return (
     <div
-      className="sticky top-0 z-50 w-full border-b border-white/10 backdrop-blur-sm"
+      className="w-full border-b border-white/10 backdrop-blur-sm"
       style={{
         background: 'linear-gradient(to bottom, rgba(16,22,30,0.82), rgba(10,14,20,0.82))',
         height: 'var(--topbar-h, 64px)',
@@ -60,19 +70,29 @@ export function AppTopBar({
         <nav aria-label="Primary" className="hidden items-center gap-4 md:flex">
           {tabs.map(({ key, label }) => {
             const isActive = active === key;
-            const glow = enabled[key];
+            const validated =
+              (key === 'content' && contentValidated) ||
+              (key === 'pictures' && picturesValidated) ||
+              (key === 'video' && videoValidated);
+            const glow = enabled[key] || validated;
             const showLongCue = key === 'content' && copyLength === 'Detailed';
             const showGlow = glow || showLongCue;
+            const baseButton = 'relative rounded-full border border-white/10 bg-white/[0.03] px-4 py-1.5 text-sm font-medium text-white/80 transition-all outline-none';
+            const hoverFocus = 'hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-blue-500/35';
+            const activeClass =
+              'border-transparent bg-gradient-to-r from-[#3E8BFF] to-[#6B70FF] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_30px_rgba(0,0,0,0.35)]';
+            const validatedClass =
+              'border-transparent bg-gradient-to-r from-[#3EE594] to-[#1CC8A8] text-[#052c23] shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_12px_28px_rgba(28,200,168,0.35)]';
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => onChange(key)}
                 className={cn(
-                  'relative rounded-full border border-white/10 bg-white/[0.03] px-4 py-1.5 text-sm font-medium text-white/80 transition-all outline-none',
-                  'hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-blue-500/35',
-                  isActive &&
-                    'border-transparent bg-gradient-to-r from-[#3E8BFF] to-[#6B70FF] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_30px_rgba(0,0,0,0.35)]',
+                  baseButton,
+                  hoverFocus,
+                  validated ? validatedClass : null,
+                  !validated && isActive ? activeClass : null,
                   !isActive && showLongCue &&
                     'border-white/20 bg-white/[0.08] shadow-[0_0_24px_rgba(80,160,255,0.25)] text-white/90'
                 )}
@@ -93,6 +113,31 @@ export function AppTopBar({
         </nav>
 
         <div className="flex items-center gap-2 md:gap-3">
+          {/* Generate CTA Button */}
+          {onGenerate && (
+            <Button
+              onClick={onGenerate}
+              disabled={!contentValidated && !picturesValidated && !videoValidated}
+              className={cn(
+                'relative inline-flex h-9 items-center gap-2 rounded-full px-5 text-sm font-semibold transition-all duration-200',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#10161E]',
+                (contentValidated || picturesValidated || videoValidated) && !isGenerating
+                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 hover:-translate-y-[1px] focus-visible:ring-emerald-500/50'
+                  : 'bg-white/5 text-white/30 cursor-not-allowed',
+                isGenerating && 'opacity-75 cursor-wait'
+              )}
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Generating...</span>
+                </>
+              ) : (
+                <span>Generate</span>
+              )}
+            </Button>
+          )}
+
           <TooltipProvider delayDuration={100}>
             <Tooltip>
               <TooltipTrigger asChild>

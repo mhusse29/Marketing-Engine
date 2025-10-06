@@ -32,10 +32,40 @@ export type ContentFormat = 'Auto' | 'FB/IG' | 'LinkedIn' | 'TikTok' | 'X';
 export type CopyLength = 'Compact' | 'Standard' | 'Detailed';
 
 export type PicStyle = 'Product' | 'Lifestyle' | 'UGC' | 'Abstract';
-export type PicAspect = '1:1' | '4:5' | '16:9';
+export type PicAspect = '1:1' | '4:5' | '16:9' | '2:3' | '3:2' | '7:9' | '9:7';
+
+export type PicturesProvider = 'flux' | 'stability' | 'openai' | 'ideogram';
+export type PicturesProviderKey = PicturesProvider | 'auto';
+export type PictureOutputFormat = 'png' | 'jpeg' | 'webp';
+export type FluxMode = 'standard' | 'ultra';
+export type StabilityModel = 'large-turbo' | 'large' | 'medium';
+export type IdeogramModel = 'v1' | 'v2' | 'turbo';
+export type IdeogramMagicPrompt = 'auto' | 'on' | 'off';
+export type IdeogramStyleType =
+  | 'auto'
+  | 'general'
+  | 'realistic'
+  | 'design'
+  | 'render3d'
+  | 'anime'
+  | 'illustration'
+  | 'logo'
+  | 'poster'
+  | 'product';
 
 export type VideoHook = 'Pain-point' | 'Bold claim' | 'Question' | 'Pattern interrupt';
 export type VideoAspect = '9:16' | '1:1' | '16:9';
+
+export type AiAttachment = {
+  id: string;
+  url: string;
+  name: string;
+  mime: string;
+  kind: 'image' | 'document';
+  extension: string;
+  size: number;
+  dataUrl?: string;
+};
 
 export type ContentQuickProps = {
   persona: Persona;
@@ -43,21 +73,58 @@ export type ContentQuickProps = {
   cta: string;
   language: Language;
   format?: ContentFormat;
-  copyLength?: CopyLength;
+  copyLength: CopyLength;
   keywords?: string;
   avoid?: string;
   hashtags?: string;
+  brief: string;
+  attachments: AiAttachment[];
+  validated: boolean;
+  validatedAt?: string | null;
 };
 
+export type PicturesValidatedPrompts = Partial<Record<PicturesProvider, string>>;
+
 export type PicturesQuickProps = {
+  imageProvider: PicturesProviderKey;
   mode: 'images' | 'prompt';
   style: PicStyle;
   aspect: PicAspect;
+  promptText: string;
+  validated: boolean;
+  // DALL-E settings
+  dalleQuality: 'standard' | 'hd';
+  dalleStyle: 'vivid' | 'natural';
+  // FLUX settings
+  fluxMode: FluxMode;
+  fluxGuidance: number;
+  fluxSteps: number;
+  fluxPromptUpsampling: boolean;
+  fluxRaw: boolean;
+  fluxOutputFormat: 'jpeg' | 'png' | 'webp';
+  // Stability settings
+  stabilityModel: StabilityModel;
+  stabilityCfg: number;
+  stabilitySteps: number;
+  stabilityNegativePrompt: string;
+  stabilityStylePreset: string;
+  // Ideogram settings
+  ideogramModel: IdeogramModel;
+  ideogramMagicPrompt: boolean;
+  ideogramStyleType: 'AUTO' | 'GENERAL' | 'REALISTIC' | 'DESIGN' | 'RENDER_3D' | 'ANIME';
+  ideogramNegativePrompt: string;
+  // Advanced settings
   lockBrandColors: boolean;
   backdrop?: 'Clean' | 'Gradient' | 'Real-world' | string;
   lighting?: 'Soft' | 'Hard' | 'Neon' | string;
   negative?: string;
   quality?: 'High detail' | 'Sharp' | 'Minimal noise' | string;
+  composition?: string;
+  camera?: string;
+  mood?: string;
+  colourPalette?: string;
+  finish?: string;
+  texture?: string;
 };
 
 export type VideoQuickProps = {
@@ -70,6 +137,7 @@ export type VideoQuickProps = {
   density?: 'Light (3–4)' | 'Medium (5–6)' | 'Fast (7–8)' | string;
   proof?: 'Social proof' | 'Feature highlight' | 'Before/After' | string;
   doNots?: string;
+  validated: boolean;
 };
 
 export type SettingsState = {
@@ -132,9 +200,19 @@ export type PictureResultMeta = {
   aspect: PicAspect;
   lockBrandColors: boolean;
   createdAt: string;
+  provider: PictureProvider;
+  mode: 'prompt' | 'image';
+  prompt?: string;
+  model?: string;
+  quality?: string;
+  outputFormat?: PictureOutputFormat;
+  guidance?: number;
+  steps?: number;
+  blend?: number;
+  safetyTolerance?: number;
 };
 
-export type PictureProvider = 'gpt' | 'openai';
+export type PictureProvider = 'flux' | 'stability' | 'openai' | 'ideogram';
 
 export type PictureRemixOptions = {
   mode?: 'prompt' | 'image';
@@ -147,14 +225,14 @@ export type GeneratedPictures =
   | {
       id: string;
       mode: 'prompt';
-      provider: Extract<PictureProvider, 'gpt'>;
-      prompts: PicturePrompt[];
+      provider: PictureProvider;
+      prompt: string;
       meta: PictureResultMeta;
     }
   | {
       id: string;
       mode: 'image';
-      provider: Extract<PictureProvider, 'openai'>;
+      provider: PictureProvider;
       assets: PictureAsset[];
       meta: PictureResultMeta & { prompt: string };
     };
@@ -167,16 +245,6 @@ export type GeneratedVideo = {
     text: string 
   }[];
   fullPrompt: string;
-};
-
-export type AiAttachment = {
-  id: string;
-  url: string;
-  name: string;
-  mime: string;
-  kind: 'image' | 'document';
-  extension: string;
-  size: number;
 };
 
 export type AiUIState = {

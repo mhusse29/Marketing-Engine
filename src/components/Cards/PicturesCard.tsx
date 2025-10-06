@@ -18,7 +18,7 @@ const STATUS_LABELS: Record<GridStepState, string> = {
 };
 
 const MODE_OPTIONS: Array<'prompt' | 'image'> = ['prompt', 'image'];
-const ASPECT_OPTIONS: PicAspect[] = ['1:1', '4:5', '16:9'];
+const ASPECT_OPTIONS: PicAspect[] = ['1:1', '16:9', '2:3', '3:2', '7:9', '9:7', '4:5'];
 const VERSION_OPTIONS = [1, 2, 3, 4];
 
 const ACTION_BUTTON =
@@ -27,22 +27,19 @@ const ACTION_BUTTON =
 const CONTROL_PILL =
   'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors';
 
-const formatIntent = (intent: string) => intent.charAt(0).toUpperCase() + intent.slice(1);
+const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
+  flux: 'FLUX Pro 1.1',
+  stability: 'Stable Diffusion 3.5',
+  openai: 'DALL·E 3',
+  ideogram: 'Ideogram v1',
+};
 
-const extractBasePrompt = (version: GeneratedPictures | undefined, mode: 'prompt' | 'image'): string => {
+const extractBasePrompt = (version: GeneratedPictures | undefined): string => {
   if (!version) return '';
-  if (mode === 'image') {
-    if (version.mode === 'image') {
-      return version.meta.prompt;
-    }
-    return version.prompts.map((prompt) => prompt.text).join('\n\n');
-  }
-
   if (version.mode === 'prompt') {
-    return version.prompts.map((prompt) => prompt.text).join('\n\n');
+    return version.prompt;
   }
-
-  return version.meta.prompt;
+  return version.meta.prompt ?? '';
 };
 
 async function downloadAsset(asset: PictureAsset, index: number) {
@@ -82,7 +79,7 @@ export function PicturesCard({
 }: PicturesCardProps) {
   const [isSaved, setIsSaved] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
-  const [copiedPrompts, setCopiedPrompts] = useState<number[]>([]);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [isRemixOpen, setIsRemixOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
@@ -95,7 +92,14 @@ export function PicturesCard({
   const [modeSelection, setModeSelection] = useState<'prompt' | 'image'>(versionPictures?.mode || 'prompt');
   const [aspectSelection, setAspectSelection] = useState<PicAspect>(versionPictures?.meta.aspect || '1:1');
   const [versionCount, setVersionCount] = useState(Math.max(1, totalVersions || 1));
-  const [remixDraft, setRemixDraft] = useState(extractBasePrompt(versionPictures, modeSelection));
+  const [remixDraft, setRemixDraft] = useState(extractBasePrompt(versionPictures));
+
+  const availableModes = useMemo<Array<'prompt' | 'image'>>(() => {
+    if (!versionPictures) {
+      return ['prompt'];
+    }
+    return versionPictures.mode === 'image' ? MODE_OPTIONS : ['prompt'];
+  }, [versionPictures]);
 
   const promptDirtyRef = useRef(false);
   const versionIdRef = useRef<string | undefined>(versionPictures?.id);
@@ -108,22 +112,23 @@ export function PicturesCard({
     setModeSelection(nextMode);
     setAspectSelection(versionPictures.meta.aspect);
     setVersionCount(Math.max(1, pictures.length || 1));
-    const basePrompt = extractBasePrompt(versionPictures, nextMode);
+    const basePrompt = extractBasePrompt(versionPictures);
     setRemixDraft(basePrompt);
     promptDirtyRef.current = false;
-    setCopiedPrompts([]);
+    setCopiedPrompt(false);
     setDownloadError('');
     setIsDownloading(false);
   }, [pictures.length, versionPictures]);
 
   useEffect(() => {
     if (!versionPictures || promptDirtyRef.current) return;
-    setRemixDraft(extractBasePrompt(versionPictures, modeSelection));
+    setRemixDraft(extractBasePrompt(versionPictures));
   }, [modeSelection, versionPictures]);
 
   const providerLabel = useMemo(() => {
-    if (!versionPictures) return null;
-    return versionPictures.provider === 'openai' ? 'OpenAI image renders' : 'GPT prompt pack';
+    if (!versionPictures) return '';
+    const base = PROVIDER_LABELS[versionPictures.provider] ?? versionPictures.provider;
+    return versionPictures.mode === 'image' ? `${base} renders` : `${base} prompt`;
   }, [versionPictures]);
 
   const createdAtLabel = useMemo(() => {
@@ -138,22 +143,38 @@ export function PicturesCard({
     }
   }, [versionPictures]);
 
-  const summaryItems = useMemo(
-    () => [
-      { label: 'Mode', value: modeSelection === 'image' ? 'Renders' : 'Prompts' },
-      { label: 'Aspect', value: aspectSelection },
-      { label: 'Style', value: versionPictures?.meta.style ?? '—' },
+  const promptText = useMemo(() => extractBasePrompt(versionPictures), [versionPictures]);
+
+  const summaryItems = useMemo(() => {
+    if (!versionPictures) {
+      return [] as Array<{ label: string; value: string }>;
+    }
+
+    const items: Array<{ label: string; value: string }> = [
+      { label: 'Provider', value: PROVIDER_LABELS[versionPictures.provider] ?? versionPictures.provider },
+      { label: 'Mode', value: versionPictures.mode === 'image' ? 'Images' : 'Prompt' },
+      { label: 'Aspect', value: versionPictures.meta.aspect },
+      { label: 'Style', value: versionPictures.meta.style },
       { label: 'Versions', value: versionCount.toString() },
       { label: 'Palette', value: brandLocked ? 'Brand locked' : 'Adaptive' },
-    ],
-    [aspectSelection, brandLocked, modeSelection, versionCount, versionPictures?.meta.style]
-  );
+    ];
 
-  const handleCopyPrompt = async (prompt: string, index: number) => {
+    if (versionPictures.meta.quality) {
+      items.push({ label: 'Quality', value: String(versionPictures.meta.quality) });
+    }
+
+    if (versionPictures.meta.model) {
+      items.push({ label: 'Model', value: String(versionPictures.meta.model) });
+    }
+
+    return items;
+  }, [brandLocked, versionCount, versionPictures]);
+
+  const handleCopyPrompt = async (prompt: string) => {
     await navigator.clipboard.writeText(prompt);
-    setCopiedPrompts((prev) => [...prev, index]);
+    setCopiedPrompt(true);
     window.setTimeout(() => {
-      setCopiedPrompts((prev) => prev.filter((i) => i !== index));
+      setCopiedPrompt(false);
     }, 1200);
   };
 
@@ -244,7 +265,7 @@ export function PicturesCard({
         <div className="rounded-[28px] border border-white/10 bg-white/[0.02] p-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
           <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs text-white/70">
             <div className="flex items-center gap-1">
-              {MODE_OPTIONS.map((mode) => (
+              {availableModes.map((mode) => (
                 <button
                   key={mode}
                   type="button"
@@ -256,7 +277,7 @@ export function PicturesCard({
                       : 'border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:text-white'
                   )}
                 >
-                  {mode === 'image' ? 'OpenAI renders' : 'Prompt only'}
+                  {mode === 'image' ? 'Images' : 'Prompt'}
                 </button>
               ))}
             </div>
@@ -332,28 +353,29 @@ export function PicturesCard({
 
           <div className="mt-5 grid gap-5 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <div className="space-y-4">
-              {modeSelection === 'prompt' && versionPictures?.mode === 'prompt' ? (
-                <div className="space-y-3">
-                  {versionPictures.prompts.map((prompt, index) => (
-                    <div key={prompt.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-sm font-medium text-white/75">
-                          <ImageIcon className="h-4 w-4" />
-                          Prompt {index + 1}
-                          <span className="text-white/45">• {formatIntent(prompt.intent)}</span>
-                        </div>
-                        <button
-                          onClick={() => handleCopyPrompt(prompt.text, index)}
-                          className="inline-flex items-center gap-1 text-xs text-white/60 transition-colors hover:text-white"
-                          type="button"
-                        >
-                          {copiedPrompts.includes(index) ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                          Copy
-                        </button>
-                      </div>
-                      <p className="mt-3 text-sm leading-relaxed text-white/70">{prompt.text}</p>
+              {modeSelection === 'prompt' && versionPictures ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium text-white/75">
+                      <ImageIcon className="h-4 w-4" />
+                      Prompt
                     </div>
-                  ))}
+                    <button
+                      onClick={() => handleCopyPrompt(promptText)}
+                      disabled={!promptText}
+                      className={cn(
+                        'inline-flex items-center gap-1 text-xs text-white/60 transition-colors hover:text-white',
+                        !promptText && 'cursor-not-allowed opacity-50 hover:text-white/60'
+                      )}
+                      type="button"
+                    >
+                      {copiedPrompt ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      Copy
+                    </button>
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/70">
+                    {promptText || 'Prompt will appear after generation.'}
+                  </p>
                 </div>
               ) : null}
 
@@ -434,7 +456,7 @@ export function PicturesCard({
                     <button
                       type="button"
                       onClick={() => {
-                        setRemixDraft(extractBasePrompt(versionPictures, modeSelection));
+                        setRemixDraft(extractBasePrompt(versionPictures));
                         promptDirtyRef.current = false;
                       }}
                       className="text-xs text-white/60 underline-offset-4 transition-colors hover:text-white"
@@ -469,10 +491,10 @@ export function PicturesCard({
               ) : (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 text-sm leading-relaxed text-white/65">
                   <span className="block text-[10px] font-semibold uppercase tracking-[0.24em] text-white/45">
-                    Render prompt
+                    Active prompt
                   </span>
                   <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-white/70">
-                    {extractBasePrompt(versionPictures, modeSelection) || 'Prompt will appear after generation.'}
+                    {promptText || 'Prompt will appear after generation.'}
                   </p>
                 </div>
               )}

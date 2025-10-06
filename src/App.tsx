@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import { LayoutShell } from './components/LayoutShell';
-import { SettingsPanel } from './components/SettingsDrawer/SettingsPanel';
-import { AiBox } from './components/AskAI/AiBox';
 import { Stepper } from './components/AskAI/Stepper';
 import ContentCard from './components/Cards/ContentCard';
 import { PicturesCard } from './components/Cards/PicturesCard';
@@ -13,10 +11,10 @@ import AppTopBar from './components/AppTopBar';
 import { TopBarPanels } from './components/TopBarPanels';
 import { useTopBarPanels } from './components/useTopBarPanels';
 import { MenuContent, MenuPictures, MenuVideo } from './components/AppMenuBar';
+import { BaduAssistant } from './components/BaduAssistant';
 
 import {
   loadSettings,
-  validateSettings,
   saveSettings,
 } from './store/settings';
 import {
@@ -24,6 +22,7 @@ import {
   generatePictures,
   generateVideo,
 } from './store/ai';
+import { getActivePicturesPrompt, MIN_PICTURE_PROMPT_LENGTH } from './store/picturesPrompts';
 import { useCardsStore } from './store/useCardsStore';
 import type {
   SettingsState,
@@ -34,9 +33,11 @@ import type {
   ContentVariantResult,
   ContentGenerationMeta,
   PictureRemixOptions,
+  PicturesQuickProps,
 } from './types';
 import type { GridStepState } from './state/ui';
-import { useContentAI } from './useContentAI';
+import { useContentAI, type ContentAttachmentPayload } from './useContentAI';
+import { revokeAttachmentUrl, withAttachmentData, clearAttachmentCache } from './lib/attachments';
 
 const clampVersionIndex = (index: number, total: number) => {
   if (total <= 0) {
@@ -45,18 +46,7 @@ const clampVersionIndex = (index: number, total: number) => {
   return Math.min(index, total - 1);
 };
 
-const setAiLiveState = (enabled: boolean) => {
-  if (typeof document === 'undefined') return;
-  const body = document.body;
-  if (enabled) {
-    if (!body.classList.contains('ai-live')) {
-      body.classList.add('ai-live', 'ai-just-enabled');
-      window.setTimeout(() => body.classList.remove('ai-just-enabled'), 950);
-    }
-  } else {
-    body.classList.remove('ai-live', 'ai-just-enabled', 'ai-generating');
-  }
-};
+// Removed setAiLiveState - no longer needed without AiBox
 
 const setAiGeneratingState = (generating: boolean) => {
   if (typeof document === 'undefined') return;
@@ -89,15 +79,38 @@ const PLATFORM_GATEWAY_LABELS: Record<Platform, string> = {
   youtube: 'YouTube',
 };
 
+const cloneAttachments = (attachments: AiAttachment[]): AiAttachment[] =>
+  attachments.map((item) => ({ ...item, dataUrl: item.dataUrl }));
+
+const attachmentsEqual = (a: AiAttachment[] = [], b: AiAttachment[] = []): boolean => {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return a.every((item, index) => {
+    const other = b[index];
+    if (!other) return false;
+    return (
+      item.id === other.id &&
+      item.url === other.url &&
+      item.mime === other.mime &&
+      item.name === other.name &&
+      item.kind === other.kind &&
+      item.size === other.size &&
+      item.dataUrl === other.dataUrl
+    );
+  });
+};
+
 function App() {
-  const [settings, setSettings] = useState<SettingsState>(() => loadSettings());
-  const [aiState, setAiState] = useState<AiUIState>(defaultAiState);
+  const initialSettings = useMemo(() => loadSettings(), []);
+  const [settings, setSettingsState] = useState<SettingsState>(initialSettings);
+  const [aiState, setAiState] = useState<AiUIState>(() => ({
+    ...defaultAiState,
+    brief: initialSettings.quickProps.content.brief,
+    uploads: cloneAttachments(initialSettings.quickProps.content.attachments ?? []),
+  }));
   const [currentVersions, setCurrentVersions] = useState({ content: 0, pictures: 0, video: 0 });
-  const [aiReadyHint, setAiReadyHint] = useState(false);
-  const wasValidRef = useRef(false);
-  const hintTimeoutRef = useRef<number | null>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
-  const isValid = validateSettings(settings);
 
   const {
     status: contentStatus,
@@ -120,6 +133,36 @@ function App() {
   const selectCard = useCardsStore((state) => state.select);
   const toggleHiddenCard = useCardsStore((state) => state.toggleHidden);
   const { open: panelOpen, toggle: togglePanel, close: closePanel } = useTopBarPanels();
+
+  const syncAiStateWithSettings = useCallback((nextSettings: SettingsState) => {
+    const nextBrief = nextSettings.quickProps.content.brief;
+    const nextAttachments = cloneAttachments(nextSettings.quickProps.content.attachments ?? []);
+
+    setAiState((prev) => {
+      const briefSame = prev.brief === nextBrief;
+      const uploadsSame = attachmentsEqual(prev.uploads, nextAttachments);
+      if (briefSame && uploadsSame) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        brief: nextBrief,
+        uploads: nextAttachments,
+      };
+    });
+  }, []);
+
+  const setSettings = useCallback(
+    (updater: SettingsState | ((prev: SettingsState) => SettingsState)) => {
+      setSettingsState((prev) => {
+        const next = typeof updater === 'function' ? (updater as (prev: SettingsState) => SettingsState)(prev) : updater;
+        syncAiStateWithSettings(next);
+        return next;
+      });
+    },
+    [syncAiStateWithSettings]
+  );
 
   useEffect(() => {
     saveSettings(settings);
@@ -166,10 +209,6 @@ function App() {
   }, [cardsOrder, cardsEnabled, selectedCard, selectCard, toggleHiddenCard]);
 
   useEffect(() => {
-    setAiState((prev) => ({ ...prev, locked: !isValid }));
-  }, [isValid]);
-
-  useEffect(() => {
     contentStatusRef.current = contentStatus;
   }, [contentStatus]);
 
@@ -205,37 +244,6 @@ function App() {
       };
     });
   }, [contentStatus, settings.cards.content]);
-
-  useEffect(() => {
-    if (isValid && !wasValidRef.current) {
-      wasValidRef.current = true;
-      setAiReadyHint(true);
-      const timeout = window.setTimeout(() => {
-        setAiReadyHint(false);
-        hintTimeoutRef.current = null;
-      }, 3200);
-      hintTimeoutRef.current = timeout;
-      document.getElementById('ai-box')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-
-    if (!isValid) {
-      wasValidRef.current = false;
-    }
-
-    return () => {
-      if (hintTimeoutRef.current !== null) {
-        window.clearTimeout(hintTimeoutRef.current);
-        hintTimeoutRef.current = null;
-      }
-    };
-  }, [isValid]);
-
-  useEffect(() => {
-    setAiLiveState(isValid);
-    return () => {
-      setAiLiveState(false);
-    };
-  }, [isValid]);
 
   useEffect(() => {
     setAiGeneratingState(aiState.generating);
@@ -357,17 +365,92 @@ function App() {
       check();
     });
 
-  const handleGenerate = async (brief: string, attachments: AiAttachment[]) => {
+  const prepareContentAttachments = useCallback(async (source?: AiAttachment[]) => {
+    const base = source ?? settings.quickProps.content.attachments ?? [];
+    const enriched = await Promise.all(base.map((item) => withAttachmentData(item)));
+    const prevAttachments = settings.quickProps.content.attachments ?? [];
+
+    if (!attachmentsEqual(enriched, prevAttachments)) {
+      setSettings((prev) => ({
+        ...prev,
+        quickProps: {
+          ...prev.quickProps,
+          content: {
+            ...prev.quickProps.content,
+            attachments: cloneAttachments(enriched),
+          },
+        },
+      }));
+    }
+
+    const payloadSources = enriched
+      .map((item) => {
+        const [, base64 = ''] = (item.dataUrl ?? '').split(',');
+        if (!base64) return null;
+        return {
+          name: item.name,
+          mime: item.mime,
+          data: base64,
+          kind: item.kind,
+          size: item.size,
+        };
+      })
+      .filter(
+        (item): item is {
+          name: string;
+          mime: string;
+          data: string;
+          kind: 'image' | 'document';
+          size: number;
+        } => item !== null
+      );
+
+    const payload: ContentAttachmentPayload[] = payloadSources.map((item) => ({
+      name: item.name,
+      mime: item.mime,
+      data: item.data,
+      kind: item.kind,
+      size: item.size,
+    }));
+
+    return { enriched, payload };
+  }, [setSettings, settings.quickProps.content.attachments]);
+
+  const preparePictureAttachments = useCallback(async () => {
+    return [];
+  }, []);
+
+  const handleGenerate = async (requestBrief: string, requestAttachments: AiAttachment[]) => {
     const steps = cardsOrder.filter((card) => cardsEnabled[card]);
 
     generationAbortRef.current?.abort();
     const controller = new AbortController();
     generationAbortRef.current = controller;
 
-    const attachmentSnapshot = attachments.map((item) => ({ ...item }));
-    const imageUploads = attachmentSnapshot
+    const trimmedRequestBrief = typeof requestBrief === 'string' ? requestBrief.trim() : '';
+    const candidateBrief = trimmedRequestBrief || settings.quickProps.content.brief;
+    const contentBrief = candidateBrief.trim();
+    if (!contentBrief) {
+      console.warn('Cannot generate without a brief.');
+      return;
+    }
+    const { enriched: enrichedAttachments, payload: attachmentPayload } = await prepareContentAttachments(
+      Array.isArray(requestAttachments) ? requestAttachments : undefined
+    );
+
+    const attachmentSnapshot = cloneAttachments(enrichedAttachments);
+    const pictureAttachmentSnapshot: AiAttachment[] = await preparePictureAttachments();
+    const pictureUploads = pictureAttachmentSnapshot
       .filter((item) => item.kind === 'image')
-      .map((item) => item.url);
+      .map((item) => item.dataUrl ?? item.url)
+      .filter((url) => typeof url === 'string' && url.length > 0);
+    const picturePromptSeed = getActivePicturesPrompt(settings.quickProps.pictures);
+    const trimmedPicturePrompt = picturePromptSeed.trim();
+    const pictureProviderKey = settings.quickProps.pictures.imageProvider;
+    const resolvedPictureProvider = pictureProviderKey === 'auto' ? null : pictureProviderKey;
+    const picturesBrief = trimmedPicturePrompt || contentBrief;
+    const isPicturePromptReady = trimmedPicturePrompt.length >= MIN_PICTURE_PROMPT_LENGTH;
+    const isPictureValidated = settings.quickProps.pictures.validated && isPicturePromptReady;
 
     if (settings.cards.content) {
       setContentVariants([]);
@@ -376,7 +459,7 @@ function App() {
 
     setAiState((prev) => ({
       ...prev,
-      brief,
+      brief: contentBrief,
       uploads: attachmentSnapshot,
       generating: true,
       steps,
@@ -392,7 +475,7 @@ function App() {
         ...contentOptions,
         copyLength: contentOptions.copyLength ?? 'Standard',
       };
-      runContent(brief, options, settings.versions ?? 2);
+      runContent(contentBrief, options, settings.versions ?? 2, undefined, attachmentPayload);
     }
 
     const tasks: Promise<void>[] = [];
@@ -416,6 +499,17 @@ function App() {
     }
 
     if (settings.cards.pictures) {
+      if (!resolvedPictureProvider || !isPicturePromptReady) {
+        setAiState((prev) => ({
+          ...prev,
+          stepStatus: { ...prev.stepStatus, pictures: 'error' },
+        }));
+      } else if (!isPictureValidated) {
+        setAiState((prev) => ({
+          ...prev,
+          stepStatus: { ...prev.stepStatus, pictures: 'error' },
+        }));
+      } else {
       tasks.push(
         (async () => {
           try {
@@ -435,10 +529,10 @@ function App() {
 
             const versions = await generatePictures({
               versions: settings.versions ?? 1,
-              brief,
+              brief: picturesBrief,
               quickProps: settings.quickProps.pictures,
-              uploads: imageUploads,
-              attachments: attachmentSnapshot,
+              uploads: pictureUploads,
+              attachments: pictureAttachmentSnapshot,
               signal: controller.signal,
             });
 
@@ -463,6 +557,7 @@ function App() {
           }
         })()
       );
+      }
     }
 
     if (settings.cards.video) {
@@ -548,14 +643,13 @@ function App() {
     }
   };
 
-  const handleCancelGeneration = () => {
-    if (!aiState.generating) return;
-    generationAbortRef.current?.abort();
-  };
-
-  const handleClear = () => {
+  const handleNewCampaign = () => {
+    closePanel();
+    // Clear generation state
     generationAbortRef.current?.abort();
     generationAbortRef.current = null;
+    aiState.uploads.forEach((item) => revokeAttachmentUrl(item));
+    clearAttachmentCache();
     setAiState((prev) => ({
       ...prev,
       brief: '',
@@ -564,13 +658,22 @@ function App() {
       steps: [],
       stepStatus: {},
     }));
+    setSettings((prev) => ({
+      ...prev,
+      quickProps: {
+        ...prev.quickProps,
+        content: {
+          ...prev.quickProps.content,
+          brief: '',
+          attachments: [],
+          validated: false,
+          validatedAt: null,
+        },
+      },
+    }));
     setContentVariants([]);
     setContentMeta(null);
-  };
-
-  const handleNewCampaign = () => {
-    closePanel();
-    handleClear();
+    setCurrentVersions({ content: 0, pictures: 0, video: 0 });
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -584,8 +687,7 @@ function App() {
 
   const handleOpenSettingsPanel = () => {
     closePanel();
-    if (typeof document === 'undefined') return;
-    document.getElementById('settings-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Settings panel removed - this function kept for compatibility
   };
 
   const handleHelp = () => {
@@ -620,7 +722,14 @@ function App() {
           ...contentOptions,
           copyLength: contentOptions.copyLength ?? 'Standard',
         };
-        regenerateContent(briefText, options, settings.versions ?? 2, 'try a new hook and angle');
+        const { payload: attachmentPayload, enriched } = await prepareContentAttachments();
+        if (!attachmentsEqual(enriched, aiState.uploads)) {
+          setAiState((prev) => ({
+            ...prev,
+            uploads: cloneAttachments(enriched),
+          }));
+        }
+        regenerateContent(briefText, options, settings.versions ?? 2, 'try a new hook and angle', attachmentPayload);
       }
       return;
     }
@@ -634,26 +743,35 @@ function App() {
 
     if (type === 'pictures') {
       try {
-        const imageUploads = aiState.uploads
+        const baseQuickProps = settings.quickProps.pictures;
+        const pictureAttachments: AiAttachment[] = await preparePictureAttachments();
+        const imageUploads = pictureAttachments
           .filter((item) => item.kind === 'image')
-          .map((item) => item.url);
+          .map((item) => item.dataUrl ?? item.url)
+          .filter((url) => typeof url === 'string' && url.length > 0);
 
-        const quickProps = {
-          ...settings.quickProps.pictures,
-          ...(pictureOptions?.aspect ? { aspect: pictureOptions.aspect } : {}),
-          ...(pictureOptions?.mode
-            ? { mode: pictureOptions.mode === 'image' ? 'images' : 'prompt' }
-            : {}),
+        const quickProps: PicturesQuickProps = {
+          ...baseQuickProps,
         };
+
+        if (pictureOptions?.aspect) {
+          quickProps.aspect = pictureOptions.aspect;
+        }
+        if (pictureOptions?.mode) {
+          quickProps.mode = pictureOptions.mode === 'image' ? 'images' : 'prompt';
+        }
 
         const versionCount = Math.max(1, pictureOptions?.versionCount ?? settings.versions ?? 1);
 
+        const picturePrompt = getActivePicturesPrompt(quickProps);
+        const briefInput = pictureOptions?.prompt?.trim() || picturePrompt || aiState.brief;
+
         const versions = await generatePictures({
           versions: versionCount,
-          brief: aiState.brief,
+          brief: briefInput,
           quickProps,
           uploads: imageUploads,
-          attachments: aiState.uploads,
+          attachments: pictureAttachments,
           remixPrompt: pictureOptions?.prompt,
         });
 
@@ -795,10 +913,15 @@ function App() {
       active={activeTab}
       enabled={cardsEnabled}
       copyLength={settings.quickProps.content.copyLength}
+      contentValidated={settings.quickProps.content.validated && settings.platforms.length > 0}
+      picturesValidated={settings.quickProps.pictures.validated}
+      videoValidated={settings.quickProps.video.validated}
+      isGenerating={aiState.generating}
       onChange={(tab) => {
         selectCard(tab);
         togglePanel(tab);
       }}
+      onGenerate={() => handleGenerate(settings.quickProps.content.brief, aiState.uploads)}
       onNewCampaign={handleNewCampaign}
       onSave={handleSaveCampaign}
       onOpenSettings={handleOpenSettingsPanel}
@@ -817,45 +940,7 @@ function App() {
         renderVideo={<MenuVideo settings={settings} onSettingsChange={setSettings} />}
       />
 
-      <div className="main-stage">
-        <div className="mx-auto max-w-[1400px] grid gap-10 px-6 lg:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="flex flex-col items-center gap-4">
-            <AnimatePresence>
-              {aiReadyHint && (
-                <motion.div
-                  key="ai-ready"
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                  className="w-full max-w-[720px] rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200 shadow-[0_8px_24px_rgba(16,185,129,0.25)]"
-                >
-                  Ask AI is ready
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="w-full max-w-[720px]">
-              <AiBox
-                aiState={aiState}
-                settings={settings}
-                onGenerate={handleGenerate}
-                onClear={handleClear}
-                onCancel={handleCancelGeneration}
-                highlight={aiReadyHint}
-                contentStatus={contentStatus}
-                contentError={contentError}
-              />
-            </div>
-          </div>
-
-          <div className="w-full lg:justify-self-end">
-            <div id="settings-panel" className="w-full lg:w-[420px] xl:w-[440px]">
-              <SettingsPanel settings={settings} onSettingsChange={setSettings} />
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Main content area - now empty, cards will appear after generation */}
 
       <AnimatePresence>
         {aiState.generating && (
@@ -884,6 +969,9 @@ function App() {
           ))}
         </section>
       )}
+
+      {/* Badu Assistant - Floating Chat */}
+      <BaduAssistant />
     </>
   );
 

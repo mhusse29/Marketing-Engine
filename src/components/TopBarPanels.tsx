@@ -102,6 +102,7 @@ export function TopBarPanels({ open, close, renderContent, renderPictures, rende
   }
 
   const panelTitle = open ? PANEL_TITLES[open] : '';
+  const showHeader = Boolean(panelTitle);
 
   return createPortal(
     <>
@@ -121,25 +122,27 @@ export function TopBarPanels({ open, close, renderContent, renderPictures, rende
         )}
         role="dialog"
         aria-modal="true"
-        aria-label={panelTitle}
+        aria-label={panelTitle || 'panel'}
       >
-        <header className="cta-head">
-          <div className="text-sm">{panelTitle}</div>
-          <button
-            type="button"
-            onClick={close}
-            className="rounded-md p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--focus)]"
-            aria-label="Close quick settings"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </header>
+        {showHeader ? (
+          <header className="cta-head">
+            <div className="text-sm">{panelTitle}</div>
+            <button
+              type="button"
+              onClick={close}
+              className="rounded-md p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--focus)]"
+              aria-label="Close quick settings"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </header>
+        ) : null}
 
         <div ref={scrollRef} className="cta-scroll">
           {content}
         </div>
 
-        <footer className="cta-foot">Press Esc to close</footer>
+        <footer className="cta-foot" />
       </div>
     </>,
     mountNode

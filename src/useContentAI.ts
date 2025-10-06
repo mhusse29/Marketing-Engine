@@ -19,6 +19,14 @@ type ContentAIResult = {
 
 type ContentAIOptions = Record<string, unknown>
 
+type ContentAttachmentPayload = {
+  name: string
+  mime: string
+  data: string
+  kind?: string
+  size?: number
+}
+
 type ExtraRunOptions = {
   regen?: boolean
   regenHint?: string
@@ -98,7 +106,8 @@ export function useContentAI() {
     brief: string,
     options: ContentAIOptions,
     versions = 2,
-    extra: ExtraRunOptions = {}
+    extra: ExtraRunOptions = {},
+    attachments: ContentAttachmentPayload[] = []
   ) {
     setStatus('queued')
     setResult(null)
@@ -108,6 +117,7 @@ export function useContentAI() {
       brief,
       options,
       versions,
+      attachments,
       regen: Boolean(extra.regen),
       regenHint: extra.regenHint,
       nonce: Date.now(),
@@ -173,8 +183,11 @@ export function useContentAI() {
     brief: string,
     options: ContentAIOptions,
     versions = 2,
-    hint?: string
-  ) => run(brief, options, versions, { regen: true, regenHint: hint })
+    hint?: string,
+    attachments: ContentAttachmentPayload[] = []
+  ) => run(brief, options, versions, { regen: true, regenHint: hint }, attachments)
 
   return { status, result, error, run, regenerate, runId: currentRunId }
 }
+
+export type { ContentAttachmentPayload }

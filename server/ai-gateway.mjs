@@ -335,6 +335,11 @@ app.use(express.json({ limit: '1mb' }))
 const MOCK_OPENAI = process.env.MOCK_OPENAI === '1'
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null
 
+// Image provider API keys
+const FLUX_API_KEY = process.env.FLUX_API_KEY || null
+const STABILITY_API_KEY = process.env.STABILITY_API_KEY || null
+const IDEOGRAM_API_KEY = process.env.IDEOGRAM_API_KEY || null
+
 const PRIMARY = 'openai'
 // Force OpenAI models to avoid Anthropic model conflicts
 const OPENAI_PRIMARY_MODEL = 'gpt-4o-mini'
@@ -683,15 +688,49 @@ app.get('/health', (req, res) => {
     fallbackModel: OPENAI_FALLBACK_MODEL,
     hasAnthropic: false,
     hasOpenAI: !!process.env.OPENAI_API_KEY,
+    imageProviders: {
+      openai: !!openai,
+      flux: !!FLUX_API_KEY,
+      stability: !!STABILITY_API_KEY,
+      ideogram: !!IDEOGRAM_API_KEY,
+    },
   })
 })
 
+// Multi-provider image generation endpoint
 app.post('/v1/images/generate', async (req, res) => {
-  const prompt = req.body?.prompt
-  const aspect = req.body?.aspect || '1:1'
-  const countInput = Number(req.body?.count ?? 1)
-  const count = Math.max(1, Math.min(Number.isFinite(countInput) ? Math.floor(countInput) : 1, 1))
-  const dims = IMAGE_ASPECT_SPECS[aspect] || IMAGE_ASPECT_SPECS['1:1']
+  const {
+    prompt,
+    provider = 'openai',
+    aspect = '1:1',
+    count = 1,
+    // DALL-E specific
+    dalleQuality = 'standard',
+    dalleStyle = 'vivid',
+    // FLUX specific
+    fluxMode = 'standard',
+    fluxGuidance = 3,
+    fluxSteps = 40,
+    fluxSafetyTolerance = 2,
+    fluxPromptUpsampling = false,
+    fluxRaw = false,
+    fluxOutputFormat = 'jpeg',
+    fluxSeed,
+    // Stability specific
+    stabilityModel = 'large',
+    stabilityCfg = 7,
+    stabilitySteps = 40,
+    stabilityNegativePrompt = '',
+    stabilityStylePreset = '',
+    stabilityOutputFormat = 'png',
+    stabilitySeed,
+    // Ideogram specific
+    ideogramModel = 'v2',
+    ideogramMagicPrompt = true,
+    ideogramStyleType = 'AUTO',
+    ideogramNegativePrompt = '',
+    ideogramSeed,
+  } = req.body
 
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
     return res.status(400).json({ error: 'missing_prompt' })
@@ -701,35 +740,302 @@ app.post('/v1/images/generate', async (req, res) => {
     return res.json({ assets: mockImageAssets({ prompt, aspect, count }) })
   }
 
-  if (!openai) {
-    return res.status(503).json({ error: 'openai_not_configured' })
-  }
-
   try {
-    const response = await openai.images.generate({
-      model: 'dall-e-3',
-      prompt,
-      n: count,
-      size: dims.size,
-    })
+    let assets = []
 
-    const assets = (response?.data || [])
-      .map((item) => assetFromOpenAI(item, dims, prompt))
-      .filter(Boolean)
+    switch (provider) {
+      case 'flux':
+        assets = await generateFluxImage({
+          prompt,
+          aspect,
+          mode: fluxMode,
+          guidance: fluxGuidance,
+          steps: fluxSteps,
+          safetyTolerance: fluxSafetyTolerance,
+          promptUpsampling: fluxPromptUpsampling,
+          raw: fluxRaw,
+          outputFormat: fluxOutputFormat,
+          seed: fluxSeed,
+        })
+        break
 
-    if (!assets.length) {
-      return res.status(502).json({ error: 'openai_image_empty' })
+      case 'stability':
+        assets = await generateStabilityImage({
+          prompt,
+          aspect,
+          model: stabilityModel,
+          cfg: stabilityCfg,
+          steps: stabilitySteps,
+          negativePrompt: stabilityNegativePrompt,
+          stylePreset: stabilityStylePreset,
+          outputFormat: stabilityOutputFormat,
+          seed: stabilitySeed,
+        })
+        break
+
+      case 'ideogram':
+        assets = await generateIdeogramImage({
+          prompt,
+          aspect,
+          model: ideogramModel,
+          magicPrompt: ideogramMagicPrompt,
+          styleType: ideogramStyleType,
+          negativePrompt: ideogramNegativePrompt,
+          seed: ideogramSeed,
+        })
+        break
+
+      case 'openai':
+      default:
+        assets = await generateOpenAIImage({
+          prompt,
+          aspect,
+          count,
+          quality: dalleQuality,
+          style: dalleStyle,
+        })
+        break
+    }
+
+    if (!assets || !assets.length) {
+      return res.status(502).json({ error: `${provider}_image_empty` })
     }
 
     res.json({ assets })
   } catch (error) {
-    console.error('[images] openai generation failed', error)
+    console.error(`[images] ${provider} generation failed`, error)
     res.status(502).json({
-      error: 'openai_image_error',
+      error: `${provider}_image_error`,
       message: error?.message || 'unknown_error',
     })
   }
 })
+
+// DALL-E 3 (OpenAI) image generation
+async function generateOpenAIImage({ prompt, aspect, count, quality, style }) {
+  if (!openai) {
+    throw new Error('openai_not_configured')
+  }
+
+  const dims = IMAGE_ASPECT_SPECS[aspect] || IMAGE_ASPECT_SPECS['1:1']
+  const response = await openai.images.generate({
+    model: 'dall-e-3',
+    prompt,
+    n: count,
+    size: dims.size,
+    quality: quality === 'hd' ? 'hd' : 'standard',
+    style: style === 'natural' ? 'natural' : 'vivid',
+  })
+
+  return (response?.data || [])
+    .map((item) => assetFromOpenAI(item, dims, prompt))
+    .filter(Boolean)
+}
+
+// FLUX Pro 1.1 image generation (Black Forest Labs)
+async function generateFluxImage({ prompt, aspect, mode, guidance, steps, safetyTolerance, promptUpsampling, raw, outputFormat, seed }) {
+  if (!FLUX_API_KEY) {
+    throw new Error('flux_not_configured')
+  }
+
+  const dims = IMAGE_ASPECT_SPECS[aspect] || IMAGE_ASPECT_SPECS['1:1']
+  const endpoint = mode === 'ultra' 
+    ? 'https://api.bfl.ml/v1/flux-pro-1.1-ultra'
+    : 'https://api.bfl.ml/v1/flux-pro-1.1'
+
+  const payload = {
+    prompt,
+    width: dims.width,
+    height: dims.height,
+    prompt_upsampling: Boolean(promptUpsampling),
+    safety_tolerance: safetyTolerance,
+    raw: Boolean(raw),
+    output_format: outputFormat || 'jpeg',
+    ...(seed && { seed: Number(seed) }),
+  }
+
+  if (mode !== 'ultra') {
+    payload.guidance = guidance
+    payload.steps = steps
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Key': FLUX_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`FLUX API error: ${errorText}`)
+  }
+
+  const data = await response.json()
+  const resultId = data.id
+
+  // Poll for result
+  let result = null
+  for (let i = 0; i < 60; i++) {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    const resultResponse = await fetch(`https://api.bfl.ml/v1/get_result?id=${resultId}`, {
+      headers: { 'X-Key': FLUX_API_KEY },
+    })
+    
+    if (resultResponse.ok) {
+      result = await resultResponse.json()
+      if (result.status === 'Ready') break
+    }
+  }
+
+  if (!result || result.status !== 'Ready') {
+    throw new Error('FLUX generation timeout')
+  }
+
+  return [{
+    id: id(),
+    url: result.sample || result.result?.sample,
+    thumbUrl: result.sample || result.result?.sample,
+    width: dims.width,
+    height: dims.height,
+    mimeType: 'image/jpeg',
+    prompt,
+    seed: String(seed || ''),
+  }]
+}
+
+// Stability AI (SD 3.5) image generation
+async function generateStabilityImage({ prompt, aspect, model, cfg, steps, negativePrompt, stylePreset, outputFormat, seed }) {
+  if (!STABILITY_API_KEY) {
+    throw new Error('stability_not_configured')
+  }
+
+  const dims = IMAGE_ASPECT_SPECS[aspect] || IMAGE_ASPECT_SPECS['1:1']
+  
+  // Map model names to Stability API endpoints
+  const modelMap = {
+    'large': 'sd3.5-large',
+    'large-turbo': 'sd3.5-large-turbo',
+    'medium': 'sd3.5-medium',
+  }
+  const stabilityModel = modelMap[model] || 'sd3.5-large'
+
+  const formData = new FormData()
+  formData.append('prompt', prompt)
+  formData.append('model', stabilityModel)
+  formData.append('width', dims.width.toString())
+  formData.append('height', dims.height.toString())
+  formData.append('cfg_scale', cfg.toString())
+  formData.append('steps', steps.toString())
+  formData.append('output_format', outputFormat)
+  if (negativePrompt && negativePrompt.trim()) {
+    formData.append('negative_prompt', negativePrompt.trim())
+  }
+  if (stylePreset && stylePreset.trim()) {
+    formData.append('style_preset', stylePreset.trim())
+  }
+  if (seed) formData.append('seed', seed.toString())
+
+  const response = await fetch('https://api.stability.ai/v2beta/stable-image/generate/sd3', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${STABILITY_API_KEY}`,
+      'Accept': 'application/json',
+    },
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Stability API error: ${errorText}`)
+  }
+
+  const data = await response.json()
+  const imageB64 = data.image || (data.artifacts && data.artifacts[0]?.base64)
+
+  if (!imageB64) {
+    throw new Error('Stability returned no image')
+  }
+
+  return [{
+    id: id(),
+    url: `data:image/${outputFormat};base64,${imageB64}`,
+    thumbUrl: `data:image/${outputFormat};base64,${imageB64}`,
+    width: dims.width,
+    height: dims.height,
+    mimeType: `image/${outputFormat}`,
+    prompt,
+    seed: String(seed || data.seed || ''),
+  }]
+}
+
+// Ideogram AI image generation
+async function generateIdeogramImage({ prompt, aspect, model, magicPrompt, styleType, negativePrompt, seed }) {
+  if (!IDEOGRAM_API_KEY) {
+    throw new Error('ideogram_not_configured')
+  }
+
+  const dims = IMAGE_ASPECT_SPECS[aspect] || IMAGE_ASPECT_SPECS['1:1']
+  
+  // Map aspect ratios to Ideogram format
+  const aspectMap = {
+    '1:1': 'ASPECT_1_1',
+    '4:5': 'ASPECT_2_3', // Closest match
+    '16:9': 'ASPECT_16_9',
+    '2:3': 'ASPECT_2_3',
+    '3:2': 'ASPECT_3_2',
+    '7:9': 'ASPECT_9_16', // Closest match
+    '9:7': 'ASPECT_16_9', // Closest match
+  }
+  const ideogramAspect = aspectMap[aspect] || 'ASPECT_1_1'
+  
+  const payload = {
+    image_request: {
+      prompt,
+      model: model === 'v2' ? 'V_2' : (model === 'v1' ? 'V_1' : 'V_2'),
+      magic_prompt_option: magicPrompt ? 'AUTO' : 'OFF',
+      aspect_ratio: ideogramAspect,
+      ...(styleType && styleType !== 'AUTO' && { style_type: styleType }),
+      ...(negativePrompt && negativePrompt.trim() && { negative_prompt: negativePrompt.trim() }),
+      ...(seed && { seed: Number(seed) }),
+    },
+  }
+
+  const response = await fetch('https://api.ideogram.ai/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Api-Key': IDEOGRAM_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Ideogram API error: ${errorText}`)
+  }
+
+  const data = await response.json()
+  const imageData = data.data && data.data[0]
+
+  if (!imageData || !imageData.url) {
+    throw new Error('Ideogram returned no image')
+  }
+
+  return [{
+    id: id(),
+    url: imageData.url,
+    thumbUrl: imageData.url,
+    width: dims.width,
+    height: dims.height,
+    mimeType: 'image/jpeg',
+    prompt: imageData.prompt || prompt,
+    seed: String(seed || imageData.seed || ''),
+  }]
+}
 
 app.post('/v1/generate', async (req, res) => {
   if (!req.body?.brief || !req.body?.options) {
@@ -788,6 +1094,94 @@ function eventsHandler(req, res) {
     res.end()
   })
 }
+
+// Badu chat endpoint
+app.post('/v1/chat', async (req, res) => {
+  const { message, history = [], attachments = [] } = req.body;
+  
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({ error: 'Message required' });
+  }
+
+  if (!openai) {
+    return res.status(503).json({ error: 'OpenAI not configured' });
+  }
+
+  try {
+    // Add attachment context if any files were sent
+    let contextMessage = message;
+    if (attachments && attachments.length > 0) {
+      const fileList = attachments.map(f => f.name).join(', ');
+      contextMessage = `${message}\n\n[User attached ${attachments.length} file(s): ${fileList}]`;
+    }
+    const messages = [
+      {
+        role: 'system',
+        content: `You are BADU — the AI creative partner from SINAIQ, a friendly and always-on co-pilot for marketing teams.
+
+Your Personality:
+- Part strategist, part storyteller, part design wizard
+- Warm, encouraging, and inspiring (use emojis occasionally: ✨🎯💡🎨🚀)
+- Professional yet conversational — like a senior creative teammate
+- Make marketing feel inspiring, not exhausting
+
+Your Expertise:
+🎯 Media Planning: Help map campaigns, audiences, channels with data-backed recommendations
+💡 Creative Generation: Write copy, brainstorm ideas, adapt to brand voice
+🎨 Visual Content: Generate images, graphics, mockups
+🎥 Video Creation: Storyboards and short-form videos
+📊 Optimization: Track performance, suggest improvements
+📦 Exports: Pitch decks, social packs, reports
+
+SINAIQ Platform (what you help with):
+1. Content Panel - Marketing copy for Facebook, Instagram, TikTok, LinkedIn, X, YouTube
+2. Pictures Panel - Image generation (DALL-E, FLUX, Stability AI, Ideogram)
+3. Video Panel - Video content creation
+
+Key Workflow:
+- Users fill out their brief → Validate settings → Generate button activates
+- You guide them through the platform with clear, actionable steps
+
+Response Style:
+- Keep under 80 words unless asked for detail
+- Use "→" for step-by-step flows
+- Format with markdown: **bold text**, ## Headlines, ### Subheadings
+- Use bullet points (• or -) for lists
+- Create comparison tables when comparing options
+- End with encouragement or next steps
+- When users are stuck: "Let's tackle this together 💪"
+
+Formatting Examples:
+## Main Topic
+**Bold important terms** for emphasis
+• Bullet points for key items
+- Alternative bullet style
+→ Arrow for workflows
+
+Remember: You're here to make their marketing life smoother, smarter, and way more fun. Turn strategy into stories, stories into success. 🌟`
+      },
+      ...history.slice(-6).map(msg => ({
+        role: msg.role,
+        content: msg.content
+      })),
+      { role: 'user', content: contextMessage }
+    ];
+
+    const completion = await openai.chat.completions.create({
+      model: OPENAI_PRIMARY_MODEL,
+      messages,
+      temperature: 0.7,
+      max_tokens: 300,
+    });
+
+    const reply = completion.choices[0]?.message?.content || 'Sorry, I couldn\'t process that.';
+
+    res.json({ reply });
+  } catch (error) {
+    console.error('[Badu] Error:', error.message);
+    res.status(500).json({ error: 'Failed to generate response' });
+  }
+});
 
 app.get('/events', eventsHandler)
 app.get('/ai/events', eventsHandler)
