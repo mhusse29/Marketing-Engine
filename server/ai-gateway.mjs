@@ -1013,6 +1013,15 @@ async function generateIdeogramImage({ prompt, aspect, model, magicPrompt, style
 
   const dims = IMAGE_ASPECT_SPECS[aspect] || IMAGE_ASPECT_SPECS['1:1']
   
+  console.log('[Ideogram] Generating with settings:', {
+    model,
+    magicPrompt,
+    styleType,
+    negativePrompt: negativePrompt ? `"${negativePrompt.slice(0, 50)}..."` : 'none',
+    aspect,
+    dims
+  });
+  
   // Map aspect ratios to Ideogram format
   const aspectMap = {
     '1:1': 'ASPECT_1_1',
