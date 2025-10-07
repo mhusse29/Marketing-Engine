@@ -18,45 +18,87 @@ const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
 };
 
 async function downloadAsset(asset: PictureAsset, index: number) {
+  console.log('[Download] Starting download for:', asset.url);
+  
   try {
-    // Start download
-  const response = await fetch(asset.url);
+    // Try direct download first (works for same-origin and CORS-enabled URLs)
+    const response = await fetch(asset.url, {
+      mode: 'cors',
+      credentials: 'omit',
+    });
+    
+    console.log('[Download] Fetch response status:', response.status);
+    
   if (!response.ok) {
-    throw new Error(`Download failed with status ${response.status}`);
-  }
+      throw new Error(`Fetch failed with status ${response.status}`);
+    }
 
-    // Get filename from Content-Disposition or fallback
-    let filename = `generated-image-${index + 1}.png`;
+    // Get filename
+    let filename = `generated-image-${index + 1}`;
     const disposition = response.headers.get('content-disposition');
     if (disposition && disposition.includes('filename=')) {
       const filenameMatch = disposition.match(/filename=["']?([^"']+)["']?/);
       if (filenameMatch?.[1]) {
-        filename = filenameMatch[1];
+        filename = filenameMatch[1].replace(/\.[^.]+$/, ''); // Remove extension
       }
     }
 
-    // Get content type or fallback to png
+    // Get extension from content-type
     const contentType = response.headers.get('content-type') || 'image/png';
-    const ext = contentType.split('/')[1] || 'png';
-    if (!filename.endsWith(`.${ext}`)) {
-      filename = `${filename}.${ext}`;
-    }
+    let ext = 'png';
+    if (contentType.includes('jpeg') || contentType.includes('jpg')) ext = 'jpg';
+    else if (contentType.includes('webp')) ext = 'webp';
+    else if (contentType.includes('png')) ext = 'png';
 
-    // Create and trigger download
+    const fullFilename = `${filename}.${ext}`;
+    console.log('[Download] Using filename:', fullFilename);
+
+    // Create blob and download
   const blob = await response.blob();
+    console.log('[Download] Blob created, size:', blob.size, 'type:', blob.type);
+    
   const blobUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = blobUrl;
-    link.download = filename;
+    link.download = fullFilename;
+    link.style.display = 'none';
+    
   document.body.appendChild(link);
   link.click();
+    
+    // Cleanup
+    setTimeout(() => {
   document.body.removeChild(link);
   URL.revokeObjectURL(blobUrl);
+      console.log('[Download] Cleanup complete');
+    }, 100);
 
     return true;
   } catch (error) {
-    console.error('Download failed:', error);
-    throw error;
+    console.error('[Download] Fetch failed, trying fallback method:', error);
+    
+    // Fallback: Open in new tab (browser will handle download)
+    try {
+      const link = document.createElement('a');
+      link.href = asset.url;
+      link.download = `generated-image-${index + 1}.png`;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      setTimeout(() => {
+        document.body.removeChild(link);
+      }, 100);
+      
+      console.log('[Download] Fallback method executed');
+      return true;
+    } catch (fallbackError) {
+      console.error('[Download] Fallback also failed:', fallbackError);
+      throw fallbackError;
+    }
   }
 }
 
