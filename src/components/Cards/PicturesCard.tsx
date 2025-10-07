@@ -18,19 +18,46 @@ const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
 };
 
 async function downloadAsset(asset: PictureAsset, index: number) {
-  const response = await fetch(asset.url);
-  if (!response.ok) {
-    throw new Error(`Download failed with status ${response.status}`);
+  try {
+    // Start download
+    const response = await fetch(asset.url);
+    if (!response.ok) {
+      throw new Error(`Download failed with status ${response.status}`);
+    }
+
+    // Get filename from Content-Disposition or fallback
+    let filename = `generated-image-${index + 1}.png`;
+    const disposition = response.headers.get('content-disposition');
+    if (disposition && disposition.includes('filename=')) {
+      const filenameMatch = disposition.match(/filename=["']?([^"']+)["']?/);
+      if (filenameMatch?.[1]) {
+        filename = filenameMatch[1];
+      }
+    }
+
+    // Get content type or fallback to png
+    const contentType = response.headers.get('content-type') || 'image/png';
+    const ext = contentType.split('/')[1] || 'png';
+    if (!filename.endsWith(`.${ext}`)) {
+      filename = `${filename}.${ext}`;
+    }
+
+    // Create and trigger download
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+
+    return true;
+  } catch (error) {
+    console.error('Download failed:', error);
+    throw error;
   }
-  const blob = await response.blob();
-  const blobUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = blobUrl;
-  link.download = `render-${index + 1}.png`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(blobUrl);
 }
 
 type PicturesCardProps = {
@@ -180,13 +207,42 @@ export function PicturesCard({
                       type="button"
                       onClick={async (e) => {
                         e.stopPropagation();
+                        const button = e.currentTarget;
+                        const originalContent = button.innerHTML;
+                        
                         try {
+                          // Show loading state
+                          button.innerHTML = `<svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+                          button.disabled = true;
+                          
                           await downloadAsset(selectedAsset, selectedAssetIndex);
+                          
+                          // Show success state briefly
+                          button.innerHTML = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+                          button.classList.add('text-emerald-400');
+                          
+                          // Reset after delay
+                          setTimeout(() => {
+                            button.innerHTML = originalContent;
+                            button.classList.remove('text-emerald-400');
+                            button.disabled = false;
+                          }, 1000);
                         } catch (error) {
+                          // Show error state briefly
+                          button.innerHTML = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
+                          button.classList.add('text-red-400');
+                          
+                          // Reset after delay
+                          setTimeout(() => {
+                            button.innerHTML = originalContent;
+                            button.classList.remove('text-red-400');
+                            button.disabled = false;
+                          }, 1000);
+                          
                           console.error('Download failed:', error);
                         }
                       }}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/40 text-white/70 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/40 text-white/70 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white disabled:opacity-50"
                       aria-label="Download"
                     >
                       <Download className="h-4 w-4" />
