@@ -20,10 +20,10 @@ const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
 async function downloadAsset(asset: PictureAsset, index: number) {
   try {
     // Start download
-    const response = await fetch(asset.url);
-    if (!response.ok) {
-      throw new Error(`Download failed with status ${response.status}`);
-    }
+  const response = await fetch(asset.url);
+  if (!response.ok) {
+    throw new Error(`Download failed with status ${response.status}`);
+  }
 
     // Get filename from Content-Disposition or fallback
     let filename = `generated-image-${index + 1}.png`;
@@ -43,15 +43,15 @@ async function downloadAsset(asset: PictureAsset, index: number) {
     }
 
     // Create and trigger download
-    const blob = await response.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
     link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(blobUrl);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(blobUrl);
 
     return true;
   } catch (error) {
@@ -121,14 +121,14 @@ export function PicturesCard({
         style={{ position: 'fixed' }}
       >
         {/* Close Button */}
-        <button
-          type="button"
+            <button
+              type="button"
           onClick={() => setIsFullscreen(false)}
           className="absolute right-8 top-8 flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20 hover:text-white z-[10000]"
           aria-label="Close"
-        >
+            >
           <X className="h-5 w-5" />
-        </button>
+            </button>
 
         {/* Full Image */}
         <motion.img
@@ -166,20 +166,22 @@ export function PicturesCard({
           {versionPictures?.mode === 'image' && selectedAsset ? (
             <div className="relative">
               {/* Main Image - Clickable */}
-              <button
-                type="button"
-                onClick={() => setIsFullscreen(true)}
-                className="relative w-full overflow-hidden bg-black/20"
-              >
-                <img
-                  src={selectedAsset.url}
-                  alt="Generated image"
-                  className="h-auto w-full object-contain"
-                  style={{ maxHeight: '80vh' }}
-                />
+              <div className="relative w-full overflow-hidden bg-black/20">
+                <button
+                  type="button"
+                  onClick={() => setIsFullscreen(true)}
+                  className="w-full"
+                >
+                  <img
+                    src={selectedAsset.url}
+                    alt="Generated image"
+                    className="h-auto w-full object-contain"
+                    style={{ maxHeight: '80vh' }}
+                  />
+                </button>
 
                 {/* Bottom Overlay Bar */}
-                <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between p-4">
+                <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between p-4 pointer-events-none">
                   {/* Left: Preview + Model Name */}
                   <div className="flex flex-col gap-0.5">
                     <span className="text-[10px] font-medium uppercase tracking-wider text-white/60">
@@ -191,10 +193,11 @@ export function PicturesCard({
                   </div>
 
                   {/* Right: Action Icons */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 pointer-events-auto">
                     <button
                       type="button"
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
                         setIsFullscreen(true);
                       }}
@@ -206,50 +209,52 @@ export function PicturesCard({
                     <button
                       type="button"
                       onClick={async (e) => {
+                        e.preventDefault();
                         e.stopPropagation();
+                        
                         const button = e.currentTarget;
-                        const originalContent = button.innerHTML;
+                        const icon = button.querySelector('svg');
+                        if (!icon) return;
+                        
+                        const originalHTML = button.innerHTML;
                         
                         try {
                           // Show loading state
-                          button.innerHTML = `<svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
                           button.disabled = true;
+                          button.innerHTML = '<svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
                           
+                          // Perform download
                           await downloadAsset(selectedAsset, selectedAssetIndex);
                           
-                          // Show success state briefly
-                          button.innerHTML = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
-                          button.classList.add('text-emerald-400');
+                          // Show success state
+                          button.innerHTML = '<svg class="h-4 w-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>';
                           
                           // Reset after delay
                           setTimeout(() => {
-                            button.innerHTML = originalContent;
-                            button.classList.remove('text-emerald-400');
+                            button.innerHTML = originalHTML;
                             button.disabled = false;
-                          }, 1000);
+                          }, 1200);
                         } catch (error) {
-                          // Show error state briefly
-                          button.innerHTML = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
-                          button.classList.add('text-red-400');
+                          // Show error state
+                          button.innerHTML = '<svg class="h-4 w-4 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>';
                           
                           // Reset after delay
                           setTimeout(() => {
-                            button.innerHTML = originalContent;
-                            button.classList.remove('text-red-400');
+                            button.innerHTML = originalHTML;
                             button.disabled = false;
-                          }, 1000);
+                          }, 1200);
                           
                           console.error('Download failed:', error);
                         }
                       }}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/40 text-white/70 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white disabled:opacity-50"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/40 text-white/70 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       aria-label="Download"
                     >
                       <Download className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
-              </button>
+              </div>
 
               {/* Dot Navigation - Only if multiple images */}
               {versionPictures.mode === 'image' && 'assets' in versionPictures && versionPictures.assets.length > 1 && (
@@ -270,21 +275,21 @@ export function PicturesCard({
                   ))}
                 </div>
               )}
-            </div>
+                </div>
           ) : (
             <div className="flex h-[500px] items-center justify-center bg-black/10">
               <div className="text-center">
                 <p className="text-sm text-white/50">
                   {isBusy ? 'Generating images...' : 'No images generated yet'}
                 </p>
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+          </div>
+        )}
+      </div>
 
         <NanoGridBloom busy={isBusy} />
         <PerimeterProgressSegmented status={status} radius={16} />
-      </CardShell>
+    </CardShell>
 
       {/* Fullscreen Popup (rendered via portal) */}
       {fullscreenPortal}
