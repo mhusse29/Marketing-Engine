@@ -427,13 +427,18 @@ function App() {
     const controller = new AbortController();
     generationAbortRef.current = controller;
 
+    // Prepare Content brief (only needed if Content card is enabled)
     const trimmedRequestBrief = typeof requestBrief === 'string' ? requestBrief.trim() : '';
     const candidateBrief = trimmedRequestBrief || settings.quickProps.content.brief;
     const contentBrief = candidateBrief.trim();
-    if (!contentBrief) {
-      console.warn('Cannot generate without a brief.');
-      return;
+
+    // Check if Content generation is needed and has valid brief
+    const isContentEnabled = settings.cards.content;
+    if (isContentEnabled && !contentBrief) {
+      console.warn('Cannot generate content without a brief.');
+      // Don't return - other panels might still be able to generate
     }
+
     const { enriched: enrichedAttachments, payload: attachmentPayload } = await prepareContentAttachments(
       Array.isArray(requestAttachments) ? requestAttachments : undefined
     );
@@ -448,9 +453,19 @@ function App() {
     const trimmedPicturePrompt = picturePromptSeed.trim();
     const pictureProviderKey = settings.quickProps.pictures.imageProvider;
     const resolvedPictureProvider = pictureProviderKey === 'auto' ? null : pictureProviderKey;
-    const picturesBrief = trimmedPicturePrompt || contentBrief;
+    const picturesBrief = trimmedPicturePrompt; // Pictures uses its own prompt, not content brief
     const isPicturePromptReady = trimmedPicturePrompt.length >= MIN_PICTURE_PROMPT_LENGTH;
     const isPictureValidated = settings.quickProps.pictures.validated && isPicturePromptReady;
+
+    // Check if we have at least one valid panel to generate
+    const canGenerateContent = isContentEnabled && contentBrief;
+    const canGeneratePictures = settings.cards.pictures && isPictureValidated && resolvedPictureProvider;
+    const canGenerateVideo = settings.cards.video;
+    
+    if (!canGenerateContent && !canGeneratePictures && !canGenerateVideo) {
+      console.warn('No valid panels to generate. Please validate at least one panel.');
+      return;
+    }
 
     if (settings.cards.content) {
       setContentVariants([]);
@@ -459,7 +474,7 @@ function App() {
 
     setAiState((prev) => ({
       ...prev,
-      brief: contentBrief,
+      brief: contentBrief || picturesBrief, // Use Pictures brief as fallback
       uploads: attachmentSnapshot,
       generating: true,
       steps,
@@ -470,17 +485,16 @@ function App() {
       outputs: {},
     }));
 
-    if (settings.cards.content) {
+    const tasks: Promise<void>[] = [];
+
+    // Only generate Content if it's enabled AND has a valid brief
+    if (canGenerateContent) {
       const options = {
         ...contentOptions,
         copyLength: contentOptions.copyLength ?? 'Standard',
       };
       runContent(contentBrief, options, settings.versions ?? 2, undefined, attachmentPayload);
-    }
-
-    const tasks: Promise<void>[] = [];
-
-    if (settings.cards.content) {
+      
       tasks.push(
         (async () => {
           try {
