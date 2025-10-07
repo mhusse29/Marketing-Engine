@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Download, RefreshCw, X } from 'lucide-react';
+import { Download, Maximize2, X } from 'lucide-react';
 
 import { cn } from '../../lib/format';
 import type { GeneratedPictures, PictureAsset, PictureRemixOptions } from '../../types';
@@ -47,11 +47,10 @@ export function PicturesCard({
   currentVersion,
   brandLocked: _brandLocked,
   onSave: _onSave,
-  onRegenerate,
+  onRegenerate: _onRegenerate,
   onReplaceImages: _onReplaceImages,
   status,
 }: PicturesCardProps) {
-  const [isRegenerating, setIsRegenerating] = useState(false);
   const [selectedAssetIndex, setSelectedAssetIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -66,19 +65,11 @@ export function PicturesCard({
   const modelName = useMemo(() => {
     if (!versionPictures) return '';
     const meta = versionPictures.meta;
-    if (meta.model) return meta.model;
-    return providerLabel;
-  }, [versionPictures, providerLabel]);
-
-  const handleRegenerate = async () => {
-    if (!onRegenerate) return;
-    setIsRegenerating(true);
-    try {
-      await onRegenerate();
-    } finally {
-      setIsRegenerating(false);
+    if (meta.model) {
+      return meta.model.toUpperCase();
     }
-  };
+    return providerLabel.toUpperCase();
+  }, [versionPictures, providerLabel]);
 
   useEffect(() => {
     setSelectedAssetIndex(0);
@@ -91,74 +82,81 @@ export function PicturesCard({
 
   return (
     <>
-      <CardShell sheen={false} className="relative isolate overflow-hidden">
+      <CardShell sheen={false} className="relative isolate overflow-hidden p-0">
         <div className="relative z-10">
           {/* Image Display with Overlays */}
           {versionPictures?.mode === 'image' && selectedAsset ? (
-            <div className="relative group">
+            <div className="relative">
               {/* Main Image - Clickable */}
               <button
                 type="button"
                 onClick={() => setIsFullscreen(true)}
-                className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] transition-all hover:border-white/20"
+                className="relative w-full overflow-hidden bg-black/20"
               >
                 <img
                   src={selectedAsset.url}
                   alt="Generated image"
-                  className="h-auto w-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
-                  style={{ maxHeight: '70vh' }}
+                  className="h-auto w-full object-contain"
+                  style={{ maxHeight: '80vh' }}
                 />
 
-                {/* Model Name Watermark - Bottom Left */}
-                <div className="absolute bottom-4 left-4 rounded-lg bg-black/60 px-3 py-1.5 backdrop-blur-sm transition-opacity group-hover:opacity-100 opacity-80">
-                  <span className="text-xs font-medium text-white/90">{modelName}</span>
+                {/* Bottom Overlay Bar */}
+                <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between p-4">
+                  {/* Left: Preview + Model Name */}
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-white/60">
+                      Preview
+                    </span>
+                    <span className="text-xs font-medium uppercase tracking-wide text-white/90">
+                      {modelName}
+                    </span>
+                  </div>
+
+                  {/* Right: Action Icons */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsFullscreen(true);
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/40 text-white/70 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
+                      aria-label="Expand"
+                    >
+                      <Maximize2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await downloadAsset(selectedAsset, selectedAssetIndex);
+                        } catch (error) {
+                          console.error('Download failed:', error);
+                        }
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/40 text-white/70 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
+                      aria-label="Download"
+                    >
+                      <Download className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-
-                {/* Download Icon - Bottom Right */}
-                <button
-                  type="button"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    try {
-                      await downloadAsset(selectedAsset, selectedAssetIndex);
-                    } catch (error) {
-                      console.error('Download failed:', error);
-                    }
-                  }}
-                  className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-lg bg-black/60 text-white/80 backdrop-blur-sm transition-all hover:bg-black/80 hover:text-white opacity-0 group-hover:opacity-100"
-                  aria-label="Download"
-                >
-                  <Download className="h-4 w-4" />
-                </button>
-
-                {/* Regenerate Icon - Top Right */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRegenerate();
-                  }}
-                  disabled={isRegenerating || isBusy}
-                  className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-black/60 text-white/80 backdrop-blur-sm transition-all hover:bg-black/80 hover:text-white disabled:opacity-50 opacity-0 group-hover:opacity-100"
-                  aria-label="Regenerate"
-                >
-                  <RefreshCw className={cn('h-4 w-4', isRegenerating && 'animate-spin')} />
-                </button>
               </button>
 
               {/* Dot Navigation - Only if multiple images */}
               {versionPictures.mode === 'image' && 'assets' in versionPictures && versionPictures.assets.length > 1 && (
-                <div className="mt-4 flex items-center justify-center gap-2">
+                <div className="flex items-center justify-center gap-2 py-4">
                   {versionPictures.assets.map((asset, index) => (
                     <button
                       key={asset.id}
                       type="button"
                       onClick={() => setSelectedAssetIndex(index)}
                       className={cn(
-                        'h-2 rounded-full transition-all',
+                        'h-1.5 rounded-full transition-all',
                         selectedAssetIndex === index
                           ? 'bg-white/80 w-8'
-                          : 'bg-white/20 w-2 hover:bg-white/40'
+                          : 'bg-white/20 w-1.5 hover:bg-white/40'
                       )}
                       aria-label={`View image ${index + 1}`}
                     />
@@ -167,15 +165,17 @@ export function PicturesCard({
               )}
             </div>
           ) : (
-            <div className="flex h-[400px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.02]">
+            <div className="flex h-[500px] items-center justify-center bg-black/10">
               <div className="text-center">
-                <p className="text-sm text-white/50">Generating images...</p>
+                <p className="text-sm text-white/50">
+                  {isBusy ? 'Generating images...' : 'No images generated yet'}
+                </p>
               </div>
             </div>
           )}
         </div>
 
-        <NanoGridBloom busy={isBusy || isRegenerating} />
+        <NanoGridBloom busy={isBusy} />
         <PerimeterProgressSegmented status={status} radius={16} />
       </CardShell>
 
@@ -186,6 +186,7 @@ export function PicturesCard({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
             className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-8"
             onClick={() => setIsFullscreen(false)}
           >
@@ -203,16 +204,24 @@ export function PicturesCard({
             <motion.img
               src={selectedAsset.url}
               alt="Full size preview"
-              className="max-h-full max-w-full object-contain"
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.9 }}
+              className="max-h-full max-w-full rounded-lg object-contain"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.2 }}
               onClick={(e) => e.stopPropagation()}
             />
 
-            {/* Model Name - Bottom Center */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded-lg bg-black/60 px-4 py-2 backdrop-blur-sm">
-              <span className="text-sm font-medium text-white/90">{modelName}</span>
+            {/* Model Name - Bottom */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2">
+              <div className="flex flex-col items-center gap-1 rounded-lg bg-black/60 px-4 py-2 backdrop-blur-sm">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-white/60">
+                  Preview
+                </span>
+                <span className="text-sm font-medium uppercase tracking-wide text-white/90">
+                  {modelName}
+                </span>
+              </div>
             </div>
           </motion.div>
         )}
