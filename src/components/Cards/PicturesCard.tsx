@@ -20,102 +20,116 @@ const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
 async function downloadAsset(asset: PictureAsset, _index: number) {
   console.log('[Download] Starting download for:', asset.url);
   
-  // Extract filename from URL or use default
+  // Extract filename from URL
   const urlPath = new URL(asset.url).pathname;
   const urlFilename = urlPath.split('/').pop() || 'sample.png';
   const baseFilename = urlFilename.replace(/\.[^.]+$/, '');
   const urlExt = urlFilename.split('.').pop() || 'png';
-  
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
   const filename = `${baseFilename}-${timestamp}.${urlExt}`;
   
-  console.log('[Download] Using filename:', filename);
+  console.log('[Download] Target filename:', filename);
+  
+  // Determine API base
+  const getApiBase = () => {
+    const explicit = import.meta.env?.VITE_AI_GATEWAY_URL as string | undefined;
+    if (explicit && explicit.trim().length > 0) {
+      return explicit.replace(/\/$/, '');
+    }
+    return 'http://localhost:8787';
+  };
   
   try {
-    // Try fetch with cache bypass
-    console.log('[Download] Attempting fetch with cache bypass...');
-    const response = await fetch(asset.url, {
+    // Method 1: Try direct fetch (works for same-origin and some CORS-enabled URLs)
+    console.log('[Download] Method 1: Direct fetch...');
+    const directResponse = await fetch(asset.url, {
       method: 'GET',
       cache: 'no-store',
       mode: 'cors',
       credentials: 'omit',
     });
     
-    console.log('[Download] Fetch response status:', response.status, response.statusText);
-    
-    // Handle 304 Not Modified (cached content is still available)
-    if (response.status === 304 || response.ok) {
-      const blob = await response.blob();
-      console.log('[Download] Blob created, size:', blob.size, 'type:', blob.type);
-      
+    if (directResponse.ok || directResponse.status === 304) {
+      const blob = await directResponse.blob();
       if (blob.size > 0) {
+        console.log('[Download] Direct fetch success, blob size:', blob.size);
         const blobUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = blobUrl;
         link.download = filename;
         link.style.display = 'none';
-        
         document.body.appendChild(link);
         link.click();
-        
         setTimeout(() => {
           document.body.removeChild(link);
           URL.revokeObjectURL(blobUrl);
-          console.log('[Download] Direct download complete');
         }, 150);
-        
         return true;
-      } else {
-        throw new Error('Blob is empty');
       }
-    } else {
-      throw new Error(`Fetch failed with status ${response.status}`);
     }
-  } catch (error) {
-    console.warn('[Download] Fetch failed:', error);
-    console.log('[Download] Trying fallback: open in new window...');
+    throw new Error('Direct fetch failed');
+  } catch (directError) {
+    console.warn('[Download] Method 1 failed:', directError);
     
-    // Fallback: Create invisible iframe to trigger download
-    // This works better for CORS-restricted URLs
     try {
-      // Method 1: Try direct link with download attribute
+      // Method 2: Use our server as a proxy (bypasses CORS)
+      console.log('[Download] Method 2: Proxy through gateway...');
+      const proxyUrl = `${getApiBase()}/v1/images/download?url=${encodeURIComponent(asset.url)}`;
+      console.log('[Download] Proxy URL:', proxyUrl);
+      
+      const proxyResponse = await fetch(proxyUrl);
+      
+      if (!proxyResponse.ok) {
+        throw new Error(`Proxy failed: ${proxyResponse.status}`);
+      }
+      
+      const blob = await proxyResponse.blob();
+      console.log('[Download] Proxy success, blob size:', blob.size);
+      
+      const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = asset.url;
+      link.href = blobUrl;
       link.download = filename;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
       link.style.display = 'none';
-      
       document.body.appendChild(link);
-      
-      // Trigger click
-      const clickEvent = new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-        view: window
-      });
-      link.dispatchEvent(clickEvent);
+      link.click();
       
       setTimeout(() => {
         document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
       }, 150);
       
-      console.log('[Download] Fallback method executed (new tab)');
-      console.log('[Download] If browser blocks pop-up, please allow it and try again');
-      
       return true;
-    } catch (fallbackError) {
-      console.error('[Download] All download methods failed:', fallbackError);
+    } catch (proxyError) {
+      console.warn('[Download] Method 2 failed:', proxyError);
       
-      // Last resort: Copy URL to clipboard
       try {
-        await navigator.clipboard.writeText(asset.url);
-        alert('Download blocked by browser security.\n\nImage URL copied to clipboard!\nPaste it in a new tab to download manually.');
-        console.log('[Download] URL copied to clipboard as last resort');
+        // Method 3: Open in new tab (browser handles download)
+        console.log('[Download] Method 3: Open in new tab...');
+        const link = document.createElement('a');
+        link.href = asset.url;
+        link.download = filename;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => document.body.removeChild(link), 150);
+        console.log('[Download] New tab opened (if pop-ups allowed)');
         return true;
-      } catch (clipboardError) {
-        alert(`Download failed. Please right-click the image and select "Save Image As..."\n\nOr open this URL:\n${asset.url}`);
-        throw fallbackError;
+      } catch (tabError) {
+        console.error('[Download] Method 3 failed:', tabError);
+        
+        // Method 4: Last resort - copy to clipboard
+        try {
+          await navigator.clipboard.writeText(asset.url);
+          alert('Download blocked by browser.\n\nImage URL copied to clipboard!\nPaste in new tab to download.');
+          console.log('[Download] URL copied to clipboard');
+          return true;
+        } catch (clipboardError) {
+          alert(`Download failed.\n\nRight-click the image and select "Save Image As..."\n\nOr open:\n${asset.url}`);
+          throw clipboardError;
+        }
       }
     }
   }
