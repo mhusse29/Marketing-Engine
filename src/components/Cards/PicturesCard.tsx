@@ -1,21 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Download, Maximize2, RefreshCw } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Download, RefreshCw, X } from 'lucide-react';
 
 import { cn } from '../../lib/format';
 import type { GeneratedPictures, PictureAsset, PictureRemixOptions } from '../../types';
 import type { GridStepState } from '../../state/ui';
 import CardShell from '../Outputs/CardShell';
-import { StepDot } from '../Outputs/StepDot';
 import NanoGridBloom from '@/ui/NanoGridBloom';
 import PerimeterProgressSegmented from '@/ui/PerimeterProgressSegmented';
-
-const STATUS_LABELS: Record<GridStepState, string> = {
-  queued: 'Queued',
-  thinking: 'Thinking…',
-  rendering: 'Rendering…',
-  ready: 'Ready',
-  error: 'Needs attention',
-};
 
 const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
   flux: 'FLUX Pro 1.1',
@@ -53,19 +45,17 @@ type PicturesCardProps = {
 export function PicturesCard({
   pictures,
   currentVersion,
-  brandLocked,
-  onSave,
+  brandLocked: _brandLocked,
+  onSave: _onSave,
   onRegenerate,
   onReplaceImages: _onReplaceImages,
   status,
 }: PicturesCardProps) {
-  const [isSaved, setIsSaved] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [selectedAssetIndex, setSelectedAssetIndex] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const versionPictures = pictures[currentVersion];
-  const totalVersions = pictures.length;
-  const statusLabel = STATUS_LABELS[status];
   const isBusy = status === 'queued' || status === 'thinking' || status === 'rendering';
 
   const providerLabel = useMemo(() => {
@@ -73,23 +63,12 @@ export function PicturesCard({
     return PROVIDER_LABELS[versionPictures.provider] ?? versionPictures.provider;
   }, [versionPictures]);
 
-  const createdAtLabel = useMemo(() => {
+  const modelName = useMemo(() => {
     if (!versionPictures) return '';
-    try {
-      return new Date(versionPictures.meta.createdAt).toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return '';
-    }
-  }, [versionPictures]);
-
-  const handleSave = () => {
-    setIsSaved(true);
-    onSave();
-    window.setTimeout(() => setIsSaved(false), 1200);
-  };
+    const meta = versionPictures.meta;
+    if (meta.model) return meta.model;
+    return providerLabel;
+  }, [versionPictures, providerLabel]);
 
   const handleRegenerate = async () => {
     if (!onRegenerate) return;
@@ -111,105 +90,75 @@ export function PicturesCard({
       : undefined;
 
   return (
-    <CardShell sheen={false} className="relative isolate overflow-hidden">
-      <div className="relative z-10 flex h-full flex-col">
-        {/* Compact Header */}
-        <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <h3 className="text-lg font-semibold text-white/95">Pictures / Prompt</h3>
-            <StepDot state={status} />
-            <span className="text-xs font-medium uppercase tracking-wider text-white/40">{statusLabel}</span>
-            <span className="text-xs text-white/40">•</span>
-            <span className="text-xs text-white/50">{createdAtLabel}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleSave}
-              disabled={isSaved || isBusy}
-              className={cn(
-                'inline-flex h-9 items-center gap-2 rounded-lg border px-4 text-sm font-medium transition-all',
-                isSaved
-                  ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
-                  : 'border-white/10 bg-white/5 text-white/80 hover:border-white/20 hover:bg-white/10 hover:text-white'
-              )}
-              type="button"
-            >
-              {isSaved ? (
-                <>
-                  <Check className="h-4 w-4" />
-                  Saved
-                </>
-              ) : (
-                'Save'
-              )}
-            </button>
-            <button
-              onClick={handleRegenerate}
-              disabled={isBusy || isRegenerating}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-medium text-white/80 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white disabled:opacity-50"
-              type="button"
-            >
-              <RefreshCw className={cn('h-4 w-4', isRegenerating && 'animate-spin')} />
-              {isRegenerating ? 'Regenerating…' : 'Regenerate'}
-            </button>
-          </div>
-        </header>
-
-        {/* Image Display - Full Width */}
-        <div className="flex-1">
+    <>
+      <CardShell sheen={false} className="relative isolate overflow-hidden">
+        <div className="relative z-10">
+          {/* Image Display with Overlays */}
           {versionPictures?.mode === 'image' && selectedAsset ? (
-            <div className="flex flex-col items-center">
-              {/* Image Container - Fits image perfectly */}
-              <div className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
+            <div className="relative group">
+              {/* Main Image - Clickable */}
+              <button
+                type="button"
+                onClick={() => setIsFullscreen(true)}
+                className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] transition-all hover:border-white/20"
+              >
                 <img
                   src={selectedAsset.url}
                   alt="Generated image"
-                  className="h-auto w-full object-contain"
+                  className="h-auto w-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
                   style={{ maxHeight: '70vh' }}
                 />
-              </div>
 
-              {/* Action Buttons Below Image */}
-              <div className="mt-4 flex items-center gap-4">
+                {/* Model Name Watermark - Bottom Left */}
+                <div className="absolute bottom-4 left-4 rounded-lg bg-black/60 px-3 py-1.5 backdrop-blur-sm transition-opacity group-hover:opacity-100 opacity-80">
+                  <span className="text-xs font-medium text-white/90">{modelName}</span>
+                </div>
+
+                {/* Download Icon - Bottom Right */}
                 <button
                   type="button"
-                  onClick={() => window.open(selectedAsset.url, '_blank', 'noopener,noreferrer')}
-                  className="inline-flex items-center gap-2 text-sm text-white/30 transition-colors hover:text-white/60"
-                >
-                  <Maximize2 className="h-4 w-4" />
-                  Expand Full Preview
-                </button>
-                <span className="h-4 w-px bg-white/10" />
-                <button
-                  type="button"
-                  onClick={async () => {
+                  onClick={async (e) => {
+                    e.stopPropagation();
                     try {
                       await downloadAsset(selectedAsset, selectedAssetIndex);
                     } catch (error) {
                       console.error('Download failed:', error);
                     }
                   }}
-                  className="inline-flex items-center gap-2 text-sm text-white/30 transition-colors hover:text-white/60"
+                  className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-lg bg-black/60 text-white/80 backdrop-blur-sm transition-all hover:bg-black/80 hover:text-white opacity-0 group-hover:opacity-100"
+                  aria-label="Download"
                 >
                   <Download className="h-4 w-4" />
-                  Download
                 </button>
-              </div>
 
-              {/* Thumbnail Navigation - Only if multiple images */}
+                {/* Regenerate Icon - Top Right */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRegenerate();
+                  }}
+                  disabled={isRegenerating || isBusy}
+                  className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-black/60 text-white/80 backdrop-blur-sm transition-all hover:bg-black/80 hover:text-white disabled:opacity-50 opacity-0 group-hover:opacity-100"
+                  aria-label="Regenerate"
+                >
+                  <RefreshCw className={cn('h-4 w-4', isRegenerating && 'animate-spin')} />
+                </button>
+              </button>
+
+              {/* Dot Navigation - Only if multiple images */}
               {versionPictures.mode === 'image' && 'assets' in versionPictures && versionPictures.assets.length > 1 && (
-                <div className="mt-6 flex items-center gap-2">
+                <div className="mt-4 flex items-center justify-center gap-2">
                   {versionPictures.assets.map((asset, index) => (
                     <button
                       key={asset.id}
                       type="button"
                       onClick={() => setSelectedAssetIndex(index)}
                       className={cn(
-                        'h-2 w-2 rounded-full transition-all',
+                        'h-2 rounded-full transition-all',
                         selectedAssetIndex === index
                           ? 'bg-white/80 w-8'
-                          : 'bg-white/20 hover:bg-white/40'
+                          : 'bg-white/20 w-2 hover:bg-white/40'
                       )}
                       aria-label={`View image ${index + 1}`}
                     />
@@ -220,27 +169,54 @@ export function PicturesCard({
           ) : (
             <div className="flex h-[400px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.02]">
               <div className="text-center">
-                <p className="text-sm text-white/50">No images generated yet</p>
+                <p className="text-sm text-white/50">Generating images...</p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <footer className="mt-4 flex items-center justify-between border-t border-white/10 pt-3 text-xs text-white/50">
-          <span>
-            {totalVersions > 0 && versionPictures
-              ? `Version ${Math.min(currentVersion + 1, totalVersions)} of ${totalVersions} • ${providerLabel}`
-              : 'Awaiting first generation'}
-          </span>
-          {brandLocked && (
-            <span className="text-white/40">🎨 Brand palette enforced</span>
-          )}
-        </footer>
-      </div>
+        <NanoGridBloom busy={isBusy || isRegenerating} />
+        <PerimeterProgressSegmented status={status} radius={16} />
+      </CardShell>
 
-      <NanoGridBloom busy={isBusy || isRegenerating} />
-      <PerimeterProgressSegmented status={status} />
-    </CardShell>
+      {/* Fullscreen Popup */}
+      <AnimatePresence>
+        {isFullscreen && selectedAsset && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-8"
+            onClick={() => setIsFullscreen(false)}
+          >
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(false)}
+              className="absolute right-8 top-8 flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20 hover:text-white"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Full Image */}
+            <motion.img
+              src={selectedAsset.url}
+              alt="Full size preview"
+              className="max-h-full max-w-full object-contain"
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              onClick={(e) => e.stopPropagation()}
+            />
+
+            {/* Model Name - Bottom Center */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded-lg bg-black/60 px-4 py-2 backdrop-blur-sm">
+              <span className="text-sm font-medium text-white/90">{modelName}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
