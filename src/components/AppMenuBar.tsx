@@ -185,14 +185,11 @@ const PICTURE_NEGATIVE_HINTS: Record<(typeof PICTURE_NEGATIVE_OPTIONS)[number], 
   Glare: 'Reduce reflective glare and hotspots.',
 };
 
-const VIDEO_DURATION_OPTIONS = [6, 9, 12, 15, 20, 30] as const;
+// Runway Gen-3 supports 5s and 10s durations
+const VIDEO_DURATION_OPTIONS = [5, 10] as const;
 const VIDEO_DURATION_HINTS: Record<number, string> = {
-  6: 'Ultra-short hooks for reels/ads.',
-  9: 'TikTok-friendly quick spots.',
-  12: 'Balance of context and pace.',
-  15: 'Standard paid social length.',
-  20: 'Extended storytelling format.',
-  30: 'Longer product explainer or hero spot.',
+  5: 'Quick clip - Perfect for social media reels & ads (5 credits)',
+  10: 'Standard video - Full storytelling & product demos (10 credits)',
 };
 
 const VIDEO_HOOK_OPTIONS: VideoHook[] = ['Pain-point', 'Bold claim', 'Question', 'Pattern interrupt'];

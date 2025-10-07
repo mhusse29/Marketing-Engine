@@ -114,16 +114,26 @@ const defaultPicturesQuickProps: PicturesQuickProps = {
 };
 
 const defaultVideoQuickProps: VideoQuickProps = {
-  duration: 12,
-  hook: 'Question',
+  // Runway API parameters
+  model: 'gen3a_turbo',
+  promptText: '',
+  duration: 5,
   aspect: '9:16',
+  watermark: false,
+  seed: undefined,
+  
+  // Advanced prompt engineering
+  hook: 'Question',
   captions: true,
   cta: 'Learn more',
   voiceover: 'On-screen text only',
   density: 'Medium (5–6)',
   proof: 'Social proof',
   doNots: 'No claims',
+  
+  // Validation
   validated: false,
+  validatedAt: null,
 };
 
 function asCopyLength(value: unknown, fallback: CopyLength): CopyLength {
@@ -347,15 +357,37 @@ function normalizeVideoQuickProps(
     ...video,
   };
 
-  const duration = typeof candidate.duration === 'number'
-    ? Math.min(VIDEO_DURATION_MAX, Math.max(VIDEO_DURATION_MIN, Math.round(candidate.duration)))
+  // Runway API parameters
+  const runwayModels = ['gen3a_turbo', 'gen3a'] as const;
+  const model = runwayModels.includes(candidate.model as any)
+    ? candidate.model
+    : defaultVideoQuickProps.model;
+
+  const promptText = typeof candidate.promptText === 'string'
+    ? candidate.promptText.trim().slice(0, 1000)
+    : defaultVideoQuickProps.promptText;
+
+  const validDurations = [5, 10] as const;
+  const duration = validDurations.includes(candidate.duration as any)
+    ? candidate.duration
     : defaultVideoQuickProps.duration;
-  const hook = VIDEO_HOOKS.includes(candidate.hook as VideoHook)
-    ? (candidate.hook as VideoHook)
-    : defaultVideoQuickProps.hook;
+
   const aspect = VIDEO_ASPECTS.includes(candidate.aspect as VideoAspect)
     ? (candidate.aspect as VideoAspect)
     : defaultVideoQuickProps.aspect;
+
+  const watermark = typeof candidate.watermark === 'boolean'
+    ? candidate.watermark
+    : defaultVideoQuickProps.watermark;
+
+  const seed = typeof candidate.seed === 'number' && candidate.seed >= 0
+    ? Math.floor(candidate.seed)
+    : undefined;
+
+  // Advanced prompt engineering
+  const hook = VIDEO_HOOKS.includes(candidate.hook as VideoHook)
+    ? (candidate.hook as VideoHook)
+    : defaultVideoQuickProps.hook;
   const captions = typeof candidate.captions === 'boolean' ? candidate.captions : defaultVideoQuickProps.captions;
 
   const cta = typeof candidate.cta === 'string' && candidate.cta.trim().length > 0
@@ -380,11 +412,16 @@ function normalizeVideoQuickProps(
       : doNotsRaw.slice(0, CTA_MAX_LENGTH);
 
   const validated = typeof candidate.validated === 'boolean' ? candidate.validated : defaultVideoQuickProps.validated;
+  const validatedAt = typeof candidate.validatedAt === 'string' ? candidate.validatedAt : null;
 
   return {
+    model,
+    promptText,
     duration,
-    hook,
     aspect,
+    watermark,
+    seed,
+    hook,
     captions,
     cta,
     voiceover,
@@ -392,6 +429,7 @@ function normalizeVideoQuickProps(
     proof,
     doNots,
     validated,
+    validatedAt,
   };
 }
 

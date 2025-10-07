@@ -55,6 +55,9 @@ export type IdeogramStyleType =
 
 export type VideoHook = 'Pain-point' | 'Bold claim' | 'Question' | 'Pattern interrupt';
 export type VideoAspect = '9:16' | '1:1' | '16:9';
+export type RunwayModel = 'gen3a_turbo' | 'gen3a';
+export type VideoDuration = 5 | 10;
+export type RunwayRatio = '1280:768' | '768:1280' | '1024:1024';
 
 export type AiAttachment = {
   id: string;
@@ -128,16 +131,26 @@ export type PicturesQuickProps = {
 };
 
 export type VideoQuickProps = {
-  duration: number;
-  hook: VideoHook;
+  // Runway API parameters
+  model: RunwayModel;
+  promptText: string;
+  duration: VideoDuration;
   aspect: VideoAspect;
+  watermark: boolean;
+  seed?: number;
+  
+  // Advanced video settings (for prompt engineering)
+  hook: VideoHook;
   captions: boolean;
   cta: string;
   voiceover?: 'On-screen text only' | 'AI voiceover' | string;
   density?: 'Light (3–4)' | 'Medium (5–6)' | 'Fast (7–8)' | string;
   proof?: 'Social proof' | 'Feature highlight' | 'Before/After' | string;
   doNots?: string;
+  
+  // Validation
   validated: boolean;
+  validatedAt?: string | null;
 };
 
 export type SettingsState = {
