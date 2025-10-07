@@ -17,87 +17,106 @@ const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
   ideogram: 'Ideogram v1',
 };
 
-async function downloadAsset(asset: PictureAsset, index: number) {
+async function downloadAsset(asset: PictureAsset, _index: number) {
   console.log('[Download] Starting download for:', asset.url);
   
+  // Extract filename from URL or use default
+  const urlPath = new URL(asset.url).pathname;
+  const urlFilename = urlPath.split('/').pop() || 'sample.png';
+  const baseFilename = urlFilename.replace(/\.[^.]+$/, '');
+  const urlExt = urlFilename.split('.').pop() || 'png';
+  
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+  const filename = `${baseFilename}-${timestamp}.${urlExt}`;
+  
+  console.log('[Download] Using filename:', filename);
+  
   try {
-    // Try direct download first (works for same-origin and CORS-enabled URLs)
+    // Try fetch with cache bypass
+    console.log('[Download] Attempting fetch with cache bypass...');
     const response = await fetch(asset.url, {
+      method: 'GET',
+      cache: 'no-store',
       mode: 'cors',
       credentials: 'omit',
     });
     
-    console.log('[Download] Fetch response status:', response.status);
+    console.log('[Download] Fetch response status:', response.status, response.statusText);
     
-  if (!response.ok) {
+    // Handle 304 Not Modified (cached content is still available)
+    if (response.status === 304 || response.ok) {
+      const blob = await response.blob();
+      console.log('[Download] Blob created, size:', blob.size, 'type:', blob.type);
+      
+      if (blob.size > 0) {
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        link.style.display = 'none';
+        
+        document.body.appendChild(link);
+        link.click();
+        
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(blobUrl);
+          console.log('[Download] Direct download complete');
+        }, 150);
+        
+        return true;
+      } else {
+        throw new Error('Blob is empty');
+      }
+    } else {
       throw new Error(`Fetch failed with status ${response.status}`);
     }
-
-    // Get filename
-    let filename = `generated-image-${index + 1}`;
-    const disposition = response.headers.get('content-disposition');
-    if (disposition && disposition.includes('filename=')) {
-      const filenameMatch = disposition.match(/filename=["']?([^"']+)["']?/);
-      if (filenameMatch?.[1]) {
-        filename = filenameMatch[1].replace(/\.[^.]+$/, ''); // Remove extension
-      }
-    }
-
-    // Get extension from content-type
-    const contentType = response.headers.get('content-type') || 'image/png';
-    let ext = 'png';
-    if (contentType.includes('jpeg') || contentType.includes('jpg')) ext = 'jpg';
-    else if (contentType.includes('webp')) ext = 'webp';
-    else if (contentType.includes('png')) ext = 'png';
-
-    const fullFilename = `${filename}.${ext}`;
-    console.log('[Download] Using filename:', fullFilename);
-
-    // Create blob and download
-  const blob = await response.blob();
-    console.log('[Download] Blob created, size:', blob.size, 'type:', blob.type);
-    
-  const blobUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = blobUrl;
-    link.download = fullFilename;
-    link.style.display = 'none';
-    
-  document.body.appendChild(link);
-  link.click();
-    
-    // Cleanup
-    setTimeout(() => {
-  document.body.removeChild(link);
-  URL.revokeObjectURL(blobUrl);
-      console.log('[Download] Cleanup complete');
-    }, 100);
-
-    return true;
   } catch (error) {
-    console.error('[Download] Fetch failed, trying fallback method:', error);
+    console.warn('[Download] Fetch failed:', error);
+    console.log('[Download] Trying fallback: open in new window...');
     
-    // Fallback: Open in new tab (browser will handle download)
+    // Fallback: Create invisible iframe to trigger download
+    // This works better for CORS-restricted URLs
     try {
+      // Method 1: Try direct link with download attribute
       const link = document.createElement('a');
       link.href = asset.url;
-      link.download = `generated-image-${index + 1}.png`;
+      link.download = filename;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.style.display = 'none';
       
       document.body.appendChild(link);
-      link.click();
+      
+      // Trigger click
+      const clickEvent = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      });
+      link.dispatchEvent(clickEvent);
       
       setTimeout(() => {
         document.body.removeChild(link);
-      }, 100);
+      }, 150);
       
-      console.log('[Download] Fallback method executed');
+      console.log('[Download] Fallback method executed (new tab)');
+      console.log('[Download] If browser blocks pop-up, please allow it and try again');
+      
       return true;
     } catch (fallbackError) {
-      console.error('[Download] Fallback also failed:', fallbackError);
-      throw fallbackError;
+      console.error('[Download] All download methods failed:', fallbackError);
+      
+      // Last resort: Copy URL to clipboard
+      try {
+        await navigator.clipboard.writeText(asset.url);
+        alert('Download blocked by browser security.\n\nImage URL copied to clipboard!\nPaste it in a new tab to download manually.');
+        console.log('[Download] URL copied to clipboard as last resort');
+        return true;
+      } catch (clipboardError) {
+        alert(`Download failed. Please right-click the image and select "Save Image As..."\n\nOr open this URL:\n${asset.url}`);
+        throw fallbackError;
+      }
     }
   }
 }
