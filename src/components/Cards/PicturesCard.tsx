@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Download, Maximize2, X } from 'lucide-react';
 
@@ -79,6 +80,56 @@ export function PicturesCard({
     versionPictures?.mode === 'image' && 'assets' in versionPictures
       ? versionPictures.assets[selectedAssetIndex]
       : undefined;
+
+  // Fullscreen Popup Component
+  const fullscreenPortal = isFullscreen && selectedAsset ? createPortal(
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 p-8"
+        onClick={() => setIsFullscreen(false)}
+        style={{ position: 'fixed' }}
+      >
+        {/* Close Button */}
+        <button
+          type="button"
+          onClick={() => setIsFullscreen(false)}
+          className="absolute right-8 top-8 flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20 hover:text-white z-[10000]"
+          aria-label="Close"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        {/* Full Image */}
+        <motion.img
+          src={selectedAsset.url}
+          alt="Full size preview"
+          className="max-h-full max-w-full rounded-lg object-contain"
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.95, opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          onClick={(e) => e.stopPropagation()}
+        />
+
+        {/* Model Name - Bottom */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[10000]">
+          <div className="flex flex-col items-center gap-1 rounded-lg bg-black/60 px-4 py-2 backdrop-blur-sm">
+            <span className="text-[10px] font-medium uppercase tracking-wider text-white/60">
+              Preview
+            </span>
+            <span className="text-sm font-medium uppercase tracking-wide text-white/90">
+              {modelName}
+            </span>
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>,
+    document.body
+  ) : null;
 
   return (
     <>
@@ -179,53 +230,8 @@ export function PicturesCard({
         <PerimeterProgressSegmented status={status} radius={16} />
       </CardShell>
 
-      {/* Fullscreen Popup */}
-      <AnimatePresence>
-        {isFullscreen && selectedAsset && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-8"
-            onClick={() => setIsFullscreen(false)}
-          >
-            {/* Close Button */}
-            <button
-              type="button"
-              onClick={() => setIsFullscreen(false)}
-              className="absolute right-8 top-8 flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20 hover:text-white"
-              aria-label="Close"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            {/* Full Image */}
-            <motion.img
-              src={selectedAsset.url}
-              alt="Full size preview"
-              className="max-h-full max-w-full rounded-lg object-contain"
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={(e) => e.stopPropagation()}
-            />
-
-            {/* Model Name - Bottom */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2">
-              <div className="flex flex-col items-center gap-1 rounded-lg bg-black/60 px-4 py-2 backdrop-blur-sm">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-white/60">
-                  Preview
-                </span>
-                <span className="text-sm font-medium uppercase tracking-wide text-white/90">
-                  {modelName}
-                </span>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Fullscreen Popup (rendered via portal) */}
+      {fullscreenPortal}
     </>
   );
 }
