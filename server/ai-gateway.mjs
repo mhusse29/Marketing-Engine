@@ -341,6 +341,49 @@ const app = express()
 app.use(cors())
 app.use(express.json({ limit: '1mb' }))
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// IMAGE DOWNLOAD PROXY - Bypasses CORS for external image URLs
+// ═══════════════════════════════════════════════════════════════════════════════
+app.get('/v1/images/download', async (req, res) => {
+  const { url } = req.query
+  
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL parameter required' })
+  }
+  
+  try {
+    console.log('[Image Download Proxy] Fetching:', url)
+    
+    const response = await fetch(url)
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status}`)
+    }
+    
+    // Get content type
+    const contentType = response.headers.get('content-type') || 'image/png'
+    
+    // Get filename from URL
+    const urlPath = new URL(url).pathname
+    const filename = urlPath.split('/').pop() || 'image.png'
+    
+    // Set headers for download
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    
+    // Stream the image
+    const buffer = await response.arrayBuffer()
+    res.send(Buffer.from(buffer))
+    
+    console.log('[Image Download Proxy] Success:', filename, '- Size:', buffer.byteLength, 'bytes')
+  } catch (error) {
+    console.error('[Image Download Proxy] Error:', error.message)
+    res.status(500).json({ error: 'Failed to download image', details: error.message })
+  }
+})
+
 const MOCK_OPENAI = process.env.MOCK_OPENAI === '1'
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null
 
