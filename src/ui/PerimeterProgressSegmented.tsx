@@ -47,13 +47,13 @@ export default function PerimeterProgressSegmented({
 
   const startLoop = React.useCallback(() => {
     stopLoop();
-    const duration = Math.max(0.8, loopDurationMs / 1000);
+    const duration = Math.max(1.2, loopDurationMs / 1000);
 
     const runOnce = () => {
       p.set(MIN_BEAD);
       loopRef.current = animate(p, LOOP_TARGET, {
         duration,
-        ease: "linear",
+        ease: [0.45, 0, 0.55, 1], // Smoother easing
       });
 
       loopRef.current.finished
@@ -63,7 +63,7 @@ export default function PerimeterProgressSegmented({
             return;
           }
           // soft reset to preserve momentum
-          animate(p, MIN_BEAD, { duration: 0.05, ease: "easeOut" }).finished
+          animate(p, MIN_BEAD, { duration: 0.08, ease: [0.4, 0, 0.2, 1] }).finished
             ?.then(runOnce)
             .catch(runOnce);
         })
@@ -95,7 +95,7 @@ export default function PerimeterProgressSegmented({
     if (clamped <= current + EPS) return;
 
     stopLoop();
-    const anim = animate(p, clamped, { duration: 0.3, ease: "easeOut" });
+    const anim = animate(p, clamped, { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] });
     anim.finished
       ?.then(() => {
         if (BUSY_SET.has(status)) startLoop();
@@ -107,7 +107,7 @@ export default function PerimeterProgressSegmented({
   React.useEffect(() => {
     if (status === "ready") {
       stopLoop();
-      const readyAnim = animate(p, 1, { duration: 0.35, ease: "easeOut" });
+      const readyAnim = animate(p, 1, { duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }); // Slight overshoot for satisfaction
       const hold = setTimeout(() => {}, holdOnReadyMs);
       return () => {
         readyAnim.stop();
@@ -116,7 +116,7 @@ export default function PerimeterProgressSegmented({
     }
     if (status === "error") {
       stopLoop();
-      const errAnim = animate(p, 0.25, { duration: 0.35, ease: "easeOut" });
+      const errAnim = animate(p, 0.25, { duration: 0.45, ease: [0.25, 0.1, 0.25, 1] });
       return () => errAnim.stop();
     }
     return;
@@ -165,14 +165,14 @@ export default function PerimeterProgressSegmented({
             rx={radius}
             pathLength={1}
             stroke={stroke}
-            strokeWidth={2}
+            strokeWidth={2.5}
             strokeLinecap="round"
             strokeLinejoin="round"
             vectorEffect="non-scaling-stroke"
             style={{
               strokeDasharray: dash,
               filter:
-                "drop-shadow(0 0 8px rgba(0,179,255,.5)) drop-shadow(0 0 12px rgba(0,22,253,.35))",
+                "drop-shadow(0 0 10px rgba(0,179,255,.6)) drop-shadow(0 0 16px rgba(0,100,253,.4)) drop-shadow(0 0 24px rgba(165,0,243,.25))",
             }}
           />
         </g>

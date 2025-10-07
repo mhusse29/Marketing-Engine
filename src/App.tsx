@@ -867,8 +867,12 @@ function App() {
       cardItems.push({ id: `${card}-skeleton`, element: <SkeletonCard title={title} /> });
     });
   } else {
+    // Only show Content card if it was actually validated AND has generated content
+    // This prevents empty content card from showing when only Pictures is generated
     const shouldShowContentCard =
-      cardsEnabled.content && (contentVariants.length > 0 || contentStatus !== 'idle');
+      cardsEnabled.content && 
+      settings.quickProps.content.validated && 
+      (contentVariants.length > 0 || contentStatus !== 'idle');
 
     if (shouldShowContentCard) {
       cardItems.push({
@@ -890,7 +894,13 @@ function App() {
       });
     }
 
-    if (cardsEnabled.pictures && picturesVersions.length > 0) {
+    // Only show Pictures card if it was validated AND has generated images
+    const shouldShowPicturesCard = 
+      cardsEnabled.pictures && 
+      settings.quickProps.pictures.validated &&
+      picturesVersions.length > 0;
+
+    if (shouldShowPicturesCard) {
       cardItems.push({
         id: 'pictures-card',
         element: (
@@ -906,7 +916,13 @@ function App() {
       });
     }
 
-    if (cardsEnabled.video && videoVersions.length > 0) {
+    // Only show Video card if it was validated AND has generated videos
+    const shouldShowVideoCard = 
+      cardsEnabled.video && 
+      settings.quickProps.video.validated &&
+      videoVersions.length > 0;
+
+    if (shouldShowVideoCard) {
       cardItems.push({
         id: 'video-card',
         element: (
