@@ -392,6 +392,9 @@ const FLUX_API_KEY = process.env.FLUX_API_KEY || null
 const STABILITY_API_KEY = process.env.STABILITY_API_KEY || null
 const IDEOGRAM_API_KEY = process.env.IDEOGRAM_API_KEY || null
 
+// Video provider API keys
+const RUNWAY_API_KEY = process.env.RUNWAY_API_KEY || null
+
 const PRIMARY = 'openai'
 // Force OpenAI models to avoid Anthropic model conflicts
 // GPT-5 Models (Verified and Tested - Oct 2025)
@@ -733,13 +736,226 @@ ${JSON.stringify(schema, null, 2)}`,
   return sections.join('\n\n')
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// RUNWAY VIDEO GENERATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function generateRunwayVideo({
+  promptText,
+  model = 'gen3a_turbo',
+  duration = 5,
+  ratio = '1280:768',
+  watermark = false,
+  seed,
+}) {
+  if (!RUNWAY_API_KEY) {
+    throw new Error('runway_not_configured')
+  }
+
+  console.log('[Runway] Generating video:', {
+    model,
+    duration,
+    ratio,
+    watermark,
+    promptLength: promptText.length,
+    hasSeed: !!seed,
+  })
+
+  const payload = {
+    promptText: promptText.trim(),
+    model,
+    duration,
+    ratio,
+    watermark,
+  }
+
+  if (seed !== undefined && seed !== null) {
+    payload.seed = seed
+  }
+
+  try {
+    const response = await fetch('https://api.dev.runwayml.com/v1/text_to_video', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RUNWAY_API_KEY}`,
+        'Content-Type': 'application/json',
+        'X-Runway-Version': '2024-11-06',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[Runway] API Error:', response.status, errorText)
+      throw new Error(`Runway API error: ${response.status} - ${errorText}`)
+    }
+
+    const result = await response.json()
+    console.log('[Runway] Task created:', result.id)
+
+    return {
+      taskId: result.id,
+      status: 'PENDING',
+    }
+  } catch (error) {
+    console.error('[Runway] Generation failed:', error)
+    throw error
+  }
+}
+
+async function pollRunwayTask(taskId) {
+  if (!RUNWAY_API_KEY) {
+    throw new Error('runway_not_configured')
+  }
+
+  try {
+    const response = await fetch(`https://api.dev.runwayml.com/v1/tasks/${taskId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${RUNWAY_API_KEY}`,
+        'X-Runway-Version': '2024-11-06',
+      },
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[Runway] Poll Error:', response.status, errorText)
+      throw new Error(`Runway poll error: ${response.status}`)
+    }
+
+    const result = await response.json()
+    console.log('[Runway] Task status:', result.id, result.status)
+
+    return result
+  } catch (error) {
+    console.error('[Runway] Poll failed:', error)
+    throw error
+  }
+}
+
+const videoTasks = new Map()
+
+app.post('/v1/videos/generate', async (req, res) => {
+  const {
+    promptText,
+    model = 'gen3a_turbo',
+    duration = 5,
+    aspect = '9:16',
+    watermark = false,
+    seed,
+  } = req.body
+
+  if (!promptText || typeof promptText !== 'string' || promptText.trim().length === 0) {
+    return res.status(400).json({ error: 'promptText is required' })
+  }
+
+  if (!RUNWAY_API_KEY) {
+    return res.status(503).json({
+      error: 'runway_not_configured',
+      message: 'Runway API key is not configured',
+    })
+  }
+
+  const aspectToRatio = {
+    '16:9': '1280:768',
+    '9:16': '768:1280',
+    '1:1': '1024:1024',
+  }
+  const ratio = aspectToRatio[aspect] || '1280:768'
+
+  try {
+    const { taskId, status } = await generateRunwayVideo({
+      promptText,
+      model,
+      duration,
+      ratio,
+      watermark,
+      seed,
+    })
+
+    videoTasks.set(taskId, {
+      taskId,
+      status,
+      createdAt: Date.now(),
+      promptText,
+      model,
+      duration,
+      aspect,
+    })
+
+    res.json({
+      taskId,
+      status,
+      message: 'Video generation started',
+    })
+  } catch (error) {
+    console.error('[Runway] Generation endpoint error:', error)
+    res.status(500).json({
+      error: 'generation_failed',
+      message: error.message,
+    })
+  }
+})
+
+app.get('/v1/videos/tasks/:taskId', async (req, res) => {
+  const { taskId } = req.params
+
+  if (!taskId) {
+    return res.status(400).json({ error: 'taskId is required' })
+  }
+
+  if (!RUNWAY_API_KEY) {
+    return res.status(503).json({
+      error: 'runway_not_configured',
+      message: 'Runway API key is not configured',
+    })
+  }
+
+  try {
+    const result = await pollRunwayTask(taskId)
+
+    const stored = videoTasks.get(taskId)
+    if (stored) {
+      videoTasks.set(taskId, {
+        ...stored,
+        status: result.status,
+        updatedAt: Date.now(),
+      })
+    }
+
+    const response = {
+      taskId: result.id,
+      status: result.status,
+      progress: result.progress || 0,
+    }
+
+    if (result.status === 'SUCCEEDED' && result.output) {
+      response.videoUrl = result.output[0]
+      response.createdAt = result.createdAt
+    }
+
+    if (result.status === 'FAILED' && result.failure) {
+      response.error = result.failure
+      response.failureCode = result.failureCode
+    }
+
+    res.json(response)
+  } catch (error) {
+    console.error('[Runway] Poll endpoint error:', error)
+    res.status(500).json({
+      error: 'poll_failed',
+      message: error.message,
+    })
+  }
+})
+
 app.get('/health', (req, res) => {
   res.json({
     ok: true,
     events: ['/events', '/ai/events'],
     providerPrimary: PRIMARY,
-    primaryModel: OPENAI_PRIMARY_MODEL,  // GPT-5 for content
-    chatModel: OPENAI_CHAT_MODEL,  // GPT-5-chat for BADU
+    primaryModel: OPENAI_PRIMARY_MODEL,
+    chatModel: OPENAI_CHAT_MODEL,
     fallbackModel: OPENAI_FALLBACK_MODEL,
     hasAnthropic: false,
     hasOpenAI: !!process.env.OPENAI_API_KEY,
@@ -748,6 +964,9 @@ app.get('/health', (req, res) => {
       flux: !!FLUX_API_KEY,
       stability: !!STABILITY_API_KEY,
       ideogram: !!IDEOGRAM_API_KEY,
+    },
+    videoProviders: {
+      runway: !!RUNWAY_API_KEY,
     },
   })
 })
