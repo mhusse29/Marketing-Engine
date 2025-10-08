@@ -445,7 +445,7 @@ export const defaultSettings: SettingsState = {
   cards: {
     content: true,
     pictures: true,
-    video: false,
+    video: true,
   },
   quickProps: {
     content: defaultContentQuickProps,
