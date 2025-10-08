@@ -12,9 +12,9 @@ const order: CardKey[] = ['content', 'pictures', 'video'];
 
 export const useCardsStore = create<CardsStore>((set, get) => ({
   enabled: {
-    content: false,
-    pictures: false,
-    video: false,
+    content: true,
+    pictures: true,
+    video: true,
   },
   hidden: {
     content: false,

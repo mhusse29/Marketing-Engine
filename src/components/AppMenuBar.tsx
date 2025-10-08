@@ -593,7 +593,7 @@ export function MenuContent({
   );
 
   const setCardEnabled = useCardsStore((state) => state.setEnabled);
-  
+
   const handleValidate = useCallback(() => {
     const currentSettings = latestSettingsRef.current;
     const trimmedBrief = currentSettings.quickProps.content.brief.trim();
@@ -1564,17 +1564,17 @@ export function MenuVideo({
   const setVideo = useCallback(
     (patch: Partial<typeof qp>, options?: { resetValidation?: boolean }) => {
       const shouldResetValidation = options?.resetValidation ?? true;
-      onSettingsChange({
+    onSettingsChange({
         ...latestSettingsRef.current,
-        quickProps: {
+      quickProps: {
           ...latestSettingsRef.current.quickProps,
-          video: {
+        video: {
             ...latestSettingsRef.current.quickProps.video,
-            ...patch,
+          ...patch,
             ...(shouldResetValidation ? { validated: false } : {}),
-          },
         },
-      });
+      },
+    });
       if (shouldResetValidation) {
         setValidationNotice('');
       }
@@ -1684,7 +1684,7 @@ export function MenuVideo({
 
       {/* Core Settings - Duration & Aspect */}
       <section className="space-y-5 rounded-2xl border border-white/10 bg-white/5 p-5 pb-6">
-        <div>
+    <div>
           {sectionLabel('Duration')}
           <div className="flex flex-wrap gap-2">
             {VIDEO_DURATION_OPTIONS.map((duration) => (
@@ -1696,7 +1696,7 @@ export function MenuVideo({
                 onClick={() => setVideo({ duration })}
               />
             ))}
-          </div>
+        </div>
         </div>
 
         <div>
@@ -1711,7 +1711,7 @@ export function MenuVideo({
                 onClick={() => setVideo({ aspect })}
               />
             ))}
-          </div>
+        </div>
         </div>
 
         <div>
@@ -1734,7 +1734,7 @@ export function MenuVideo({
       </section>
 
       {/* Advanced Settings */}
-      <AdvancedSection>
+        <AdvancedSection>
         <div>
           <Label>Hook Style</Label>
           <div className="flex flex-wrap gap-2">
@@ -1751,99 +1751,99 @@ export function MenuVideo({
           </div>
         </div>
 
-        <div>
-          <Label>Captions</Label>
+          <div>
+            <Label>Captions</Label>
           <div className="flex flex-wrap gap-2">
-            <HintChip
-              label={qp.captions ? 'Captions on' : 'Captions off'}
-              hint={CAPTIONS_HINT}
-              active={qp.captions}
+              <HintChip
+                label={qp.captions ? 'Captions on' : 'Captions off'}
+                hint={CAPTIONS_HINT}
+                active={qp.captions}
               onClick={() => setVideo({ captions: !qp.captions })}
-              size="small"
-            />
+                size="small"
+              />
+            </div>
           </div>
-        </div>
 
-        <div>
-          <Label>CTA</Label>
+          <div>
+            <Label>CTA</Label>
           <div className="flex flex-wrap gap-2">
-            {CTA_OPTIONS.map((cta) => (
-              <HintChip
-                key={cta}
-                label={cta}
-                hint={CTA_HINTS[cta]}
-                active={qp.cta === cta}
+              {CTA_OPTIONS.map((cta) => (
+                <HintChip
+                  key={cta}
+                  label={cta}
+                  hint={CTA_HINTS[cta]}
+                  active={qp.cta === cta}
                 onClick={() => setVideo({ cta })}
-                size="small"
-              />
-            ))}
+                  size="small"
+                />
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div>
-          <Label>Voiceover</Label>
+          <div>
+            <Label>Voiceover</Label>
           <div className="flex flex-wrap gap-2">
-            {VIDEO_VOICEOVER_OPTIONS.map((option) => (
-              <HintChip
-                key={option}
-                label={option}
-                hint={VIDEO_VOICEOVER_HINTS[option]}
-                active={qp.voiceover === option}
+              {VIDEO_VOICEOVER_OPTIONS.map((option) => (
+                <HintChip
+                  key={option}
+                  label={option}
+                  hint={VIDEO_VOICEOVER_HINTS[option]}
+                  active={qp.voiceover === option}
                 onClick={() => setVideo({ voiceover: option })}
-                size="small"
-              />
-            ))}
+                  size="small"
+                />
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div>
+          <div>
           <Label>Shot Density</Label>
           <div className="flex flex-wrap gap-2">
-            {VIDEO_DENSITY_OPTIONS.map((option) => (
-              <HintChip
-                key={option}
-                label={option}
-                hint={VIDEO_DENSITY_HINTS[option]}
-                active={qp.density === option}
+              {VIDEO_DENSITY_OPTIONS.map((option) => (
+                <HintChip
+                  key={option}
+                  label={option}
+                  hint={VIDEO_DENSITY_HINTS[option]}
+                  active={qp.density === option}
                 onClick={() => setVideo({ density: option })}
-                size="small"
-              />
-            ))}
+                  size="small"
+                />
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div>
+          <div>
           <Label>Proof Point</Label>
           <div className="flex flex-wrap gap-2">
-            {VIDEO_PROOF_OPTIONS.map((option) => (
-              <HintChip
-                key={option}
-                label={option}
-                hint={VIDEO_PROOF_HINTS[option]}
-                active={qp.proof === option}
+              {VIDEO_PROOF_OPTIONS.map((option) => (
+                <HintChip
+                  key={option}
+                  label={option}
+                  hint={VIDEO_PROOF_HINTS[option]}
+                  active={qp.proof === option}
                 onClick={() => setVideo({ proof: option })}
-                size="small"
-              />
-            ))}
+                  size="small"
+                />
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div>
+          <div>
           <Label>Do-Nots</Label>
           <div className="flex flex-wrap gap-2">
-            {VIDEO_DONOT_OPTIONS.map((option) => (
-              <HintChip
-                key={option}
-                label={option}
-                hint={VIDEO_DONOT_HINTS[option]}
-                active={qp.doNots === option}
+              {VIDEO_DONOT_OPTIONS.map((option) => (
+                <HintChip
+                  key={option}
+                  label={option}
+                  hint={VIDEO_DONOT_HINTS[option]}
+                  active={qp.doNots === option}
                 onClick={() => setVideo({ doNots: option })}
-                size="small"
-              />
-            ))}
+                  size="small"
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      </AdvancedSection>
+        </AdvancedSection>
 
       {/* Validation CTA */}
       <section className="pt-10">
@@ -1859,7 +1859,7 @@ export function MenuVideo({
           {isValidated && qp.validatedAt
             ? `Locked ${new Date(qp.validatedAt).toLocaleTimeString()}`
             : validationHint}
-        </div>
+      </div>
       </section>
     </div>
   );

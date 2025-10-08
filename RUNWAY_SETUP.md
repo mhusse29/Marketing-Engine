@@ -6,7 +6,7 @@ Add your Runway API key to `/Users/mohamedhussein/Desktop/Marketing Engine/serve
 
 ```bash
 # Runway ML API
-RUNWAY_API_KEY=your_runway_api_key_here
+RUNWAY_API_KEY=key_9d6123b7d5d991b73ec912d41495db414ddc1b9ccc248a180b69955124f6d75a7eae1c8fc492a143cc798d72bf006aafc26b3912139e79b5efccdc2e1d1da9bb
 ```
 
 ## Runway Gen-3 Alpha Models
