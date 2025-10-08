@@ -457,10 +457,14 @@ function App() {
     const isPicturePromptReady = trimmedPicturePrompt.length >= MIN_PICTURE_PROMPT_LENGTH;
     const isPictureValidated = settings.quickProps.pictures.validated && isPicturePromptReady;
 
+    // Video validation
+    const videoPrompt = settings.quickProps.video.promptText.trim();
+    const isVideoValidated = settings.quickProps.video.validated && videoPrompt.length >= 10;
+
     // Check if we have at least one valid panel to generate
     const canGenerateContent = isContentEnabled && contentBrief;
     const canGeneratePictures = settings.cards.pictures && isPictureValidated && resolvedPictureProvider;
-    const canGenerateVideo = settings.cards.video;
+    const canGenerateVideo = settings.cards.video && isVideoValidated;
     
     if (!canGenerateContent && !canGeneratePictures && !canGenerateVideo) {
       console.warn('No valid panels to generate. Please validate at least one panel.');
@@ -575,42 +579,49 @@ function App() {
     }
 
     if (settings.cards.video) {
-      tasks.push(
-        (async () => {
-          try {
-            setAiState((prev) => ({
-              ...prev,
-              stepStatus: { ...prev.stepStatus, video: 'thinking' },
-            }));
+      if (!isVideoValidated) {
+        setAiState((prev) => ({
+          ...prev,
+          stepStatus: { ...prev.stepStatus, video: 'error' },
+        }));
+      } else {
+        tasks.push(
+          (async () => {
+            try {
+              setAiState((prev) => ({
+                ...prev,
+                stepStatus: { ...prev.stepStatus, video: 'thinking' },
+              }));
 
-            await waitWithAbort(controller.signal, 700);
+              // Runway video generation with real API
+              const versions = await generateVideo(
+                settings.versions ?? 1,
+                settings.quickProps.video,
+                controller.signal
+              );
 
-            setAiState((prev) => ({
-              ...prev,
-              stepStatus: { ...prev.stepStatus, video: 'rendering' },
-            }));
+              if (!versions.length) {
+                throw new Error('Video generation yielded no outputs.');
+              }
 
-            await waitWithAbort(controller.signal, 900);
-
-            const versions = generateVideo(settings.versions, settings.quickProps.video);
-
-            setAiState((prev) => ({
-              ...prev,
-              outputs: { ...prev.outputs, video: { versions } },
-              stepStatus: { ...prev.stepStatus, video: 'ready' },
-            }));
-          } catch (error) {
-            if ((error as Error).name === 'AbortError') {
-              return;
+              setAiState((prev) => ({
+                ...prev,
+                outputs: { ...prev.outputs, video: { versions } },
+                stepStatus: { ...prev.stepStatus, video: 'ready' },
+              }));
+            } catch (error) {
+              if ((error as Error).name === 'AbortError') {
+                return;
+              }
+              console.error('Video generation failed', error);
+              setAiState((prev) => ({
+                ...prev,
+                stepStatus: { ...prev.stepStatus, video: 'error' },
+              }));
             }
-            console.error('Video generation failed', error);
-            setAiState((prev) => ({
-              ...prev,
-              stepStatus: { ...prev.stepStatus, video: 'error' },
-            }));
-          }
-        })()
-      );
+          })()
+        );
+      }
     }
 
     try {
@@ -813,14 +824,31 @@ function App() {
       const outputs = { ...prev.outputs };
 
       if (type === 'video' && outputs.video) {
-        const refreshed = generateVideo(1, settings.quickProps.video)[0];
-        const index = clampVersionIndex(
-          currentVersions.video,
-          outputs.video.versions.length || 1
-        );
-        const versions = [...outputs.video.versions];
-        versions[index] = refreshed;
-        outputs.video = { versions };
+        // Video regeneration now requires async Runway API call
+        generateVideo(1, settings.quickProps.video).then(refreshed => {
+          const index = clampVersionIndex(
+            currentVersions.video,
+            outputs.video!.versions.length || 1
+          );
+          const versions = [...outputs.video!.versions];
+          versions[index] = refreshed[0];
+          
+          setAiState((prev) => ({
+            ...prev,
+            outputs: {
+              ...prev.outputs,
+              video: { versions },
+            },
+            stepStatus: { ...prev.stepStatus, video: 'ready' },
+          }));
+        }).catch(error => {
+          console.error('Video regeneration failed:', error);
+          setAiState((prev) => ({
+            ...prev,
+            stepStatus: { ...prev.stepStatus, video: 'error' },
+          }));
+        });
+        return prev; // Return early for async operation
       }
 
       return {

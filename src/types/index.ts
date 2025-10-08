@@ -251,13 +251,14 @@ export type GeneratedPictures =
     };
 
 export type GeneratedVideo = {
-  aspect: '9:16' | '1:1' | '16:9';
-  durationSec: number;
-  scriptBeats: { 
-    label: 'Hook' | 'Value' | 'CTA' | 'Problem' | 'Solution' | 'Proof'; 
-    text: string 
-  }[];
-  fullPrompt: string;
+  url: string;
+  taskId: string;
+  model: string;
+  duration: number;
+  aspect: string;
+  watermark: boolean;
+  prompt: string;
+  createdAt: string;
 };
 
 export type AiUIState = {

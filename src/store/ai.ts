@@ -308,44 +308,36 @@ export async function generateContent(
   });
 }
 
-// Mock video generation
-export function generateVideo(
+/**
+ * Real Runway video generation (async)
+ * This is now a wrapper - actual implementation in lib/videoGeneration.ts
+ */
+export async function generateVideo(
   versions: number,
-  props: SettingsState['quickProps']['video']
-): GeneratedVideo[] {
+  props: SettingsState['quickProps']['video'],
+  signal?: AbortSignal
+): Promise<GeneratedVideo[]> {
+  const { generateRunwayVideo } = await import('../lib/videoGeneration');
+  
   const videoVersions: GeneratedVideo[] = [];
   
-  const hookTemplates = {
-    'Pain-point': 'Struggling with [specific challenge]? You\'re not alone.',
-    'Bold claim': 'What if I told you there\'s a better way?',
-    'Question': 'Ever wondered how top performers do it?',
-    'Pattern interrupt': 'STOP! Before you scroll...',
-  };
-  
-  const scriptBeats = [
-    { label: 'Hook' as const, text: '' },
-    { label: 'Problem' as const, text: 'Most businesses waste time and money on outdated solutions.' },
-    { label: 'Solution' as const, text: 'Our innovative approach changes everything.' },
-    { label: 'Proof' as const, text: 'See real results from real customers.' },
-    { label: 'Value' as const, text: 'Transform your business in just days, not months.' },
-    { label: 'CTA' as const, text: props?.cta || 'Start your journey today!' },
-  ];
-  
+  // Generate requested number of versions
   for (let v = 0; v < versions; v++) {
-    const hookType = props?.hook || 'Question';
-    const beats = [...scriptBeats];
-    beats[0].text = hookTemplates[hookType];
-    
-    videoVersions.push({
-      aspect: props?.aspect || '9:16',
-      durationSec: props?.duration || 12,
-      scriptBeats: beats,
-      fullPrompt: `Create a ${props?.duration || 12}-second video in ${
-        props?.aspect || '9:16'
-      } format. Start with a ${hookType} hook. Include dynamic transitions, ${
-        props?.captions ? 'bold captions' : 'minimal text'
-      }, and end with a strong call-to-action: "${props?.cta || 'Start your journey today!'}"`,
-    });
+    try {
+      const video = await generateRunwayVideo(
+        props,
+        (progress, status) => {
+          console.log(`[Video ${v + 1}/${versions}] ${status}: ${progress}%`);
+        },
+        signal
+      );
+      
+      videoVersions.push(video);
+      console.log(`[Video ${v + 1}/${versions}] Generated successfully!`);
+    } catch (error) {
+      console.error(`[Video ${v + 1}/${versions}] Generation failed:`, error);
+      throw error; // Don't continue if one fails
+    }
   }
   
   return videoVersions;
