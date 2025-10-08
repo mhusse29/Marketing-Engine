@@ -342,7 +342,7 @@ function CardMenu({
 }) {
   const selectCard = useCardsStore((state) => state.select);
   const selected = useCardsStore((state) => state.selected);
-  const isEnabled = useCardsStore((state) => state.enabled[card]);
+  // Removed isEnabled check - all cards always clickable now
   const { justEnabled } = useGlowOnEnable(card);
 
   return (
@@ -350,14 +350,14 @@ function CardMenu({
       <MenubarTrigger
         asChild
         onClick={() => {
-          if (!isEnabled) return;
+          // ALWAYS allow clicks - removed isEnabled check
           selectCard(card);
         }}
       >
         <CTAChip
           label={labelFor(card)}
           active={selected === card}
-          disabled={!isEnabled}
+          disabled={false}  // FORCE always enabled
           className={cn(justEnabled && 'animate-[pulse_1.2s_ease-in-out_2]')}
         />
       </MenubarTrigger>
