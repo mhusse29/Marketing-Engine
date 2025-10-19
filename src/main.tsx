@@ -12,27 +12,16 @@ import { AuthProvider } from './contexts/AuthContext'
 // Use basename only in production (GitHub Pages), not in local dev
 const basename = import.meta.env.MODE === 'production' ? '/Marketing-Engine' : '';
 
-// Check if we're on the standalone analytics route (no auth needed)
-const isStandalone = window.location.pathname.includes('/analytics-standalone');
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter basename={basename}>
-      {isStandalone ? (
+      <AuthProvider>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <TooltipProvider delayDuration={80} skipDelayDuration={200}>
             <Router />
           </TooltipProvider>
         </ThemeProvider>
-      ) : (
-        <AuthProvider>
-          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-            <TooltipProvider delayDuration={80} skipDelayDuration={200}>
-              <Router />
-            </TooltipProvider>
-          </ThemeProvider>
-        </AuthProvider>
-      )}
+      </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
 )
