@@ -1,9 +1,9 @@
-import React from "react";
 import { motion } from "framer-motion";
-import NanoGridBloom from "@/ui/NanoGridBloom";
-import PerimeterProgressSegmented from "@/ui/PerimeterProgressSegmented";
+import { Minus } from "lucide-react";
 import PlatformIcon from "@/ui/PlatformIcon";
 import CopyBtn from "@/ui/CopyBtn";
+import { InteractiveCardWrapper } from "@/components/Outputs/InteractiveCardWrapper";
+import "@/components/Outputs/InteractiveCard.css";
 
 type Status = "queued" | "thinking" | "rendering" | "ready" | "error";
 
@@ -17,55 +17,24 @@ export type ContentVariant = {
 export default function ContentVariantCard({
   status,
   variant,
-  progress,
   onRegenerate,
-  onSave
+  onSave,
+  onMinimize
 }: {
   status: Status;
   variant: ContentVariant | null;
-  progress?: number;
   onRegenerate?: () => void;
   onSave?: () => void;
+  onMinimize?: () => void;
 }) {
   const busyStages: Status[] = ["queued", "thinking", "rendering"];
   const stageIndex = busyStages.indexOf(status);
   const loading = stageIndex >= 0;
-  const clampedProgress =
-    typeof progress === "number" && Number.isFinite(progress)
-      ? Math.max(0, Math.min(1, progress))
-      : undefined
 
-  const stageCopy: Record<Status, string> = {
-    queued: "Queued up — lining up your request…",
-    thinking: "Thinking through angles and tone…",
-    rendering: "Rendering the final copy…",
-    ready: "",
-    error: "",
-  };
 
-  const renderStageChain = () => (
-    <div className="flex items-center gap-1 text-[11px] uppercase tracking-[0.35em]">
-      {busyStages.map((stage, idx) => {
-        const isActive = stage === status;
-        const isComplete = idx < stageIndex;
-        const tone = isActive
-          ? "text-[#00b3ff]"
-          : isComplete
-          ? "text-white/60"
-          : "text-white/30";
-        return (
-          <React.Fragment key={stage}>
-            <span className={`transition-colors ${tone}`}>{stage}</span>
-            {idx < busyStages.length - 1 ? <span className="text-white/25">→</span> : null}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-
-  return (
+  const cardContent = (
     <motion.article
-      className="relative isolate overflow-hidden rounded-[24px] bg-white/5 backdrop-blur-xl shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03),0_10px_40px_rgba(0,0,0,0.40)]"
+      className="relative isolate overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.05] backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.02),0_8px_32px_rgba(0,0,0,0.35)] transition-shadow duration-300"
       data-loading={loading ? "true" : "false"}
       aria-busy={loading}
       layout
@@ -75,10 +44,7 @@ export default function ContentVariantCard({
       <div className="relative z-10">
         {loading ? (
           <div className="px-4 pt-5 pb-5 space-y-4">
-            {renderStageChain()}
-            <p className="text-white/65 text-sm leading-relaxed">
-              {stageCopy[status]}
-            </p>
+            {/* Loading animation will go here */}
           </div>
         ) : status === "error" ? (
           <div className="px-4 pt-5 pb-5 space-y-3">
@@ -97,6 +63,21 @@ export default function ContentVariantCard({
           </div>
         ) : (
           <>
+            {/* Minimize Button - Top Right */}
+            {onMinimize && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMinimize();
+                }}
+                className="absolute top-4 right-4 z-20 flex h-6 w-6 items-center justify-center rounded-md bg-white/10 backdrop-blur-sm border border-white/5 transition-all hover:bg-white/20 hover:border-white/10 active:scale-95"
+                title="Minimize to Stage Manager"
+                aria-label="Minimize card"
+              >
+                <Minus className="h-3.5 w-3.5 text-white/70" />
+              </button>
+            )}
+
             <div className="px-4 pb-5 pt-4 space-y-4">
               <div className="flex items-start gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10">
@@ -155,12 +136,12 @@ export default function ContentVariantCard({
           </>
         )}
       </div>
-
-      {/* Interior Nano Grid Bloom (breathes only while loading) */}
-      <NanoGridBloom busy={loading} />
-
-      {/* Segmented Dots perimeter outline (blue-first) */}
-      <PerimeterProgressSegmented status={status} progress={clampedProgress} />
     </motion.article>
+  );
+
+  return (
+    <InteractiveCardWrapper enableTilt={true} enableMobileTilt={false}>
+      {cardContent}
+    </InteractiveCardWrapper>
   );
 }

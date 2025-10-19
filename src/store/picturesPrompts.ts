@@ -1,4 +1,5 @@
 import type { PicturesQuickProps } from '../types';
+import { getApiBase } from '../lib/api';
 
 export const MAX_PICTURE_PROMPT_LENGTH = 4000;
 export const MIN_PICTURE_PROMPT_LENGTH = 10;
@@ -77,4 +78,48 @@ export function craftPicturesPrompt(quickProps: PicturesQuickProps): string {
   }
 
   return clampPrompt(segments.filter(Boolean).join(' '));
+}
+
+/**
+ * Enhance a pictures prompt using GPT-5
+ * Takes the current settings and campaign context to generate a professional, 
+ * detailed image prompt optimized for the selected provider
+ */
+export async function enhancePicturesPrompt(
+  quickProps: PicturesQuickProps,
+  brief?: string
+): Promise<{ suggestion: string; model: string }> {
+  const response = await fetch(`${getApiBase()}/v1/tools/pictures/suggest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      settings: {
+        style: quickProps.style,
+        aspect: quickProps.aspect,
+        lighting: quickProps.lighting,
+        composition: quickProps.composition,
+        camera: quickProps.camera,
+        mood: quickProps.mood,
+        backdrop: quickProps.backdrop,
+        colourPalette: quickProps.colourPalette,
+        finish: quickProps.finish,
+        texture: quickProps.texture,
+        quality: quickProps.quality,
+      },
+      brief,
+      provider: quickProps.imageProvider === 'auto' ? 'openai' : quickProps.imageProvider,
+    }),
+  });
+
+  if (!response.ok) {
+    // Let error bubble up so caller can fall back to craftPicturesPrompt
+    const error = await response.json().catch(() => ({ error: 'unknown_error' }));
+    throw new Error(error.error || `Enhancement failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return {
+    suggestion: data.suggestion,
+    model: data.model || 'gpt-5',
+  };
 }

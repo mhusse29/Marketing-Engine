@@ -1,6 +1,27 @@
 @import "tailwindcss";
 @import "./theme.css";
 @import "./styles/glass-anim.css";
+@import "./components/Outputs/InteractiveCard.css";
+
+/* Custom scrollbar for analytics dashboard */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
 html,
 body,
 #root {
@@ -47,6 +68,15 @@ canvas {
   }
 }
 
+@keyframes shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
 @keyframes barShimmer {
   0% {
     transform: translateX(-100%);
@@ -82,4 +112,222 @@ canvas {
 
 .ai-live .settings-platform-pill[data-selected="false"] {
   opacity: 0.75;
+}
+
+/* Animated wavy dotted surface - creates flowing wave effect */
+@keyframes wavyDots1 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) skewY(0deg);
+  }
+  25% {
+    transform: translate3d(30px, -20px, 0) scale(1.08) skewY(2deg);
+  }
+  50% {
+    transform: translate3d(-15px, -35px, 0) scale(0.95) skewY(-1deg);
+  }
+  75% {
+    transform: translate3d(-40px, -15px, 0) scale(1.05) skewY(1deg);
+  }
+}
+
+@keyframes wavyDots2 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) skewX(0deg);
+  }
+  33% {
+    transform: translate3d(-25px, 30px, 0) scale(1.1) skewX(-2deg);
+  }
+  66% {
+    transform: translate3d(35px, -20px, 0) scale(0.9) skewX(2deg);
+  }
+}
+
+@keyframes wavyDots3 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+  40% {
+    transform: translate3d(20px, 25px, 0) scale(1.15) rotate(1deg);
+  }
+  80% {
+    transform: translate3d(-30px, -25px, 0) scale(0.88) rotate(-1deg);
+  }
+}
+
+@keyframes wavyDots4 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) skewY(0deg) skewX(0deg);
+  }
+  30% {
+    transform: translate3d(-35px, 18px, 0) scale(1.05) skewY(1deg) skewX(-1deg);
+  }
+  60% {
+    transform: translate3d(28px, -28px, 0) scale(0.92) skewY(-1deg) skewX(1deg);
+  }
+  90% {
+    transform: translate3d(15px, 20px, 0) scale(1.08) skewY(1deg) skewX(1deg);
+  }
+}
+
+/* Ultra-Premium Auth Transition Animations */
+.auth-transition-container {
+  perspective: 2000px;
+  perspective-origin: center center;
+  transform-style: preserve-3d;
+}
+
+@keyframes liquidMorph {
+  0% {
+    transform: scale(1) rotateX(0deg) rotateY(0deg);
+    border-radius: 1rem;
+  }
+  25% {
+    transform: scale(1.02, 0.95) rotateX(2deg) rotateY(-1deg);
+    border-radius: 1.2rem;
+  }
+  50% {
+    transform: scale(0.98, 1.05) rotateX(-1deg) rotateY(2deg);
+    border-radius: 1.5rem;
+  }
+  75% {
+    transform: scale(1.01, 0.97) rotateX(1deg) rotateY(1deg);
+    border-radius: 2rem;
+  }
+  100% {
+    transform: scale(0.8) rotateX(0deg) rotateY(0deg);
+    border-radius: 50%;
+  }
+}
+
+@keyframes glassShatter {
+  0% {
+    opacity: 1;
+    filter: blur(0px);
+  }
+  50% {
+    opacity: 0.7;
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 0;
+    filter: blur(20px);
+  }
+}
+
+@keyframes chromaticSplit {
+  0%, 100% {
+    text-shadow: 
+      2px 0 0 rgba(255, 0, 0, 0.3),
+      -2px 0 0 rgba(0, 255, 255, 0.3);
+  }
+  50% {
+    text-shadow: 
+      4px 0 0 rgba(255, 0, 0, 0.5),
+      -4px 0 0 rgba(0, 255, 255, 0.5);
+  }
+}
+
+@keyframes backgroundReveal {
+  0% {
+    opacity: 0;
+    filter: blur(40px) brightness(0.5);
+    transform: scale(1.2);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px) brightness(1);
+    transform: scale(1);
+  }
+}
+
+/* Feedback Component Spinner Animation */
+@keyframes fade-spin {
+  0%, 39%, 100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* Feedback Component Theme Variables */
+@layer base {
+  :root {
+    --context-card-border: hsla(0, 0%, 92%, 1);
+    --ds-blue-300: oklch(94.58% 0.0293 249.84870859673202);
+    --ds-blue-900: oklch(53.18% 0.2399 256.9900584162342);
+    --ds-blue-700: oklch(57.61% 0.2508 258.23);
+    --accents-1: #fafafa;
+    --accents-2: #eaeaea;
+    --ds-red-800: oklch(58.19% 0.2482 25.15);
+    --ds-red-900: oklch(54.99% 0.232 25.29);
+    --ds-red-300: oklch(94.33% 0.0369 15.011509923860523);
+    --ds-amber-800: oklch(77.21% 0.1991 64.28);
+    --ds-amber-850: hsl(33, 96%, 42%);
+    --ds-gray-100: hsla(0, 0%, 95%, 1);
+    --ds-gray-400: hsla(0, 0%, 92%, 1);
+    --ds-gray-700: hsla(0, 0%, 56%, 1);
+    --ds-gray-900: hsla(0, 0%, 40%, 1);
+    --ds-gray-1000: hsla(0, 0%, 9%, 1);
+    --ds-gray-1000-h: hsl(0, 0%, 22%);
+    --ds-gray-alpha-200: hsla(0, 0%, 0%, 0.08);
+    --ds-gray-alpha-400: hsla(0, 0%, 0%, 0.08);
+    --ds-gray-alpha-500: hsla(0, 0%, 0%, 0.21);
+    --ds-gray-alpha-600: hsla(0, 0%, 0%, 0.34);
+    --ds-background-100: hsla(0, 0%, 100%, 1);
+    --ds-focus-color: var(--ds-blue-700);
+    --ds-focus-ring: 0 0 0 2px var(--ds-background-100), 0 0 0 4px var(--ds-focus-color);
+    --ds-shadow-border: 0 0 0 1px rgba(0, 0, 0, 0.08);
+    --ds-shadow-small: 0px 2px 2px rgba(0, 0, 0, 0.04);
+    --ds-shadow-border-small: var(--ds-shadow-border), var(--ds-shadow-small);
+    --ds-shadow-medium: 0px 2px 2px rgba(0, 0, 0, 0.04), 0px 8px 8px -8px rgba(0, 0, 0, 0.04);
+    --ds-shadow-border-medium: var(--ds-shadow-border), var(--ds-shadow-medium);
+    --ds-shadow-large: 0px 2px 2px rgba(0, 0, 0, 0.04), 0px 8px 16px -4px rgba(0, 0, 0, 0.04);
+    --ds-shadow-border-large: var(--ds-shadow-border), var(--ds-shadow-large);
+    --ds-shadow-tooltip: var(--ds-shadow-border), 0px 1px 1px rgba(0, 0, 0, 0.02), 0px 4px 8px rgba(0, 0, 0, 0.04);
+    --ds-shadow-menu: var(--ds-shadow-border), 0px 1px 1px rgba(0, 0, 0, 0.02), 0px 4px 8px -4px rgba(0, 0, 0, 0.04), 0px 16px 24px -8px rgba(0, 0, 0, 0.06);
+    --ds-shadow-modal: var(--ds-shadow-border), 0px 1px 1px rgba(0, 0, 0, 0.02), 0px 8px 16px -4px rgba(0, 0, 0, 0.04), 0px 24px 32px -8px rgba(0, 0, 0, 0.06);
+    --ds-shadow-fullscreen: var(--ds-shadow-border), 0px 1px 1px rgba(0, 0, 0, 0.02), 0px 8px 16px -4px rgba(0, 0, 0, 0.04), 0px 24px 32px -8px rgba(0, 0, 0, 0.06);
+    --ds-input-ring: 0 0 0 1px var(--ds-gray-alpha-600), 0 0 0 4px rgba(0, 0, 0, .16);
+    --geist-foreground: #000;
+    --geist-error: #ee0000;
+  }
+
+  .dark {
+    --context-card-border: hsla(0, 0%, 18%, 1);
+    --ds-blue-300: oklch(30.86% 0.1022 255.21);
+    --ds-blue-900: oklch(71.7% 0.1648 250.79360374054167);
+    --accents-2: #333333;
+    --accents-1: #111111;
+    --ds-red-800: oklch(58.01% 0.227 25.12);
+    --ds-red-900: oklch(69.96% 0.2136 22.03);
+    --ds-red-300: oklch(31.47% 0.1105 20.96);
+    --ds-blue-700: oklch(57.61% 0.2321 258.23);
+    --ds-amber-800: oklch(77.21% 0.1991 64.28);
+    --ds-gray-100: hsla(0, 0%, 10%, 1);
+    --ds-gray-400: hsla(0, 0%, 18%, 1);
+    --ds-gray-700: hsla(0, 0%, 56%, 1);
+    --ds-gray-900: hsla(0, 0%, 63%, 1);
+    --ds-gray-1000: hsla(0, 0%, 93%, 1);
+    --ds-gray-1000-h: hsl(0, 0%, 80%);
+    --ds-gray-alpha-200: hsla(0, 0%, 100%, 0.09);
+    --ds-gray-alpha-400: hsla(0, 0%, 100%, 0.14);
+    --ds-gray-alpha-500: hsla(0, 0%, 100%, 0.24);
+    --ds-gray-alpha-600: hsla(0, 0%, 100%, 0.51);
+    --ds-background-100: hsla(0,0%,4%, 1);
+    --ds-shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.145);
+    --ds-shadow-small: 0px 1px 2px rgba(0, 0, 0, 0.16);
+    --ds-shadow-border-small: var(--ds-shadow-border), 0px 1px 2px rgba(0, 0, 0, 0.16);
+    --ds-shadow-medium: 0px 2px 2px rgba(0, 0, 0, 0.32), 0px 8px 8px -8px rgba(0, 0, 0, 0.16);
+    --ds-shadow-border-medium: var(--ds-shadow-border), 0px 2px 2px rgba(0, 0, 0, 0.32), 0px 8px 8px -8px rgba(0, 0, 0, 0.16);
+    --ds-shadow-large: 0px 2px 2px rgba(0, 0, 0, 0.04), 0px 8px 16px -4px rgba(0, 0, 0, 0.04);
+    --ds-shadow-border-large: var(--ds-shadow-border), 0px 2px 2px rgba(0, 0, 0, 0.04), 0px 8px 16px -4px rgba(0, 0, 0, 0.04);
+    --ds-shadow-tooltip: var(--ds-shadow-border), 0px 1px 1px rgba(0, 0, 0, 0.02), 0px 4px 8px rgba(0, 0, 0, 0.04);
+    --ds-shadow-menu: var(--ds-shadow-border), 0px 1px 1px rgba(0, 0, 0, 0.02), 0px 4px 8px -4px rgba(0, 0, 0, 0.04), 0px 16px 24px -8px rgba(0, 0, 0, 0.06);
+    --ds-shadow-modal: var(--ds-shadow-border), 0px 1px 1px rgba(0, 0, 0, 0.02), 0px 8px 16px -4px rgba(0, 0, 0, 0.04), 0px 24px 32px -8px rgba(0, 0, 0, 0.06);
+    --ds-shadow-fullscreen: var(--ds-shadow-border), 0px 1px 1px rgba(0, 0, 0, 0.02), 0px 8px 16px -4px rgba(0, 0, 0, 0.04), 0px 24px 32px -8px rgba(0, 0, 0, 0.06);
+    --ds-input-ring: 0 0 0 1px var(--ds-gray-alpha-600), 0 0 0 4px rgba(255, 255, 255, .24);
+    --geist-foreground: #fff;
+    --geist-error: #ff0000;
+  }
 }

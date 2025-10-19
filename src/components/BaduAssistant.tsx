@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/format';
 import { getApiBase } from '../lib/api';
 import baduIcon from '../assets/badu-icon.svg';
+import { MarkdownMessage } from './MarkdownMessage';
 
 // ========== TYPES ==========
 
@@ -12,6 +13,13 @@ type Message = {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  isStreaming?: boolean; // Phase 1: Track if message is currently streaming
+  isComplete?: boolean; // Phase 1: Track if streaming is complete
+  attachments?: Array<{
+    name: string;
+    type: string;
+    data: string; // base64 data URL
+  }>;
 };
 
 type LauncherStyle = {
@@ -42,29 +50,46 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-// Real API call to Badu chat endpoint
-const callBaduAPI = async (userMessage: string, messageHistory: Message[], attachments: File[] = []): Promise<string> => {
+// Real API call to Badu chat endpoint (Phase 1: TRUE STREAMING)
+const callBaduAPIStreaming = async (
+  userMessage: string, 
+  messageHistory: Message[], 
+  attachments: File[] = [],
+  onToken: (token: string) => void
+): Promise<void> => {
   try {
     const history = messageHistory.map(msg => ({
       role: msg.role,
       content: msg.content
     }));
 
-    const attachmentInfo = attachments.map(file => ({
-      name: file.name,
-      type: file.type,
-      size: file.size
-    }));
+    // Process attachments to include actual file data
+    const attachmentData = await Promise.all(
+      attachments.map(async (file) => {
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+        
+        return {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          data: base64
+        };
+      })
+    );
 
-    const response = await fetch(`${getApiBase()}/v1/chat`, {
+    const response = await fetch(`${getApiBase()}/v1/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         message: userMessage,
-        history: history.slice(-6), // Last 6 messages for context
-        attachments: attachmentInfo
+        history: history.slice(-20), // EXPANDED: Was -6, now -20 (Phase 1)
+        attachments: attachmentData
       }),
     });
 
@@ -72,12 +97,84 @@ const callBaduAPI = async (userMessage: string, messageHistory: Message[], attac
       throw new Error(`API error: ${response.status}`);
     }
 
-    const data = await response.json();
-    return data.reply || "I'm having trouble connecting. Please try again.";
+    // Read the stream
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            
+            if (data.error) {
+              throw new Error(data.error);
+            }
+            
+            if (data.done) {
+              return; // Stream complete
+            }
+            
+            if (data.token) {
+              onToken(data.token); // Send token to callback
+            }
+          } catch (e) {
+            console.error('[Badu Stream] Parse error:', e);
+          }
+        }
+      }
+    }
   } catch (error) {
     console.error('[Badu] API Error:', error);
-    return "I'm having trouble connecting to the server. Please check your connection and try again.";
+    onToken("\n\nI'm having trouble connecting to the server. Please check your connection and try again.");
   }
+};
+
+// StreamingMessage - Renders content as it arrives (Phase 1: TRUE STREAMING)
+const StreamingMessage = ({ content, isComplete, onUpdate }: { content: string; isComplete: boolean; onUpdate?: () => void }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const prevContentRef = useRef('');
+
+  useEffect(() => {
+    if (content !== prevContentRef.current) {
+      prevContentRef.current = content;
+      if (onUpdate) {
+        onUpdate();
+      }
+    }
+  }, [content, onUpdate]);
+
+  return (
+    <div ref={containerRef} className="text-[13px] leading-relaxed w-full">
+      <MarkdownMessage content={content} />
+      {!isComplete && (
+        <span 
+          className="inline-block ml-0.5"
+          style={{ 
+            width: '2px',
+            height: '14px',
+            backgroundColor: 'rgba(62,139,255,0.6)',
+            verticalAlign: 'text-bottom',
+            animation: 'badu-cursor 1s ease-in-out infinite',
+          }}
+        />
+      )}
+    </div>
+  );
 };
 
 const CROP_CONTROLS = [
@@ -91,7 +188,6 @@ const CROP_CONTROLS = [
 
 export function BaduAssistant() {
   const [isOpen, setIsOpen] = useState(false);
-  const [showTuner, setShowTuner] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -130,10 +226,16 @@ export function BaduAssistant() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom - smooth and gentle
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
+  }, []);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isThinking]);
+    scrollToBottom();
+  }, [messages, isThinking, scrollToBottom]);
   
   // Handle resize
   const handleResizeStart = useCallback((e: React.PointerEvent) => {
@@ -168,35 +270,163 @@ export function BaduAssistant() {
     };
   }, [isResizing]);
   
+  // Phase 1: NEW STREAMING handleSend
   const handleSend = useCallback(async () => {
     const trimmed = inputValue.trim();
     if (!trimmed || isThinking) return;
+    
+    // Convert attachments to stored format before clearing
+    const attachmentData = attachments.map(file => ({
+      name: file.name,
+      type: file.type,
+      data: URL.createObjectURL(file),
+    }));
     
     const userMsg: Message = {
       id: Date.now().toString(),
       role: 'user',
       content: trimmed,
       timestamp: Date.now(),
+      attachments: attachmentData.length > 0 ? attachmentData : undefined,
     };
     
     setMessages((prev) => [...prev, userMsg]);
     setInputValue('');
     setIsThinking(true);
     
-    // Call real API with attachments
-    const reply = await callBaduAPI(trimmed, [...messages, userMsg], attachments);
+    // Save for regeneration (Phase 1)
+    setLastUserMessage(trimmed);
+    setLastAttachments(attachments);
     
+    // Create placeholder message for streaming response
+    const assistantMsgId = (Date.now() + 1).toString();
     const assistantMsg: Message = {
-      id: (Date.now() + 1).toString(),
+      id: assistantMsgId,
       role: 'assistant',
-      content: reply,
+      content: '',
       timestamp: Date.now(),
+      isStreaming: true,
+      isComplete: false,
     };
     
     setMessages((prev) => [...prev, assistantMsg]);
     setIsThinking(false);
-    setAttachments([]); // Clear attachments after sending
+    
+    try {
+      // Call streaming API
+      await callBaduAPIStreaming(
+        trimmed, 
+        [...messages, userMsg], 
+        attachments,
+        (token: string) => {
+          // Update message content as tokens arrive
+          setMessages((prev) => 
+            prev.map((msg) => 
+              msg.id === assistantMsgId 
+                ? { ...msg, content: msg.content + token, isStreaming: true, isComplete: false }
+                : msg
+            )
+          );
+        }
+      );
+      
+      // Mark as complete
+      setMessages((prev) => 
+        prev.map((msg) => 
+          msg.id === assistantMsgId 
+            ? { ...msg, isStreaming: false, isComplete: true }
+            : msg
+        )
+      );
+      
+      setAttachments([]); // Clear attachments after sending
+    } catch (error) {
+      console.error('[Badu] Error in handleSend:', error);
+      
+      // Update with error message
+      setMessages((prev) => 
+        prev.map((msg) => 
+          msg.id === assistantMsgId 
+            ? { 
+                ...msg, 
+                content: msg.content || "Sorry, I encountered an error. Please try again.",
+                isStreaming: false,
+                isComplete: true
+              }
+            : msg
+        )
+      );
+    }
   }, [inputValue, isThinking, messages, attachments]);
+
+  // Phase 1: Response Regeneration
+  const [lastUserMessage, setLastUserMessage] = useState('');
+  const [lastAttachments, setLastAttachments] = useState<File[]>([]);
+  
+  const handleRegenerate = useCallback(async () => {
+    if (!lastUserMessage || isThinking) return;
+    
+    // Remove last assistant message
+    setMessages((prev) => {
+      const filtered = prev.filter((msg) => !(msg.role === 'assistant' && msg.id === prev[prev.length - 1]?.id));
+      return filtered;
+    });
+    
+    setIsThinking(true);
+    
+    // Create new placeholder message
+    const assistantMsgId = Date.now().toString();
+    const assistantMsg: Message = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      isStreaming: true,
+      isComplete: false,
+    };
+    
+    setMessages((prev) => [...prev, assistantMsg]);
+    setIsThinking(false);
+    
+    try {
+      await callBaduAPIStreaming(
+        lastUserMessage,
+        messages.slice(0, -1), // Exclude last assistant message
+        lastAttachments,
+        (token: string) => {
+          setMessages((prev) => 
+            prev.map((msg) => 
+              msg.id === assistantMsgId 
+                ? { ...msg, content: msg.content + token, isStreaming: true, isComplete: false }
+                : msg
+            )
+          );
+        }
+      );
+      
+      setMessages((prev) => 
+        prev.map((msg) => 
+          msg.id === assistantMsgId 
+            ? { ...msg, isStreaming: false, isComplete: true }
+            : msg
+        )
+      );
+    } catch (error) {
+      console.error('[Badu] Error in handleRegenerate:', error);
+      setMessages((prev) => 
+        prev.map((msg) => 
+          msg.id === assistantMsgId 
+            ? { 
+                ...msg, 
+                content: msg.content || "Sorry, I encountered an error. Please try again.",
+                isStreaming: false,
+                isComplete: true
+              }
+            : msg
+        )
+      );
+    }
+  }, [lastUserMessage, lastAttachments, isThinking, messages]);
   
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -221,39 +451,6 @@ export function BaduAssistant() {
   const removeAttachment = useCallback((index: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== index));
   }, []);
-  
-  // Rich text renderer
-  const renderFormattedText = (text: string) => {
-    const lines = text.split('\n');
-    return lines.map((line, idx) => {
-      // Bold text: **text** or __text__
-      line = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-      line = line.replace(/__(.*?)__/g, '<strong>$1</strong>');
-      
-      // Headlines: ## Headline
-      if (line.startsWith('## ')) {
-        return <h3 key={idx} className="text-[15px] font-semibold mt-3 mb-1" style={{ color: 'rgba(241,246,255,0.95)' }} dangerouslySetInnerHTML={{ __html: line.replace('## ', '') }} />;
-      }
-      
-      // Subheadings: ### Subhead
-      if (line.startsWith('### ')) {
-        return <h4 key={idx} className="text-[14px] font-medium mt-2 mb-1" style={{ color: 'rgba(231,236,243,0.92)' }} dangerouslySetInnerHTML={{ __html: line.replace('### ', '') }} />;
-      }
-      
-      // Bullet points: • or - 
-      if (line.trim().startsWith('•') || line.trim().startsWith('- ')) {
-        return <div key={idx} className="flex gap-2 ml-1 my-0.5"><span style={{ color: 'rgba(62,139,255,0.8)' }}>•</span><span dangerouslySetInnerHTML={{ __html: line.replace(/^[•\-]\s*/, '') }} /></div>;
-      }
-      
-      // Empty lines
-      if (line.trim() === '') {
-        return <div key={idx} className="h-2" />;
-      }
-      
-      // Regular text
-      return <div key={idx} dangerouslySetInnerHTML={{ __html: line }} />;
-    });
-  };
   
   // Launcher computed styles
   const launcherClipPath = `inset(${launcherStyle.cropTop}% ${launcherStyle.cropRight}% ${launcherStyle.cropBottom}% ${launcherStyle.cropLeft}%)`;
@@ -337,7 +534,7 @@ export function BaduAssistant() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ minHeight: '200px' }}>
+            <div className="badu-messages-container flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ minHeight: '200px' }}>
               {messages.map((msg) => (
                 <motion.div
                   key={msg.id}
@@ -346,27 +543,73 @@ export function BaduAssistant() {
                   transition={{ duration: 0.2 }}
                   className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}
                 >
-                  {msg.role === 'assistant' ? (
-                    <div 
-                      className="text-[13px] leading-relaxed w-full"
-                      style={{ 
-                        color: 'rgba(231,236,243,0.90)',
-                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif'
-                      }}
-                    >
-                      {renderFormattedText(msg.content)}
-                    </div>
-                  ) : (
+      {msg.role === 'assistant' ? (
+        <StreamingMessage
+          key={msg.id}
+          content={msg.content}
+          isComplete={msg.isComplete !== false}
+          onUpdate={scrollToBottom}
+        />
+      ) : (
                     <div
-                      className="rounded-2xl px-4 py-2.5 text-sm"
                       style={{
-                        background: 'linear-gradient(90deg, #3E8BFF, #6B70FF)',
-                        color: 'white',
                         maxWidth: '85%',
-                        boxShadow: '0 4px 12px rgba(62,139,255,0.25), inset 0 1px 0 rgba(255,255,255,0.2)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        alignItems: 'flex-end',
                       }}
                     >
-                      {msg.content}
+                      {/* Show image attachments if any */}
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div 
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: msg.attachments.length > 1 ? 'repeat(2, 1fr)' : '1fr',
+                            gap: '8px',
+                            width: '100%',
+                          }}
+                        >
+                          {msg.attachments.map((att, idx) => (
+                            att.type.startsWith('image/') && (
+                              <div
+                                key={idx}
+                                style={{
+                                  borderRadius: '12px',
+                                  overflow: 'hidden',
+                                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                  border: '2px solid rgba(62,139,255,0.3)',
+                                }}
+                              >
+                                <img
+                                  src={att.data}
+                                  alt={att.name}
+                                  style={{
+                                    width: '100%',
+                                    height: 'auto',
+                                    maxHeight: '200px',
+                                    objectFit: 'cover',
+                                    display: 'block',
+                                  }}
+                                />
+                              </div>
+                            )
+                          ))}
+                        </div>
+                      )}
+                      {/* Text message */}
+                      <div
+                        className="rounded-2xl px-4 py-2.5 text-sm"
+                        style={{
+                          background: 'linear-gradient(90deg, #3E8BFF, #6B70FF)',
+                          color: 'white',
+                          boxShadow: '0 4px 12px rgba(62,139,255,0.25), inset 0 1px 0 rgba(255,255,255,0.2)',
+                          width: 'fit-content',
+                          maxWidth: '100%',
+                        }}
+                      >
+                        {msg.content}
+                      </div>
                     </div>
                   )}
                 </motion.div>
@@ -409,9 +652,10 @@ export function BaduAssistant() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Tuner - Hidden for now */}
+            {/* Tuner - Reserved for future feature - Intentionally disabled */}
+            {/* eslint-disable-next-line no-constant-binary-expression */}
+            {false && (
             <AnimatePresence>
-              {false && showTuner && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
@@ -424,12 +668,13 @@ export function BaduAssistant() {
                       <span className="text-xs font-medium uppercase tracking-wider" style={{ color: 'rgba(231,236,243,0.70)' }}>
                         Launcher Tuner
                       </span>
-                      <button
+                      {/* Button disabled since tuner feature is disabled */}
+                      {/* <button
                         onClick={() => setShowTuner(false)}
                         className="rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white/70"
                       >
                         <X className="h-3.5 w-3.5" />
-                      </button>
+                      </button> */}
                     </div>
                     
                     {/* Scale & Rotation */}
@@ -581,11 +826,33 @@ export function BaduAssistant() {
                     </div>
                   </div>
                 </motion.div>
-              )}
             </AnimatePresence>
+              )}
 
             {/* Input Composer */}
             <div className="px-5 py-4">
+              {/* Regenerate Button (Phase 1) */}
+              {lastUserMessage && messages.length > 1 && messages[messages.length - 1]?.role === 'assistant' && (
+                <div className="mb-3">
+                  <button
+                    onClick={handleRegenerate}
+                    disabled={isThinking}
+                    className={cn(
+                      'flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all',
+                      !isThinking
+                        ? 'border-blue-500/30 bg-blue-500/10 text-blue-400 hover:border-blue-500/50 hover:bg-blue-500/20'
+                        : 'border-white/10 bg-white/5 text-white/30 cursor-not-allowed'
+                    )}
+                    title="Regenerate last response"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Regenerate Response
+                  </button>
+                </div>
+              )}
+              
               {/* Attachments */}
               {attachments.length > 0 && (
                 <div className="mb-3 flex flex-wrap gap-2">

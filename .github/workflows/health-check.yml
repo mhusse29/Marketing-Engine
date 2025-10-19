@@ -1,0 +1,28 @@
+name: Gateway Health Check
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run health check
+        env:
+          ANALYTICS_GATEWAY_URL: ${{ secrets.ANALYTICS_GATEWAY_URL }}
+          ANALYTICS_HEALTH_TOKEN: ${{ secrets.ANALYTICS_HEALTH_TOKEN }}
+        run: npm run monitor:health

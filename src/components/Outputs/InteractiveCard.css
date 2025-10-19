@@ -1,0 +1,194 @@
+/* Interactive Card Wrapper Styles */
+
+:root {
+  --card-tilt-x: 19.5;
+  --card-tilt-y: 19.5;
+  --card-gradient-opacity: 0;
+  --card-gradient-size: 50%;
+  --card-gradient-color-1: #ffef3d;
+  --card-gradient-color-2: #ff0000;
+  --card-shine-opacity: 0;
+  --card-shine-size: 150%;
+  --card-glare-opacity: 0;
+  --card-glare-size: 200%;
+  --card-glare-color: #678eff;
+  --card-border-opacity: 0.15;
+  --card-border-glow: 0.2;
+  --card-border-radius: 48px;
+  --card-transition: 980ms;
+  --card-padding: 16px;
+  --card-shadow: 0.55;
+}
+
+.interactive-card-wrapper {
+  position: relative;
+  width: 100%;
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  transition: transform calc(var(--card-transition) * 1ms) ease-out;
+}
+
+.interactive-card-wrapper.interactive-active {
+  z-index: 10;
+}
+
+.interactive-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform: rotateY(calc(var(--rotate-x, 0deg) / var(--card-tilt-x) * 8)) rotateX(calc(var(--rotate-y, 0deg) / var(--card-tilt-y) * 8));
+  transition: transform calc(var(--card-transition) * 1ms) ease-out;
+  will-change: transform;
+}
+
+.interactive-card-wrapper.interactive-active .interactive-card-inner {
+  transition: none;
+}
+
+/* Gradient overlay - using app's accent colors */
+.interactive-gradient-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--card-border-radius);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 10;
+  background: 
+    radial-gradient(
+      var(--card-gradient-size) circle at var(--pointer-x, 50%) var(--pointer-y, 50%),
+      var(--card-gradient-color-1) 0%,
+      var(--card-gradient-color-2) 40%,
+      transparent 70%
+    );
+  mix-blend-mode: screen;
+  transition: opacity calc(var(--card-transition) * 0.5ms) ease-out;
+}
+
+.interactive-card-wrapper.interactive-active .interactive-gradient-overlay {
+  opacity: var(--card-gradient-opacity);
+}
+
+/* Shine effect */
+.interactive-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--card-border-radius);
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 11;
+  mix-blend-mode: overlay;
+  transition: opacity calc(var(--card-transition) * 0.5ms) ease-out;
+}
+
+.interactive-shine::before {
+  content: '';
+  position: absolute;
+  width: var(--card-shine-size);
+  height: var(--card-shine-size);
+  top: calc((100% - var(--card-shine-size)) / 2);
+  left: calc((100% - var(--card-shine-size)) / 2);
+  background: radial-gradient(
+    circle at var(--pointer-x, 50%) var(--pointer-y, 50%),
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(255, 255, 255, 0.08) 20%,
+    transparent 50%
+  );
+}
+
+.interactive-card-wrapper.interactive-active .interactive-shine {
+  opacity: var(--card-shine-opacity);
+}
+
+/* Glare effect - using app's blue accent */
+.interactive-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--card-border-radius);
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 12;
+  transition: opacity calc(var(--card-transition) * 0.5ms) ease-out;
+}
+
+.interactive-glare::before {
+  content: '';
+  position: absolute;
+  width: var(--card-glare-size);
+  height: var(--card-glare-size);
+  top: calc(var(--pointer-y, 50%) - var(--card-glare-size) / 2);
+  left: calc(var(--pointer-x, 50%) - var(--card-glare-size) / 2);
+  background: radial-gradient(
+    circle,
+    var(--card-glare-color) 0%,
+    rgba(255, 255, 255, 0.3) 20%,
+    transparent 50%
+  );
+  transform: translateZ(10px);
+  mix-blend-mode: overlay;
+}
+
+.interactive-card-wrapper.interactive-active .interactive-glare {
+  opacity: var(--card-glare-opacity);
+}
+
+/* Content wrapper */
+.interactive-card-content {
+  position: relative;
+  z-index: 5;
+  width: 100%;
+  height: 100%;
+}
+
+/* Enhanced border glow on hover */
+.interactive-card-wrapper.interactive-active .interactive-card-content > * {
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, var(--card-shadow)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.02),
+    0 0 0 1px rgba(62, 139, 255, var(--card-border-glow));
+}
+
+.interactive-card-content > * {
+  border-radius: var(--card-border-radius);
+}
+
+/* Smooth transitions */
+.interactive-card-wrapper *,
+.interactive-card-inner * {
+  transition: 
+    transform var(--transition-slow, 280ms) ease-out,
+    opacity var(--transition-base, 140ms) ease-out;
+}
+
+.interactive-card-wrapper.interactive-active *,
+.interactive-card-wrapper.interactive-active .interactive-card-inner * {
+  transition: none;
+}
+
+/* Accessibility - Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  .interactive-card-wrapper,
+  .interactive-card-inner,
+  .interactive-card-wrapper *,
+  .interactive-card-inner * {
+    transform: none !important;
+    animation: none !important;
+    transition: opacity var(--transition-base, 140ms) ease-out !important;
+  }
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .interactive-card-inner {
+    transform: none;
+  }
+  
+  .interactive-gradient-overlay,
+  .interactive-shine,
+  .interactive-glare {
+    display: none;
+  }
+}
+

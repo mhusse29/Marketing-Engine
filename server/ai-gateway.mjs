@@ -4,6 +4,12 @@ import cors from 'cors'
 import OpenAI from 'openai'
 import { config } from 'dotenv'
 import { resolve } from 'path'
+import { BADU_KNOWLEDGE } from '../shared/badu-knowledge.js'
+import { buildBaduMessages, isBaduTopic, sanitizeBaduReply } from './badu-context.js'
+import usageTracker from './usageTracker.mjs'
+import extractUserIdMiddleware from './authMiddleware.mjs'
+import analyticsScheduler from './analyticsScheduler.mjs'
+import feedbackTracker from './feedbackTracker.mjs'
 
 // Load server-specific .env file to override root .env
 config({ path: resolve(process.cwd(), 'server/.env') })
@@ -18,6 +24,8 @@ function cropToJsonObject(s = "") {
   return i >= 0 && j > i ? s.slice(i, j + 1) : s
 }
 function tryParseJSON(raw) {
+  if (!openai) return ''
+
   try {
     return JSON.parse(raw)
   } catch {
@@ -37,6 +45,56 @@ function safeParseOrRepair(s = "") {
     .replace(/,\s*]/g, "]")
   out = tryParseJSON(fixed)
   return out
+}
+
+
+
+function sendSSEReply(res, message) {
+  const chunks = message.match(/.{1,80}/g) || []
+  if (chunks.length === 0) {
+    res.write(`data: ${JSON.stringify({ token: message })}\n\n`)
+  } else {
+    for (const chunk of chunks) {
+      res.write(`data: ${JSON.stringify({ token: chunk })}\n\n`)
+    }
+  }
+  res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+  res.end()
+}
+
+async function fetchContinuation({ messages, model, partial, temperature = 0.65, maxTokens = 600 }) {
+  if (!openai) return ''
+  try {
+    const continuationMessages = [
+      ...messages,
+      { role: 'assistant', content: partial.trim() },
+      {
+        role: 'user',
+        content: 'Please continue the same response and finish any remaining details while keeping the same structure.',
+      },
+    ]
+
+    const completion = await openai.chat.completions.create({
+      model,
+      messages: continuationMessages,
+      max_tokens: maxTokens,
+      temperature,
+    })
+
+    return completion.choices?.[0]?.message?.content || ''
+  } catch (error) {
+    console.error('[Badu] continuation failed', error)
+    return ''
+  }
+}
+
+function ensurePolishedEnding(raw = '') {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+  if (/[.!?…]$/u.test(trimmed)) {
+    return trimmed
+  }
+  return `${trimmed}…`
 }
 
 const ALLOWED = ["Facebook","Instagram","TikTok","LinkedIn","X","YouTube"];
@@ -339,7 +397,11 @@ console.log('cwd:', process.cwd())
 
 const app = express()
 app.use(cors())
-app.use(express.json({ limit: '1mb' }))
+app.use(express.json({ limit: '50mb' })) // Increased limit for image attachments
+app.use(express.urlencoded({ limit: '50mb', extended: true }))
+
+// Add auth middleware to extract user ID from requests
+app.use(extractUserIdMiddleware)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // IMAGE DOWNLOAD PROXY - Bypasses CORS for external image URLs
@@ -394,6 +456,7 @@ const IDEOGRAM_API_KEY = process.env.IDEOGRAM_API_KEY || null
 
 // Video provider API keys
 const RUNWAY_API_KEY = process.env.RUNWAY_API_KEY || null
+const LUMA_API_KEY = process.env.LUMA_API_KEY || null
 
 const PRIMARY = 'openai'
 // Force OpenAI models to avoid Anthropic model conflicts
@@ -740,11 +803,16 @@ ${JSON.stringify(schema, null, 2)}`,
 // RUNWAY VIDEO GENERATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const RUNWAY_VIDEO_MODELS = new Set([
+  'veo3', // Only model available in Tier 1
+])
+
 async function generateRunwayVideo({
   promptText,
-  model = 'gen3a_turbo',
-  duration = 5,
-  ratio = '1280:768',
+  promptImage,
+  model = 'veo3', // veo3 available in Tier 1
+  duration = 8, // veo3 requires 8 seconds
+  ratio = '1280:720',
   watermark = false,
   seed,
 }) {
@@ -752,9 +820,18 @@ async function generateRunwayVideo({
     throw new Error('runway_not_configured')
   }
 
+  if (!RUNWAY_VIDEO_MODELS.has(model)) {
+    throw Object.assign(new Error('runway_model_not_supported'), {
+      statusCode: 400,
+      details: { model },
+    })
+  }
+
+  const normalizedDuration = model === 'veo3' ? 8 : duration
+
   console.log('[Runway] Generating video:', {
     model,
-    duration,
+    duration: normalizedDuration,
     ratio,
     watermark,
     promptLength: promptText.length,
@@ -764,7 +841,7 @@ async function generateRunwayVideo({
   const payload = {
     promptText: promptText.trim(),
     model,
-    duration,
+    duration: normalizedDuration,
     ratio,
     watermark,
   }
@@ -773,8 +850,19 @@ async function generateRunwayVideo({
     payload.seed = seed
   }
 
+  // Determine endpoint based on whether we have an image
+  const endpoint = promptImage 
+    ? 'https://api.dev.runwayml.com/v1/image_to_video' 
+    : 'https://api.dev.runwayml.com/v1/text_to_video'
+
+  // Add image if provided
+  if (promptImage) {
+    payload.promptImage = promptImage
+    console.log('[Runway] Using image-to-video endpoint')
+  }
+
   try {
-    const response = await fetch('https://api.dev.runwayml.com/v1/text_to_video', {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${RUNWAY_API_KEY}`,
@@ -787,7 +875,10 @@ async function generateRunwayVideo({
     if (!response.ok) {
       const errorText = await response.text()
       console.error('[Runway] API Error:', response.status, errorText)
-      throw new Error(`Runway API error: ${response.status} - ${errorText}`)
+      const error = new Error(`Runway API error: ${response.status}`)
+      error.statusCode = response.status
+      error.raw = errorText
+      throw error
     }
 
     const result = await response.json()
@@ -833,119 +924,567 @@ async function pollRunwayTask(taskId) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// LUMA VIDEO GENERATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const LUMA_VIDEO_MODELS = new Set([
+  'ray-2', // Currently available Luma model
+])
+
+async function generateLumaVideo({
+  promptText,
+  promptImage,
+  model = 'ray-2',
+  aspect = '16:9',
+  loop = false,
+  duration = '5s', // Luma duration: 5s or 9s for ray-2
+  resolution = '1080p', // Luma resolution: 720p or 1080p
+  keyframes,
+  // Advanced Luma parameters
+  cameraMovement,
+  cameraAngle,
+  cameraDistance,
+  style,
+  lighting,
+  mood,
+  motionIntensity,
+  motionSpeed,
+  subjectMovement,
+  quality,
+  colorGrading,
+  filmLook,
+  seed,
+  negativePrompt,
+  guidanceScale,
+}) {
+  if (!LUMA_API_KEY) {
+    throw new Error('luma_not_configured')
+  }
+
+  if (!LUMA_VIDEO_MODELS.has(model)) {
+    throw Object.assign(new Error('luma_model_not_supported'), {
+      statusCode: 400,
+      details: { model },
+    })
+  }
+
+  console.log('[Luma] Generating video:', {
+    model,
+    aspect,
+    loop,
+    duration,
+    resolution,
+    promptLength: promptText.length,
+    hasImage: !!promptImage,
+    hasKeyframes: !!keyframes,
+    cameraMovement,
+    style,
+    lighting,
+    mood,
+    motionIntensity,
+    quality,
+    seed,
+    guidanceScale,
+  })
+
+  const payload = {
+    model: model,
+    prompt: promptText.trim(),
+    aspect_ratio: aspect,
+    loop: Boolean(loop),
+    duration: duration,
+    resolution: resolution,
+  }
+
+  // Add advanced parameters if provided
+  if (cameraMovement) payload.camera_movement = cameraMovement;
+  if (cameraAngle) payload.camera_angle = cameraAngle;
+  if (cameraDistance) payload.camera_distance = cameraDistance;
+  if (style) payload.style = style;
+  if (lighting) payload.lighting = lighting;
+  if (mood) payload.mood = mood;
+  if (motionIntensity) payload.motion_intensity = motionIntensity;
+  if (motionSpeed) payload.motion_speed = motionSpeed;
+  if (subjectMovement) payload.subject_movement = subjectMovement;
+  if (quality) payload.quality = quality;
+  if (colorGrading) payload.color_grading = colorGrading;
+  if (filmLook) payload.film_look = filmLook;
+  if (seed) payload.seed = seed;
+  if (negativePrompt) payload.negative_prompt = negativePrompt;
+  if (guidanceScale) payload.guidance_scale = guidanceScale;
+
+  // Add keyframes if provided
+  if (keyframes) {
+    if (keyframes.frame0) {
+      payload.keyframes = payload.keyframes || {}
+      payload.keyframes.frame0 = keyframes.frame0
+    }
+    if (keyframes.frame1) {
+      payload.keyframes = payload.keyframes || {}
+      payload.keyframes.frame1 = keyframes.frame1
+    }
+  }
+
+  // If promptImage is provided and no keyframes, use it as frame0
+  if (promptImage && !keyframes) {
+    payload.keyframes = {
+      frame0: {
+        type: 'image',
+        url: promptImage, // Assuming it's a URL or base64
+      },
+    }
+  }
+
+  try {
+    const response = await fetch('https://api.lumalabs.ai/dream-machine/v1/generations', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LUMA_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[Luma] API Error:', response.status, errorText)
+      const error = new Error(`Luma API error: ${response.status}`)
+      error.statusCode = response.status
+      error.raw = errorText
+      throw error
+    }
+
+    const result = await response.json()
+    console.log('[Luma] Generation created:', result.id)
+
+    return {
+      taskId: result.id,
+      status: result.state || 'pending',
+    }
+  } catch (error) {
+    console.error('[Luma] Generation failed:', error)
+    throw error
+  }
+}
+
+async function pollLumaTask(taskId) {
+  if (!LUMA_API_KEY) {
+    throw new Error('luma_not_configured')
+  }
+
+  try {
+    const response = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/${taskId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${LUMA_API_KEY}`,
+      },
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[Luma] Poll Error:', response.status, errorText)
+      throw new Error(`Luma poll error: ${response.status}`)
+    }
+
+    const result = await response.json()
+    console.log('[Luma] Task status:', result.id, result.state)
+
+    // Map Luma states to Runway-like states for consistency
+    const statusMap = {
+      'pending': 'PENDING',
+      'dreaming': 'RUNNING',
+      'completed': 'SUCCEEDED',
+      'failed': 'FAILED',
+    }
+
+    return {
+      taskId: result.id,
+      status: statusMap[result.state] || result.state.toUpperCase(),
+      progress: result.state === 'dreaming' ? 50 : result.state === 'completed' ? 100 : 0,
+      videoUrl: result.state === 'completed' && result.assets?.video ? result.assets.video : undefined,
+      createdAt: result.created_at,
+      error: result.failure_reason || undefined,
+    }
+  } catch (error) {
+    console.error('[Luma] Poll failed:', error)
+    throw error
+  }
+}
+
 const videoTasks = new Map()
 
 app.post('/v1/videos/generate', async (req, res) => {
   const {
+    provider = 'runway', // Provider selection: 'runway' or 'luma'
     promptText,
-    model = 'gen3a_turbo',
-    duration = 5,
+    promptImage, // Base64 image for image-to-video
+    model,
+    duration = 8,
     aspect = '9:16',
     watermark = false,
     seed,
+    // Luma-specific
+    loop = false,
+    lumaDuration = '5s',
+    lumaResolution = '1080p',
+    keyframes,
+    // Advanced Luma parameters
+    lumaCameraMovement,
+    lumaCameraAngle,
+    lumaCameraDistance,
+    lumaStyle,
+    lumaLighting,
+    lumaMood,
+    lumaMotionIntensity,
+    lumaMotionSpeed,
+    lumaSubjectMovement,
+    lumaQuality,
+    lumaColorGrading,
+    lumaFilmLook,
+    lumaSeed,
+    lumaNegativePrompt,
+    lumaGuidanceScale,
   } = req.body
 
   if (!promptText || typeof promptText !== 'string' || promptText.trim().length === 0) {
     return res.status(400).json({ error: 'promptText is required' })
   }
 
-  if (!RUNWAY_API_KEY) {
-    return res.status(503).json({
-      error: 'runway_not_configured',
-      message: 'Runway API key is not configured',
-    })
-  }
+  // Route to appropriate provider
+  if (provider === 'luma') {
+    // ═════════════════════════════════════════════════════════════════════
+    // LUMA VIDEO GENERATION
+    // ═════════════════════════════════════════════════════════════════════
+    if (!LUMA_API_KEY) {
+      return res.status(503).json({
+        error: 'luma_not_configured',
+        message: 'Luma API key is not configured',
+      })
+    }
 
-  const aspectToRatio = {
-    '16:9': '1280:768',
-    '9:16': '768:1280',
-    '1:1': '1024:1024',
-  }
-  const ratio = aspectToRatio[aspect] || '1280:768'
+    try {
+      const { taskId, status } = await generateLumaVideo({
+        promptText,
+        promptImage,
+        model: model || 'ray-2',
+        aspect,
+        loop,
+        duration: lumaDuration,
+        resolution: lumaResolution,
+        keyframes,
+        // Advanced Luma parameters
+        cameraMovement: lumaCameraMovement,
+        cameraAngle: lumaCameraAngle,
+        cameraDistance: lumaCameraDistance,
+        style: lumaStyle,
+        lighting: lumaLighting,
+        mood: lumaMood,
+        motionIntensity: lumaMotionIntensity,
+        motionSpeed: lumaMotionSpeed,
+        subjectMovement: lumaSubjectMovement,
+        quality: lumaQuality,
+        colorGrading: lumaColorGrading,
+        filmLook: lumaFilmLook,
+        seed: lumaSeed,
+        negativePrompt: lumaNegativePrompt,
+        guidanceScale: lumaGuidanceScale,
+      })
 
-  try {
-    const { taskId, status } = await generateRunwayVideo({
-      promptText,
-      model,
-      duration,
-      ratio,
-      watermark,
-      seed,
-    })
+      videoTasks.set(taskId, {
+        taskId,
+        status,
+        provider: 'luma',
+        createdAt: Date.now(),
+        promptText,
+        model: model || 'ray-2',
+        aspect,
+        loop,
+        duration: lumaDuration,
+        userId: req.userId || 'anonymous',
+      })
 
-    videoTasks.set(taskId, {
-      taskId,
-      status,
-      createdAt: Date.now(),
-      promptText,
-      model,
-      duration,
-      aspect,
-    })
+      res.json({
+        taskId,
+        status,
+        provider: 'luma',
+        message: 'Luma video generation started',
+      })
+    } catch (error) {
+      console.error('[Luma] Generation endpoint error:', error)
+      const status = error.statusCode && Number.isInteger(error.statusCode)
+        ? error.statusCode
+        : 500
 
-    res.json({
-      taskId,
-      status,
-      message: 'Video generation started',
-    })
-  } catch (error) {
-    console.error('[Runway] Generation endpoint error:', error)
-    res.status(500).json({
-      error: 'generation_failed',
-      message: error.message,
-    })
+      let lumaError
+      if (error.raw) {
+        try {
+          lumaError = JSON.parse(error.raw)
+        } catch {
+          lumaError = { raw: error.raw }
+        }
+      }
+
+      res.status(status).json({
+        error: status === 403 ? 'luma_model_forbidden' : status === 400 ? 'luma_model_invalid' : 'generation_failed',
+        message: error.message,
+        provider: 'luma',
+        ...(lumaError ? { luma: lumaError } : {}),
+      })
+    }
+  } else {
+    // ═════════════════════════════════════════════════════════════════════
+    // RUNWAY VIDEO GENERATION (default)
+    // ═════════════════════════════════════════════════════════════════════
+    if (!RUNWAY_API_KEY) {
+      return res.status(503).json({
+        error: 'runway_not_configured',
+        message: 'Runway API key is not configured',
+      })
+    }
+
+    // Runway Gen-3 supported ratios (from API documentation)
+    const aspectToRatio = {
+      '16:9': '1280:720',   // Landscape widescreen
+      '9:16': '720:1280',   // Portrait mobile
+      '1:1': '960:960',     // Square
+    }
+    const ratio = aspectToRatio[aspect] || '1280:720'
+
+    try {
+      const { taskId, status } = await generateRunwayVideo({
+        promptText,
+        promptImage,
+        model: model || 'veo3',
+        duration,
+        ratio,
+        watermark,
+        seed,
+      })
+
+      videoTasks.set(taskId, {
+        taskId,
+        status,
+        provider: 'runway',
+        createdAt: Date.now(),
+        promptText,
+        model: model || 'veo3',
+        duration,
+        aspect,
+        userId: req.userId || 'anonymous',
+      })
+
+      res.json({
+        taskId,
+        status,
+        provider: 'runway',
+        message: 'Runway video generation started',
+      })
+    } catch (error) {
+      console.error('[Runway] Generation endpoint error:', error)
+      const status = error.statusCode && Number.isInteger(error.statusCode)
+        ? error.statusCode
+        : 500
+
+      let runwayError
+      if (error.raw) {
+        try {
+          runwayError = JSON.parse(error.raw)
+        } catch {
+          runwayError = { raw: error.raw }
+        }
+      }
+
+      res.status(status).json({
+        error: status === 403 ? 'runway_model_forbidden' : status === 400 ? 'runway_model_invalid' : 'generation_failed',
+        message: error.message,
+        provider: 'runway',
+        ...(runwayError ? { runway: runwayError } : {}),
+      })
+    }
   }
 })
 
 app.get('/v1/videos/tasks/:taskId', async (req, res) => {
   const { taskId } = req.params
+  const { provider = 'runway' } = req.query
 
   if (!taskId) {
     return res.status(400).json({ error: 'taskId is required' })
   }
 
-  if (!RUNWAY_API_KEY) {
-    return res.status(503).json({
-      error: 'runway_not_configured',
-      message: 'Runway API key is not configured',
-    })
-  }
+  // Determine provider from stored task or query param
+  const stored = videoTasks.get(taskId)
+  const actualProvider = stored?.provider || provider
 
-  try {
-    const result = await pollRunwayTask(taskId)
-
-    const stored = videoTasks.get(taskId)
-    if (stored) {
-      videoTasks.set(taskId, {
-        ...stored,
-        status: result.status,
-        updatedAt: Date.now(),
+  if (actualProvider === 'luma') {
+    // ═════════════════════════════════════════════════════════════════════
+    // LUMA TASK POLLING
+    // ═════════════════════════════════════════════════════════════════════
+    if (!LUMA_API_KEY) {
+      return res.status(503).json({
+        error: 'luma_not_configured',
+        message: 'Luma API key is not configured',
       })
     }
 
-    const response = {
-      taskId: result.id,
-      status: result.status,
-      progress: result.progress || 0,
+    try {
+      const result = await pollLumaTask(taskId)
+
+      if (stored) {
+        videoTasks.set(taskId, {
+          ...stored,
+          status: result.status,
+          updatedAt: Date.now(),
+        })
+      }
+
+      const response = {
+        taskId: result.taskId,
+        status: result.status,
+        progress: result.progress || 0,
+        provider: 'luma',
+      }
+
+      if (result.status === 'SUCCEEDED' && result.videoUrl) {
+        response.videoUrl = result.videoUrl
+        response.createdAt = result.createdAt
+        
+        // Track successful video generation (Luma)
+        const durationMap = { '5s': 5, '9s': 9, '13s': 13 }
+        const videoSeconds = durationMap[stored?.duration || lumaDuration] || 5
+        const totalCost = usageTracker.calculateVideoCost('luma', videoSeconds)
+        
+        await usageTracker.trackAPIUsage({
+          userId: req.userId || stored?.userId || 'anonymous',
+          serviceType: 'video',
+          provider: 'luma',
+          model: stored?.model || 'ray-2',
+          endpoint: '/v1/videos/generate',
+          requestId: taskId,
+          videoSeconds,
+          generationCost: totalCost,
+          totalCost,
+          latency: stored?.createdAt ? (Date.now() - stored.createdAt) : 0,
+          status: 'success',
+          ipAddress: req.ipAddress,
+          userAgent: req.userAgent
+        }).catch(err => console.error('[Tracking] Failed to track video:', err))
+      }
+
+      if (result.status === 'FAILED' && result.error) {
+        response.error = result.error
+        
+        // Track failed video generation (Luma)
+        await usageTracker.trackAPIUsage({
+          userId: req.userId || stored?.userId || 'anonymous',
+          serviceType: 'video',
+          provider: 'luma',
+          model: stored?.model || 'ray-2',
+          endpoint: '/v1/videos/generate',
+          requestId: taskId,
+          totalCost: 0,
+          latency: stored?.createdAt ? (Date.now() - stored.createdAt) : 0,
+          status: 'error',
+          errorMessage: result.error,
+          ipAddress: req.ipAddress,
+          userAgent: req.userAgent
+        }).catch(err => console.error('[Tracking] Failed to track error:', err))
+      }
+
+      res.json(response)
+    } catch (error) {
+      console.error('[Luma] Poll endpoint error:', error)
+      res.status(500).json({
+        error: 'poll_failed',
+        message: error.message,
+        provider: 'luma',
+      })
+    }
+  } else {
+    // ═════════════════════════════════════════════════════════════════════
+    // RUNWAY TASK POLLING (default)
+    // ═════════════════════════════════════════════════════════════════════
+    if (!RUNWAY_API_KEY) {
+      return res.status(503).json({
+        error: 'runway_not_configured',
+        message: 'Runway API key is not configured',
+      })
     }
 
-    if (result.status === 'SUCCEEDED' && result.output) {
-      response.videoUrl = result.output[0]
-      response.createdAt = result.createdAt
-    }
+    try {
+      const result = await pollRunwayTask(taskId)
 
-    if (result.status === 'FAILED' && result.failure) {
-      response.error = result.failure
-      response.failureCode = result.failureCode
-    }
+      if (stored) {
+        videoTasks.set(taskId, {
+          ...stored,
+          status: result.status,
+          updatedAt: Date.now(),
+        })
+      }
 
-    res.json(response)
-  } catch (error) {
-    console.error('[Runway] Poll endpoint error:', error)
-    res.status(500).json({
-      error: 'poll_failed',
-      message: error.message,
-    })
+      const response = {
+        taskId: result.id,
+        status: result.status,
+        progress: result.progress || 0,
+        provider: 'runway',
+      }
+
+      if (result.status === 'SUCCEEDED' && result.output) {
+        response.videoUrl = result.output[0]
+        response.createdAt = result.createdAt
+        
+        // Track successful video generation (Runway)
+        const videoSeconds = stored?.duration || 8
+        const totalCost = usageTracker.calculateVideoCost('runway', videoSeconds)
+        
+        await usageTracker.trackAPIUsage({
+          userId: req.userId || stored?.userId || 'anonymous',
+          serviceType: 'video',
+          provider: 'runway',
+          model: stored?.model || 'veo3',
+          endpoint: '/v1/videos/generate',
+          requestId: taskId,
+          videoSeconds,
+          generationCost: totalCost,
+          totalCost,
+          latency: stored?.createdAt ? (Date.now() - stored.createdAt) : 0,
+          status: 'success',
+          ipAddress: req.ipAddress,
+          userAgent: req.userAgent
+        }).catch(err => console.error('[Tracking] Failed to track video:', err))
+      }
+
+      if (result.status === 'FAILED' && result.failure) {
+        response.error = result.failure
+        response.failureCode = result.failureCode
+        
+        // Track failed video generation (Runway)
+        await usageTracker.trackAPIUsage({
+          userId: req.userId || stored?.userId || 'anonymous',
+          serviceType: 'video',
+          provider: 'runway',
+          model: stored?.model || 'veo3',
+          endpoint: '/v1/videos/generate',
+          requestId: taskId,
+          totalCost: 0,
+          latency: stored?.createdAt ? (Date.now() - stored.createdAt) : 0,
+          status: 'error',
+          errorMessage: result.failure,
+          ipAddress: req.ipAddress,
+          userAgent: req.userAgent
+        }).catch(err => console.error('[Tracking] Failed to track error:', err))
+      }
+
+      res.json(response)
+    } catch (error) {
+      console.error('[Runway] Poll endpoint error:', error)
+      res.status(500).json({
+        error: 'poll_failed',
+        message: error.message,
+        provider: 'runway',
+      })
+    }
   }
 })
 
@@ -967,12 +1506,14 @@ app.get('/health', (req, res) => {
     },
     videoProviders: {
       runway: !!RUNWAY_API_KEY,
+      luma: !!LUMA_API_KEY,
     },
   })
 })
 
 // Multi-provider image generation endpoint
 app.post('/v1/images/generate', async (req, res) => {
+  const startTime = Date.now()
   const {
     prompt,
     provider = 'openai',
@@ -1076,8 +1617,45 @@ app.post('/v1/images/generate', async (req, res) => {
     }
 
     res.json({ assets })
+
+    // Track successful image generation
+    const imageCount = assets.length
+    const quality = provider === 'openai' ? dalleQuality : (fluxMode === 'ultra' ? 'ultra' : 'standard')
+    const totalCost = usageTracker.calculateImageCost(provider, quality, imageCount)
+    
+    await usageTracker.trackAPIUsage({
+      userId: req.userId || 'anonymous',
+      serviceType: 'images',
+      provider,
+      model: provider === 'openai' ? 'dall-e-3' : (provider === 'ideogram' ? ideogramModel : provider),
+      endpoint: '/v1/images/generate',
+      imagesGenerated: imageCount,
+      generationCost: totalCost,
+      totalCost,
+      latency: Date.now() - startTime,
+      status: 'success',
+      ipAddress: req.ipAddress,
+      userAgent: req.userAgent
+    }).catch(err => console.error('[Tracking] Failed to track image generation:', err))
+
   } catch (error) {
     console.error(`[images] ${provider} generation failed`, error)
+    
+    // Track failed image generation
+    await usageTracker.trackAPIUsage({
+      userId: req.userId || 'anonymous',
+      serviceType: 'images',
+      provider,
+      model: provider,
+      endpoint: '/v1/images/generate',
+      totalCost: 0,
+      latency: Date.now() - startTime,
+      status: 'error',
+      errorMessage: error.message,
+      ipAddress: req.ipAddress,
+      userAgent: req.userAgent
+    }).catch(err => console.error('[Tracking] Failed to track error:', err))
+    
     res.status(502).json({
       error: `${provider}_image_error`,
       message: error?.message || 'unknown_error',
@@ -1341,14 +1919,397 @@ async function generateIdeogramImage({ prompt, aspect, model, magicPrompt, style
   }]
 }
 
+function sanitizeAttachmentPreview(attachment, index) {
+  if (!attachment || typeof attachment !== 'object') return null
+
+  const name = typeof attachment.name === 'string' && attachment.name.trim() ? attachment.name.trim() : `Attachment ${index + 1}`
+  const mime = typeof attachment.mime === 'string' && attachment.mime.trim() ? attachment.mime.trim() : 'application/octet-stream'
+  const lines = [`Attachment ${index + 1}: ${name}`, `MIME Type: ${mime}`]
+
+  const data = typeof attachment.data === 'string' ? attachment.data.trim() : ''
+  if (!data) {
+    lines.push('No attachment data provided.')
+    return lines.join('\n')
+  }
+
+  const isTextLike = /^text\//i.test(mime) || /json$/i.test(mime) || /markdown$/i.test(mime) || /csv$/i.test(mime) || /xml$/i.test(mime)
+
+  if (isTextLike) {
+    try {
+      const decoded = Buffer.from(data, 'base64').toString('utf8')
+      const snippet = decoded.slice(0, 4000)
+      lines.push('Content Preview:')
+      lines.push(snippet + (decoded.length > snippet.length ? '\n… [truncated]' : ''))
+      return lines.join('\n')
+    } catch (error) {
+      lines.push('Content could not be decoded from base64.')
+      return lines.join('\n')
+    }
+  }
+
+  lines.push('Binary attachment received. Mention its purpose in the refined brief. Content omitted for brevity.')
+  return lines.join('\n')
+}
+
+app.post('/v1/tools/brief/refine', async (req, res) => {
+  const { brief, attachments = [] } = req.body || {}
+  const trimmedBrief = typeof brief === 'string' ? brief.trim() : ''
+
+  if (!trimmedBrief) {
+    return res.status(400).json({ error: 'brief_required' })
+  }
+
+  if (!openai && !MOCK_OPENAI) {
+    return res.status(503).json({ error: 'openai_not_configured' })
+  }
+
+  const attachmentSummaries = Array.isArray(attachments)
+    ? attachments
+        .slice(0, 5)
+        .map((attachment, index) => sanitizeAttachmentPreview(attachment, index))
+        .filter(Boolean)
+    : []
+
+  if (MOCK_OPENAI) {
+    const mockBrief = `Refined Brief (mock): ${trimmedBrief}`
+    return res.json({ brief: mockBrief, model: 'mock-openai', mock: true })
+  }
+
+  const systemPrompt = [
+    'You are a senior marketing strategist and copy chief at SINAIQ.',
+    'Rewrite and elevate client briefs so they are polished, actionable, and ready for downstream AI generation.',
+    'Preserve all key facts, offers, audiences, and constraints from the source brief and attachments.',
+    'Clarify vague language, ensure tone guidance is explicit, and structure the brief with concise sections.',
+    'Keep the output under 250 words unless crucial details require more.',
+    'Respond with plain text only — no JSON or markdown lists.',
+  ].join('\n')
+
+  const userSections = ['--- ORIGINAL BRIEF ---', trimmedBrief]
+
+  if (attachmentSummaries.length) {
+    userSections.push('--- ATTACHMENT NOTES ---')
+    userSections.push(attachmentSummaries.join('\n\n'))
+  }
+
+  userSections.push('--- TASK ---')
+  userSections.push(
+    [
+      'Refine the brief so it is immediately useful for generating multi-platform marketing content.',
+      'Include persona, tone, CTA, product highlights, goals, and any strategic guardrails explicitly.',
+      'If information is missing, note assumptions clearly but do not invent facts.',
+    ].join(' ')
+  )
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userSections.join('\n\n') },
+  ]
+
+  const callModel = async (modelId) => {
+    const params = { model: modelId, messages }
+
+    if (modelId.startsWith('gpt-5')) {
+      params.max_completion_tokens = 600
+    } else {
+      params.max_tokens = 600
+      params.temperature = 0.35
+    }
+
+    const response = await openai.chat.completions.create(params)
+    const content = response.choices?.[0]?.message?.content?.trim() || ''
+    return { content }
+  }
+
+  let refined = ''
+  let usedModel = OPENAI_PRIMARY_MODEL
+
+  try {
+    const primary = await callModel(OPENAI_PRIMARY_MODEL)
+    refined = primary.content
+  } catch (error) {
+    console.error('[brief/refine] primary model failed', error)
+  }
+
+  if (!refined && OPENAI_FALLBACK_MODEL && OPENAI_FALLBACK_MODEL !== OPENAI_PRIMARY_MODEL) {
+    try {
+      const fallback = await callModel(OPENAI_FALLBACK_MODEL)
+      refined = fallback.content
+      usedModel = OPENAI_FALLBACK_MODEL
+    } catch (error) {
+      console.error('[brief/refine] fallback model failed', error)
+    }
+  }
+
+  if (!refined) {
+    return res.status(500).json({ error: 'refine_failed' })
+  }
+
+  res.json({ brief: refined, model: usedModel })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VIDEO PROMPT ENHANCEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+app.post('/v1/tools/video/enhance', async (req, res) => {
+  const { prompt, provider = 'runway', settings = {}, brief } = req.body
+  const trimmedPrompt = typeof prompt === 'string' ? prompt.trim() : ''
+
+  if (!trimmedPrompt) {
+    return res.status(400).json({ error: 'prompt_required' })
+  }
+
+  if (!openai && !MOCK_OPENAI) {
+    return res.status(503).json({ error: 'openai_not_configured' })
+  }
+
+  if (MOCK_OPENAI) {
+    const mockEnhanced = `Enhanced video prompt (mock): ${trimmedPrompt} with cinematic lighting and smooth camera movement`
+    return res.json({ enhanced: mockEnhanced, model: 'mock-openai', mock: true })
+  }
+
+  const providerInfo = provider === 'luma' 
+    ? {
+        name: 'Luma Dream Machine (Ray-2)',
+        capabilities: 'Fast generation, creative interpretation, seamless loops, text-to-video',
+        strengths: 'Quick results, artistic style, perfect for social media content',
+      }
+    : {
+        name: 'Runway (Veo-3)',
+        capabilities: 'Cinema-quality output, advanced camera controls, photorealistic rendering',
+        strengths: 'Highest quality, professional cinematography, detailed control',
+      }
+
+  const settingsContext = []
+  if (settings.aspect) settingsContext.push(`Aspect ratio: ${settings.aspect}`)
+  if (settings.cameraMovement && settings.cameraMovement !== 'static') {
+    settingsContext.push(`Camera movement: ${settings.cameraMovement}`)
+  }
+  if (settings.visualStyle) settingsContext.push(`Visual style: ${settings.visualStyle}`)
+  if (settings.lightingStyle) settingsContext.push(`Lighting: ${settings.lightingStyle}`)
+  if (settings.mood) settingsContext.push(`Mood: ${settings.mood}`)
+  if (settings.colorGrading) settingsContext.push(`Color grading: ${settings.colorGrading}`)
+
+  const systemPrompt = [
+    `You are a professional cinematographer and video director with expertise in AI video generation.`,
+    `You're helping create prompts for ${providerInfo.name}.`,
+    '',
+    `Provider Capabilities:`,
+    `- ${providerInfo.capabilities}`,
+    `- ${providerInfo.strengths}`,
+    '',
+    `Your task:`,
+    `1. Enhance the user's video idea into a detailed, professional prompt`,
+    `2. Incorporate cinematography terminology (framing, movement, lighting)`,
+    `3. Be specific about subject, action, setting, and atmosphere`,
+    `4. Optimize for ${provider === 'luma' ? 'fast creative generation' : 'cinema-quality output'}`,
+    `5. Keep prompts between 50-200 words`,
+    `6. Use vivid, descriptive language`,
+    `7. Consider the selected settings: ${settingsContext.join(', ') || 'none specified'}`,
+    '',
+    `Response format: Return ONLY the enhanced prompt text, no explanations.`,
+  ].join('\n')
+
+  const userSections = [
+    `--- USER'S VIDEO IDEA ---`,
+    trimmedPrompt,
+  ]
+
+  if (brief && brief.trim()) {
+    userSections.push('')
+    userSections.push(`--- CAMPAIGN CONTEXT ---`)
+    userSections.push(brief.trim())
+  }
+
+  if (settingsContext.length > 0) {
+    userSections.push('')
+    userSections.push(`--- SELECTED SETTINGS ---`)
+    userSections.push(settingsContext.join('\n'))
+  }
+
+  userSections.push('')
+  userSections.push(`--- TASK ---`)
+  userSections.push(
+    `Transform the video idea above into a professional, detailed prompt that will generate stunning ${provider === 'luma' ? 'creative' : 'cinematic'} video content. ` +
+    `Focus on visual details, movement, composition, and atmosphere.`
+  )
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userSections.join('\n') },
+  ]
+
+  const callModel = async (modelId) => {
+    const params = { model: modelId, messages }
+
+    if (modelId.startsWith('gpt-5')) {
+      params.max_completion_tokens = 500
+    } else {
+      params.max_tokens = 500
+      params.temperature = 0.65
+    }
+
+    const response = await openai.chat.completions.create(params)
+    const content = response.choices?.[0]?.message?.content?.trim() || ''
+    return { content }
+  }
+
+  let enhanced = ''
+  let usedModel = OPENAI_PRIMARY_MODEL
+
+  try {
+    const primary = await callModel(OPENAI_PRIMARY_MODEL)
+    enhanced = primary.content
+  } catch (error) {
+    console.error('[video/enhance] primary model failed', error)
+  }
+
+  if (!enhanced && OPENAI_FALLBACK_MODEL && OPENAI_FALLBACK_MODEL !== OPENAI_PRIMARY_MODEL) {
+    try {
+      const fallback = await callModel(OPENAI_FALLBACK_MODEL)
+      enhanced = fallback.content
+      usedModel = OPENAI_FALLBACK_MODEL
+    } catch (error) {
+      console.error('[video/enhance] fallback model failed', error)
+    }
+  }
+
+  if (!enhanced) {
+    return res.status(500).json({ error: 'enhance_failed' })
+  }
+
+  res.json({ enhanced, model: usedModel, provider })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PICTURES PROMPT ENHANCEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+app.post('/v1/tools/pictures/suggest', async (req, res) => {
+  const { settings = {}, brief, provider = 'openai' } = req.body
+
+  if (!openai && !MOCK_OPENAI) {
+    return res.status(503).json({ error: 'openai_not_configured' })
+  }
+
+  if (MOCK_OPENAI) {
+    const mockSuggestion = `Professional product photography with ${settings.style || 'modern'} style, ${settings.lighting || 'natural'} lighting`
+    return res.json({ suggestion: mockSuggestion, model: 'mock-openai', mock: true })
+  }
+
+  const providerInfo = {
+    openai: { name: 'DALL·E 3', strengths: 'Fast, vivid colors, great for illustrations' },
+    flux: { name: 'FLUX Pro', strengths: 'Photorealistic, human faces, professional photography' },
+    stability: { name: 'Stability AI SD 3.5', strengths: 'Fine control via CFG, creative freedom' },
+    ideogram: { name: 'Ideogram', strengths: 'Typography, text in images, brand assets' },
+  }[provider] || { name: provider, strengths: 'General purpose image generation' }
+
+  const settingsContext = []
+  if (settings.style) settingsContext.push(`Style: ${settings.style}`)
+  if (settings.aspect) settingsContext.push(`Aspect ratio: ${settings.aspect}`)
+  if (settings.lighting) settingsContext.push(`Lighting: ${settings.lighting}`)
+  if (settings.composition) settingsContext.push(`Composition: ${settings.composition}`)
+  if (settings.camera) settingsContext.push(`Camera angle: ${settings.camera}`)
+  if (settings.mood) settingsContext.push(`Mood: ${settings.mood}`)
+  if (settings.backdrop) settingsContext.push(`Backdrop: ${settings.backdrop}`)
+
+  const systemPrompt = [
+    `You are a professional art director and image prompt engineer.`,
+    `You're creating prompts for ${providerInfo.name}.`,
+    '',
+    `Provider Strengths: ${providerInfo.strengths}`,
+    '',
+    `Your task:`,
+    `1. Create a detailed, descriptive image prompt optimized for ${provider}`,
+    `2. Focus on visual composition, lighting, colors, and mood`,
+    `3. Be specific about the subject, setting, and atmosphere`,
+    `4. Use professional photography/art terminology`,
+    `5. Keep prompts between 40-150 words`,
+    `6. Make it vivid and evocative`,
+    `7. Consider the selected settings: ${settingsContext.join(', ') || 'none specified'}`,
+    '',
+    `Response format: Return ONLY the prompt text, no explanations.`,
+  ].join('\n')
+
+  const userSections = []
+
+  if (brief && brief.trim()) {
+    userSections.push(`--- CAMPAIGN CONTEXT ---`)
+    userSections.push(brief.trim())
+    userSections.push('')
+  }
+
+  if (settingsContext.length > 0) {
+    userSections.push(`--- SELECTED SETTINGS ---`)
+    userSections.push(settingsContext.join('\n'))
+    userSections.push('')
+  }
+
+  userSections.push(`--- TASK ---`)
+  userSections.push(
+    `Create a compelling image prompt that will generate stunning visual content for this marketing campaign. ` +
+    `Focus on composition, lighting, mood, and brand alignment.`
+  )
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userSections.join('\n') },
+  ]
+
+  const callModel = async (modelId) => {
+    const params = { model: modelId, messages }
+
+    if (modelId.startsWith('gpt-5')) {
+      params.max_completion_tokens = 400
+    } else {
+      params.max_tokens = 400
+      params.temperature = 0.75
+    }
+
+    const response = await openai.chat.completions.create(params)
+    const content = response.choices?.[0]?.message?.content?.trim() || ''
+    return { content }
+  }
+
+  let suggestion = ''
+  let usedModel = OPENAI_PRIMARY_MODEL
+
+  try {
+    const primary = await callModel(OPENAI_PRIMARY_MODEL)
+    suggestion = primary.content
+  } catch (error) {
+    console.error('[pictures/suggest] primary model failed', error)
+  }
+
+  if (!suggestion && OPENAI_FALLBACK_MODEL && OPENAI_FALLBACK_MODEL !== OPENAI_PRIMARY_MODEL) {
+    try {
+      const fallback = await callModel(OPENAI_FALLBACK_MODEL)
+      suggestion = fallback.content
+      usedModel = OPENAI_FALLBACK_MODEL
+    } catch (error) {
+      console.error('[pictures/suggest] fallback model failed', error)
+    }
+  }
+
+  if (!suggestion) {
+    return res.status(500).json({ error: 'suggest_failed' })
+  }
+
+  res.json({ suggestion, model: usedModel, provider })
+})
+
 app.post('/v1/generate', async (req, res) => {
   if (!req.body?.brief || !req.body?.options) {
     return res.status(400).json({ error: 'missing brief/options' })
   }
   const runId = id()
+  const trackingContext = {
+    userId: req.userId || 'anonymous',
+    ipAddress: req.ipAddress,
+    userAgent: req.userAgent,
+    startTime: Date.now()
+  }
   update(runId, 'queued', null, null)
   res.json({ runId })
-  setTimeout(() => processRun(runId, req.body).catch(() => {}), 20)
+  setTimeout(() => processRun(runId, req.body, trackingContext).catch(() => {}), 20)
 })
 
 function sseWrite(res, obj) {
@@ -1401,444 +2362,317 @@ function eventsHandler(req, res) {
 
 // Badu chat endpoint
 app.post('/v1/chat', async (req, res) => {
-  const { message, history = [], attachments = [] } = req.body;
-  
+  const { message, history = [], attachments = [] } = req.body
+  const startTime = Date.now()
+
   if (!message || typeof message !== 'string') {
-    return res.status(400).json({ error: 'Message required' });
+    return res.status(400).json({ error: 'Message required' })
   }
 
   if (!openai) {
-    return res.status(503).json({ error: 'OpenAI not configured' });
+    return res.status(503).json({ error: 'OpenAI not configured' })
+  }
+
+  if (!isBaduTopic(message)) {
+    return res.json({ reply: BADU_KNOWLEDGE.guardrails.fallbackOutsideScope })
   }
 
   try {
-    // Add attachment context if any files were sent
-    let contextMessage = message;
-    if (attachments && attachments.length > 0) {
-      const fileList = attachments.map(f => f.name).join(', ');
-      contextMessage = `${message}\n\n[User attached ${attachments.length} file(s): ${fileList}]`;
+    const safeHistory = Array.isArray(history) ? history : []
+    const safeAttachments = Array.isArray(attachments) ? attachments : []
+
+    let contextMessage = message.trim()
+    const hasImages = safeAttachments.some((att) => att?.type && att.type.startsWith('image/'))
+
+    if (safeAttachments.length > 0 && !hasImages) {
+      const fileList = safeAttachments.map((file) => file?.name).filter(Boolean).join(', ')
+      if (fileList) {
+        contextMessage = `${contextMessage}\n\n[User attached ${safeAttachments.length} file(s): ${fileList}]`
+      }
     }
-    const messages = [
-      {
-        role: 'system',
-        content: `You are BADU — the AI creative partner from SINAIQ, a friendly and always-on co-pilot for marketing teams.
 
-Your Core Technology:
-🤖 You are powered by OpenAI's **GPT-5-chat-latest** model (released August 2025)
-- Latest conversational AI optimized for chat interactions
-- Enhanced reasoning capabilities with dedicated reasoning tokens
-- 400K token context window for comprehensive conversations
-- Part of SINAIQ's cutting-edge AI stack
-- When asked about your model, be accurate: "I'm running on GPT-5-chat-latest"
+    const messages = buildBaduMessages({
+      contextMessage,
+      history: safeHistory,
+      attachments: safeAttachments,
+      includeCoT: false,
+    })
+
+    const lowerContext = contextMessage.toLowerCase()
+    const complexTriggers = [
+      'explain',
+      'how to',
+      'walk me through',
+      'detail',
+      'example',
+      'guide',
+      'all',
+      'full',
+      'complete',
+      'comprehensive',
+      'settings',
+      'options',
+      'parameters',
+      'compare',
+    ]
+    const messageWords = contextMessage.split(/\s+/).filter(Boolean).length
+    const isComplexRequest =
+      messageWords > 30 || complexTriggers.some((trigger) => lowerContext.includes(trigger))
+
+    const maxTokens = isComplexRequest ? 2500 : 800
+    const modelToUse = hasImages ? 'gpt-4o' : OPENAI_CHAT_MODEL
 
-Your Personality:
-- Part strategist, part storyteller, part design wizard
-- Warm, encouraging, and inspiring (use emojis occasionally: ✨🎯💡🎨🚀)
-- Professional yet conversational — like a senior creative teammate
-- Make marketing feel inspiring, not exhausting
-
-Your Expertise:
-🎯 Media Planning: Help map campaigns, audiences, channels with data-backed recommendations
-💡 Creative Generation: Write copy, brainstorm ideas, adapt to brand voice
-🎨 Visual Content: Generate images, graphics, mockups
-🎥 Video Creation: Storyboards and short-form videos
-📊 Optimization: Track performance, suggest improvements
-📦 Exports: Pitch decks, social packs, reports
-
-SINAIQ Platform (what you help with):
-1. Content Panel - Marketing copy for Facebook, Instagram, TikTok, LinkedIn, X, YouTube
-2. Pictures Panel - Image generation (DALL-E, FLUX, Stability AI, Ideogram)
-3. Video Panel - Video content creation
-
-Key Workflow:
-- Users fill out their brief → Validate settings → Generate button activates
-- You guide them through the platform with clear, actionable steps
-
-═══════════════════════════════════════════════════════════════════════════════
-📋 CONTENT PANEL - Complete Settings Knowledge
-═══════════════════════════════════════════════════════════════════════════════
-
-**Your Role**: Act as a senior copywriter & strategist. Guide users to optimal settings.
-
-## Content Panel Settings:
-
-### Persona (Who you're talking to):
-• **Generic** - Broad appeal, no specific targeting
-• **First-time** - New prospects, awareness stage
-• **Warm lead** - Mid-funnel, considering purchase
-• **B2B DM** - Decision-makers, professional tone
-• **Returning** - Existing customers, loyalty focus
-
-**Recommendation Logic**:
-- Awareness campaigns → First-time
-- Consideration/comparison → Warm lead
-- B2B/enterprise → B2B DM
-- Retention/upsell → Returning
-
-### Tone Options:
-• **Friendly** - Casual, approachable (DTC brands)
-• **Informative** - Educational, helpful (B2B, tech)
-• **Bold** - Confident, assertive (disruptors, premium)
-• **Premium** - Sophisticated, luxury (high-end)
-• **Playful** - Fun, energetic (lifestyle, youth)
-• **Professional** - Formal, authoritative (corporate)
-
-**Recommendation Logic**:
-- E-commerce/lifestyle → Friendly or Playful
-- SaaS/tech → Informative or Professional
-- Luxury brands → Premium + Bold
-- B2B enterprise → Professional
-
-### CTA Options & Use Cases:
-• **Learn more** - Low-friction, awareness/education
-• **Get a demo** - High-intent B2B product tours
-• **Sign up** - Mid-funnel account creation
-• **Shop now** - Ready-to-buy e-commerce
-• **Start free trial** - Trial/freemium subscriptions
-• **Book a call** - Sales-assisted, consultative
-• **Download guide** - Lead magnet, gated content
-
-### Language:
-• **EN** - English (global markets)
-• **AR** - Arabic (MENA audiences)
-• **FR** - French (EU/Canadian reach)
-
-### Copy Length:
-• **Compact** - Short, punchy (under 100 chars)
-• **Standard** - Balanced, most versatile
-• **Detailed** - Long-form, storytelling
-
-### Platforms (select multiple):
-• Facebook, Instagram, TikTok, LinkedIn, X (Twitter), YouTube
-
-**Content Strategy Guidance**:
-When users ask "what should I use?", provide specific recommendations:
-- **B2B SaaS launch** → Persona: B2B DM, Tone: Informative, CTA: Get a demo, Platforms: LinkedIn
-- **E-commerce product** → Persona: First-time, Tone: Friendly, CTA: Shop now, Platforms: Facebook + Instagram
-- **Brand awareness** → Persona: Generic, Tone: Bold, CTA: Learn more, Platforms: All relevant
-- **Lead gen** → Persona: Warm lead, Tone: Informative, CTA: Download guide, Platforms: LinkedIn + Facebook
-
-### Advanced Content Fields:
-• **Keywords** - Terms to include naturally
-• **Avoid** - Phrases/topics to exclude
-• **Hashtags** - Social media hashtag strategy
-• **Attachments** - Upload brand assets (up to 5 files)
-
-═══════════════════════════════════════════════════════════════════════════════
-🎨 PICTURES PANEL - Complete Settings Knowledge
-═══════════════════════════════════════════════════════════════════════════════
-
-**Your Role**: Act as a professional art director & designer. Match provider to use case.
-
-## 1. PROVIDER SELECTION (Critical First Step)
-
-### Provider Comparison & When to Use:
-
-**DALL-E 3 (OpenAI)**
-✅ Best for: Quick product shots, clean commercial images, broad concepts
-✅ Strengths: Fast, reliable, understands marketing language well
-✅ Style: Clean, polished, commercial-ready
-❌ Limitations: Less detailed than FLUX, limited aspect options with HD
-**Recommend when**: Speed matters, clean product photography, broad creative
-
-**FLUX Pro 1.1** 
-✅ Best for: Ultra-realistic photography, human subjects, lifestyle content
-✅ Strengths: Most photorealistic, best at faces/people, highest detail
-✅ Style: Professional photography quality, natural lighting
-❌ Limitations: Slower (3-4s), more expensive
-**Recommend when**: Hero images, people/lifestyle, premium campaigns, realism critical
-
-**Stability AI (SD 3.5)**
-✅ Best for: Artistic imagery, illustrations, creative concepts, flexibility
-✅ Strengths: Most controllable, great negative prompts, style variety
-✅ Style: Artistic flexibility, from realistic to stylized
-**Recommend when**: Artistic direction needed, specific style control, illustrations
-
-**Ideogram AI**
-✅ Best for: Text in images, logos, posters, graphic design elements
-✅ Strengths: Best at rendering text/typography, design-focused
-✅ Style: Graphic design, modern aesthetic, clean layouts
-**Recommend when**: Text overlay needed, poster/banner design, branding elements
-
-## 2. CORE SETTINGS (All Providers)
-
-### Style:
-• **Product** - Clean hero shots, item-focused
-• **Lifestyle** - Real people using product in context
-• **UGC** - Creator-style, handheld authentic visuals
-• **Abstract** - Conceptual, art-led campaign imagery
-
-### Aspect Ratio:
-• **1:1** - Square (IG grid, FB feed, thumbnails)
-• **4:5** - Portrait feed (Meta/LinkedIn optimal)
-• **16:9** - Landscape (hero banners, YouTube)
-• **2:3** - Poster portrait (tall presence)
-• **3:2** - Classic 35mm (balanced storytelling)
-• **7:9** - Mobile-first hero (vertical emphasis)
-• **9:7** - Editorial (space for text overlays)
-
-## 3. PROVIDER-SPECIFIC SETTINGS
-
-### DALL-E 3 Settings:
-**Quality:**
-• Standard - Faster generation (most use cases)
-• HD - Higher detail (forces 1:1 aspect only)
-**Style:**
-• Vivid - Dramatic colors, bold (eye-catching ads)
-• Natural - Subtle tones (lifestyle, authentic)
-
-### FLUX Pro Settings:
-**Mode:**
-• Standard - Balanced quality & speed (default)
-• Ultra - Maximum detail (hero images only)
-**Standard Mode Controls:**
-• Guidance: 1.5-5 (default 3) - How closely to follow prompt
-• Steps: 20-50 (default 40) - Generation iterations
-**Advanced:**
-• Prompt Upsampling: On = AI enhances your prompt
-• RAW Mode: On = Unprocessed output (expert use)
-• Output Format: JPEG (smaller) | PNG (lossless) | WebP (modern)
-
-**FLUX Recommendations:**
-- Product shots → Standard mode, Guidance 3, Steps 40
-- People/lifestyle → Standard mode, Guidance 3.5, Steps 40-50
-- Ultra-detailed hero → Ultra mode
-- Quick iterations → Standard, Steps 20-30
-
-### Stability AI Settings:
-**Model:**
-• Large - Best quality (recommended default)
-• Large Turbo - Faster generation
-• Medium - Balanced speed/quality
-**Controls:**
-• CFG Scale: 1-20 (default 7) - Prompt adherence strength
-• Steps: 20-60 (default 40) - Generation quality
-**Advanced:**
-• Negative Prompt: Describe what to AVOID (500 chars)
-• Style Preset: Optional artistic style overlay
-
-**Stability Recommendations:**
-- Detailed artwork → Large model, CFG 7-10, Steps 50-60
-- Quick concepts → Turbo model, CFG 7, Steps 30
-- Photorealistic → Large, CFG 5-7, Negative: "illustration, cartoon, artistic"
-- Stylized art → Large, CFG 8-12, Use style preset
-
-### Ideogram Settings:
-**Model:**
-• V2 - Latest, best overall (recommended)
-• V1 - Classic, more controlled
-• Turbo - Fastest, good quality
-**Magic Prompt:**
-• On - AI enhances prompt (recommended)
-• Off - Use prompt exactly as written
-**Style Type:**
-• AUTO - Let AI decide (safe default)
-• GENERAL - Versatile photography
-• REALISTIC - Photographic realism
-• DESIGN - Graphic design aesthetic
-• RENDER_3D - 3D rendered look
-• ANIME - Anime/illustration style
-**Advanced:**
-• Negative Prompt: What to avoid (500 chars)
-
-**Ideogram Recommendations:**
-- Text in image → V2, Magic ON, DESIGN style
-- Posters/banners → V2, DESIGN style
-- Product photos → V2, REALISTIC style
-- Quick iterations → Turbo, Magic ON
-- Artistic → V2, AUTO, let it choose
-
-## 4. ADVANCED SETTINGS (All Providers)
-
-These apply across all providers and refine the final output:
-
-• **Brand Colors**: Lock/Flexible - Respect brand palette
-• **Backdrop**: Clean | Gradient | Real-world environment
-• **Lighting**: Soft (diffused) | Hard (crisp) | Neon (bold)
-• **Quality**: High detail | Sharp | Minimal noise
-• **Negative**: Avoid logos, busy backgrounds, extra hands, glare
-• **Composition**: Describe layout/framing
-• **Camera**: Lens type (e.g., "50mm portrait", "wide-angle")
-• **Mood**: Emotional tone (e.g., "energetic", "calm", "luxurious")
-• **Colour Palette**: Specific colors (e.g., "warm autumn tones")
-• **Finish**: Surface quality (e.g., "matte", "glossy")
-• **Texture**: Material feel (e.g., "smooth", "textured fabric")
-
-## 5. PROMPT WRITING GUIDANCE
-
-**Excellent Prompt Structure:**
-[Subject] + [Action/Pose] + [Setting/Context] + [Style/Mood] + [Technical details]
-
-**Examples:**
-- "Eco-friendly water bottle on wooden table, morning sunlight streaming through window, minimalist product photography, soft focus background, warm tones"
-- "Happy millennial woman using laptop in modern coffee shop, lifestyle photography, natural lighting, shallow depth of field, candid moment"
-- "Abstract geometric pattern in brand colors, clean design, modern tech aesthetic, gradient overlay, professional banner layout"
-
-**Pro Tips to Share:**
-✓ Be specific with subjects, settings, lighting
-✓ Include camera angles ("overhead shot", "eye-level")
-✓ Specify lighting ("golden hour", "studio lighting")
-✓ Add emotional tone ("energetic", "serene")
-✓ Use negative prompts to avoid unwanted elements
-✗ Don't use vague terms like "nice" or "good"
-✗ Don't over-complicate (keep under 500 chars)
-
-## 6. FULL SETTINGS RECOMMENDATIONS BY USE CASE
-
-When users ask "what settings should I use?", provide complete recommendations:
-
-**E-commerce Product Launch:**
-→ Provider: DALL-E 3 or FLUX Standard
-→ Style: Product
-→ Aspect: 1:1 (IG) or 4:5 (feed)
-→ Quality: Standard/HD
-→ Prompt: "Product hero shot on clean white background, professional product photography, soft studio lighting, sharp focus"
-→ Advanced: Backdrop = Clean, Lighting = Soft, Quality = High detail
-
-**Lifestyle Brand Campaign:**
-→ Provider: FLUX Pro (Standard mode)
-→ Style: Lifestyle
-→ Aspect: 4:5 or 16:9
-→ FLUX: Guidance 3.5, Steps 40
-→ Prompt: "Happy diverse people enjoying [activity], natural outdoor setting, golden hour photography, candid lifestyle shot"
-→ Advanced: Lighting = Soft, Mood = Energetic, Negative = "posed, artificial"
-
-**Tech Product Hero Image:**
-→ Provider: FLUX Pro (Ultra mode) or Stability Large
-→ Style: Product
-→ Aspect: 16:9
-→ Prompt: "[Product] on modern desk setup, sleek tech photography, dramatic side lighting, dark background with blue accent light"
-→ Advanced: Backdrop = Gradient, Lighting = Hard, Mood = Professional, Finish = Glossy
-
-**Social Media Poster with Text:**
-→ Provider: Ideogram V2
-→ Style: Design or Abstract  
-→ Aspect: 4:5 or 9:7
-→ Ideogram: Magic Prompt ON, Style = DESIGN
-→ Prompt: "Modern marketing poster with bold headline text '[YOUR TEXT]', vibrant gradient background, clean layout, professional design"
-→ Advanced: Composition = Centered, Quality = Sharp
-
-**Artistic Campaign Concept:**
-→ Provider: Stability AI Large
-→ Style: Abstract
-→ Aspect: 16:9
-→ Stability: CFG 8-10, Steps 50
-→ Prompt: "Abstract [concept] visualization, artistic photography, creative lighting, editorial magazine style"
-→ Advanced: Lighting = Neon, Mood = Bold, Negative = "realistic, plain"
-
-**UGC/Creator Content:**
-→ Provider: FLUX Standard or Ideogram Turbo
-→ Style: UGC
-→ Aspect: 9:16 (if video-style) or 4:5
-→ Prompt: "Handheld selfie-style video still, [person] showing [product], authentic creator content, natural indoor lighting, casual aesthetic"
-→ Advanced: Lighting = Soft, Mood = Authentic, Texture = Grainy
-
-═══════════════════════════════════════════════════════════════════════════════
-🎯 HOW TO GUIDE USERS (Your Expert Consultation Approach)
-═══════════════════════════════════════════════════════════════════════════════
-
-When users ask for help, follow this flow:
-
-**Step 1: Understand the Use Case**
-Ask: "What are you creating this for?"
-- Product launch? → Prioritize clarity, detail
-- Social campaign? → Prioritize engagement, emotion
-- Brand awareness? → Prioritize uniqueness, memorability
-- Performance ads? → Prioritize CTR optimization
-
-**Step 2: Recommend Provider**
-Based on their answer:
-- Need speed? → DALL-E
-- Need quality? → FLUX
-- Need control? → Stability
-- Need text? → Ideogram
-
-**Step 3: Suggest Complete Settings**
-Give them a full config:
-"Here's my recommendation 🎯:
-→ Provider: [X] (because [reason])
-→ Style: [X]
-→ Aspect: [X] (optimal for [platform])
-→ [Provider] Settings: [specific values]
-→ Prompt: [example prompt]
-→ Advanced: [key settings]"
-
-**Step 4: Explain the "Why"**
-Always explain your recommendations:
-- "FLUX for this because you need photorealistic people"
-- "1:1 aspect for Instagram feed optimization"
-- "Guidance at 3.5 for balanced creativity + accuracy"
-
-**Step 5: Offer Alternatives**
-"If speed is more important, you could use DALL-E with..."
-"For a more artistic look, try Stability with..."
-
-═══════════════════════════════════════════════════════════════════════════════
-
-Remember: You're here to make their marketing life smoother, smarter, and way more fun. Turn strategy into stories, stories into success. 🌟
-
-Response Style:
-- Keep under 80 words unless asked for detail
-- Use "→" for step-by-step flows
-- Format with markdown: **bold text**, ## Headlines, ### Subheadings
-- Use bullet points (• or -) for lists
-- Create comparison tables when comparing options
-- End with encouragement or next steps
-- When users are stuck: "Let's tackle this together 💪"
-
-Formatting Examples:
-## Main Topic
-**Bold important terms** for emphasis
-• Bullet points for key items
-- Alternative bullet style
-→ Arrow for workflows
-
-Remember: You're here to make their marketing life smoother, smarter, and way more fun. Turn strategy into stories, stories into success. 🌟`
-      },
-      ...history.slice(-6).map(msg => ({
-        role: msg.role,
-        content: msg.content
-      })),
-      { role: 'user', content: contextMessage }
-    ];
-
-    // Configure parameters based on model type
-    const isGPT5 = OPENAI_CHAT_MODEL.startsWith('gpt-5');
     const completionParams = {
-      model: OPENAI_CHAT_MODEL,
+      model: modelToUse,
       messages,
-    };
-    
-    // GPT-5 uses different parameter names and only supports temperature=1
-    if (isGPT5) {
-      completionParams.max_completion_tokens = 300;
-      // GPT-5 only supports temperature=1 (default), so we omit it
-    } else {
-      completionParams.max_tokens = 300;
-      completionParams.temperature = 0.7;
     }
+
+    if (modelToUse.startsWith('gpt-5')) {
+      completionParams.max_completion_tokens = maxTokens
+    } else {
+      completionParams.max_tokens = maxTokens
+      completionParams.temperature = 0.65
+    }
+
+    const completion = await openai.chat.completions.create(completionParams)
+    const choice = completion.choices?.[0]
+    let reply = choice?.message?.content || ''
+
+    if (choice?.finish_reason === 'length') {
+      const continuation = await fetchContinuation({
+        messages,
+        model: modelToUse,
+        partial: reply,
+        temperature: 0.65,
+      })
+      reply += continuation
+    }
+
+    reply = ensurePolishedEnding(reply)
+    const sanitized = sanitizeBaduReply(reply)
+
+    const payload = { reply: sanitized.content }
+    if (sanitized.flagged) {
+      payload.guard = { triggered: true, reason: sanitized.reason }
+    }
+
+    res.json(payload)
+
+    // Track successful chat
+    const inputTokens = usageTracker.estimateTokens(contextMessage) + (safeHistory.length * 50)
+    const outputTokens = usageTracker.estimateTokens(reply)
+    const costs = usageTracker.calculateOpenAICost(inputTokens, outputTokens, modelToUse)
     
-    const completion = await openai.chat.completions.create(completionParams);
+    await usageTracker.trackAPIUsage({
+      userId: req.userId || 'anonymous',
+      serviceType: 'chat',
+      provider: 'openai',
+      model: modelToUse,
+      endpoint: '/v1/chat',
+      inputTokens,
+      outputTokens,
+      inputCost: costs.inputCost,
+      outputCost: costs.outputCost,
+      totalCost: costs.totalCost,
+      latency: Date.now() - startTime,
+      status: 'success',
+      ipAddress: req.ipAddress,
+      userAgent: req.userAgent
+    }).catch(err => console.error('[Tracking] Failed to track chat:', err))
 
-    const reply = completion.choices[0]?.message?.content || 'Sorry, I couldn\'t process that.';
-
-    res.json({ reply });
   } catch (error) {
-    console.error('[Badu] Error:', error.message);
-    res.status(500).json({ error: 'Failed to generate response' });
+    console.error('[Badu] API Error:', error)
+    
+    // Track failed chat
+    await usageTracker.trackAPIUsage({
+      userId: req.userId || 'anonymous',
+      serviceType: 'chat',
+      provider: 'openai',
+      model: 'unknown',
+      endpoint: '/v1/chat',
+      totalCost: 0,
+      latency: Date.now() - startTime,
+      status: 'error',
+      errorMessage: error.message,
+      ipAddress: req.ipAddress,
+      userAgent: req.userAgent
+    }).catch(err => console.error('[Tracking] Failed to track error:', err))
+    
+    res.status(500).json({ error: 'Failed to generate response' })
   }
-});
+})
+
+
+
+app.post('/v1/chat/stream', async (req, res) => {
+  const { message, history = [], attachments = [] } = req.body
+  const startTime = Date.now()
+
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({ error: 'Message is required' })
+  }
+
+  if (!openai) {
+    return res.status(500).json({ error: 'OpenAI not configured' })
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+
+  if (!isBaduTopic(message)) {
+    sendSSEReply(res, BADU_KNOWLEDGE.guardrails.fallbackOutsideScope)
+    return
+  }
+
+  try {
+    const safeHistory = Array.isArray(history) ? history : []
+    const safeAttachments = Array.isArray(attachments) ? attachments : []
+
+    let contextMessage = message.trim()
+    const hasImages = safeAttachments.some((att) => att?.type && att.type.startsWith('image/'))
+
+    if (safeAttachments.length > 0 && !hasImages) {
+      const fileList = safeAttachments.map((file) => file?.name).filter(Boolean).join(', ')
+      if (fileList) {
+        contextMessage = `${contextMessage}\n\n[User attached ${safeAttachments.length} file(s): ${fileList}]`
+      }
+    }
+
+    const messages = buildBaduMessages({
+      contextMessage,
+      history: safeHistory,
+      attachments: safeAttachments,
+      includeCoT: true,
+    })
+
+    const lowerContext = contextMessage.toLowerCase()
+    const complexTriggers = [
+      'explain',
+      'how to',
+      'walk me through',
+      'detail',
+      'example',
+      'guide',
+      'all',
+      'full',
+      'complete',
+      'comprehensive',
+      'settings',
+      'options',
+      'parameters',
+      'compare',
+    ]
+    const messageWords = contextMessage.split(/\s+/).filter(Boolean).length
+    const isComplexRequest =
+      messageWords > 30 || complexTriggers.some((trigger) => lowerContext.includes(trigger))
+
+    const maxTokens = isComplexRequest ? 2500 : 800
+    const modelToUse = hasImages ? 'gpt-4o' : OPENAI_CHAT_MODEL
+
+    const completionParams = {
+      model: modelToUse,
+      messages,
+      stream: true,
+    }
+
+    if (modelToUse.startsWith('gpt-5')) {
+      completionParams.max_completion_tokens = maxTokens
+    } else {
+      completionParams.max_tokens = maxTokens
+      completionParams.temperature = 0.65
+    }
+
+    const stream = await openai.chat.completions.create(completionParams)
+    let aggregated = ''
+    let finishReason = null
+
+    for await (const chunk of stream) {
+      const choice = chunk.choices?.[0]
+      if (!choice) continue
+      finishReason = choice.finish_reason ?? finishReason
+      const token = choice.delta?.content || ''
+      if (token) {
+        aggregated += token
+      }
+    }
+
+    if (finishReason === 'length') {
+      const continuation = await fetchContinuation({
+        messages,
+        model: modelToUse,
+        partial: aggregated,
+        temperature: 0.65,
+      })
+      aggregated += continuation
+    }
+
+    aggregated = ensurePolishedEnding(aggregated)
+    const sanitized = sanitizeBaduReply(aggregated)
+    if (sanitized.flagged) {
+      console.warn('[Badu Stream] Guardrail triggered:', sanitized.reason)
+    }
+
+    sendSSEReply(res, sanitized.content)
+
+    // Track successful streaming chat
+    const inputTokens = usageTracker.estimateTokens(contextMessage) + (safeHistory.length * 50)
+    const outputTokens = usageTracker.estimateTokens(aggregated)
+    const costs = usageTracker.calculateOpenAICost(inputTokens, outputTokens, modelToUse)
+    
+    await usageTracker.trackAPIUsage({
+      userId: req.userId || 'anonymous',
+      serviceType: 'chat',
+      provider: 'openai',
+      model: modelToUse,
+      endpoint: '/v1/chat/stream',
+      inputTokens,
+      outputTokens,
+      inputCost: costs.inputCost,
+      outputCost: costs.outputCost,
+      totalCost: costs.totalCost,
+      latency: Date.now() - startTime,
+      status: 'success',
+      ipAddress: req.ipAddress,
+      userAgent: req.userAgent
+    }).catch(err => console.error('[Tracking] Failed to track stream chat:', err))
+
+  } catch (error) {
+    console.error('[Badu Stream] Error:', error)
+    
+    // Track failed streaming chat
+    await usageTracker.trackAPIUsage({
+      userId: req.userId || 'anonymous',
+      serviceType: 'chat',
+      provider: 'openai',
+      model: 'unknown',
+      endpoint: '/v1/chat/stream',
+      totalCost: 0,
+      latency: Date.now() - startTime,
+      status: 'error',
+      errorMessage: error.message,
+      ipAddress: req.ipAddress,
+      userAgent: req.userAgent
+    }).catch(err => console.error('[Tracking] Failed to track error:', err))
+    
+    res.write(`data: ${JSON.stringify({ error: BADU_KNOWLEDGE.guardrails.uncertaintyMessage })}\n\n`)
+    res.end()
+  }
+})
 
 app.get('/events', eventsHandler)
 app.get('/ai/events', eventsHandler)
 
-async function processRun(runId, data) {
+async function processRun(runId, data, trackingContext = {}) {
   update(runId, 'thinking')
 
   if (!openai && !MOCK_OPENAI) {
     update(runId, 'error', null, 'openai_not_configured')
     return
   }
+
+  // Track start
+  const startTime = trackingContext.startTime || Date.now()
 
   try {
     const baseOptions = data.options || {}
@@ -2020,12 +2854,54 @@ async function processRun(runId, data) {
     })
 
     update(runId, 'ready', { variants: finalVariants, meta: finalMeta })
+
+    // Track successful content generation
+    const latency = Date.now() - startTime
+    const modelUsed = finalMeta.model || OPENAI_PRIMARY_MODEL
+    const estimatedInputTokens = Math.ceil((data.brief || '').length / 4) + 500 // Rough estimate
+    const estimatedOutputTokens = finalVariants.length * 150 // ~150 tokens per variant
+    const costs = usageTracker.calculateOpenAICost(estimatedInputTokens, estimatedOutputTokens, modelUsed.split(',')[0])
+    
+    await usageTracker.trackAPIUsage({
+      userId: trackingContext.userId || 'anonymous',
+      serviceType: 'content',
+      provider: 'openai',
+      model: modelUsed,
+      endpoint: '/v1/generate',
+      requestId: runId,
+      inputTokens: estimatedInputTokens,
+      outputTokens: estimatedOutputTokens,
+      inputCost: costs.inputCost,
+      outputCost: costs.outputCost,
+      totalCost: costs.totalCost,
+      latency,
+      status: 'success',
+      ipAddress: trackingContext.ipAddress,
+      userAgent: trackingContext.userAgent
+    }).catch(err => console.error('[Tracking] Failed to track content generation:', err))
+
   } catch (error) {
     const status = error?.status || error?.response?.status
     const code = error?.code || error?.response?.data?.error?.code
     const msg = error?.response?.data?.error?.message || error?.message || 'provider_error'
     console.error('[provider_error]', { status, code, msg })
     update(runId, 'error', null, `provider_error: ${code || status || 'unknown'} — ${msg}`)
+
+    // Track failed content generation
+    await usageTracker.trackAPIUsage({
+      userId: trackingContext.userId || 'anonymous',
+      serviceType: 'content',
+      provider: 'openai',
+      model: 'unknown',
+      endpoint: '/v1/generate',
+      requestId: runId,
+      totalCost: 0,
+      latency: Date.now() - startTime,
+      status: 'error',
+      errorMessage: msg,
+      ipAddress: trackingContext.ipAddress,
+      userAgent: trackingContext.userAgent
+    }).catch(err => console.error('[Tracking] Failed to track error:', err))
   }
 }
 
@@ -2056,6 +2932,687 @@ function update(id, status, data = undefined, error = undefined) {
   return next
 }
 
+// Enhanced Badu Chat Endpoint with RAG and Structured JSON
+app.post('/v1/chat/enhanced', async (req, res) => {
+  const { message, history = [], attachments = [] } = req.body;
+  
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ error: 'message_required' });
+  }
+
+  if (!openai) {
+    return res.status(503).json({ error: 'openai_not_configured' });
+  }
+
+  try {
+    // Topic filtering: Check if message is on-topic
+    if (!isBaduTopic(message)) {
+      return res.json({
+        response: {
+          title: 'Off-Topic Request',
+          message: 'I can only help with questions about the SINAIQ Marketing Engine panels (Content, Pictures, Video) and their settings. Please ask about content creation, image generation, video generation, or panel configurations.',
+          type: 'off_topic',
+        },
+        type: 'error',
+      });
+    }
+    
+    // Import enhanced knowledge base
+    const { searchCompleteKnowledge, buildCompleteContext } = await import('../shared/badu-kb-complete.js');
+    const { detectSchemaType, getSchemaInstruction, validateResponse } = await import('../shared/badu-schemas.js');
+    
+    // Check if we have images attached (vision mode)
+    const hasImages = attachments.some(att => att.type?.startsWith('image/'));
+    
+    // 1. RAG: Search knowledge base for relevant context (100% accurate from source code)
+    // When images attached, limit KB search to avoid irrelevant sources
+    const searchLimit = hasImages ? 2 : 5; // Less context when analyzing images
+    const searchResults = searchCompleteKnowledge(message, searchLimit);
+    const contextChunks = buildCompleteContext(searchResults);
+    const sources = searchResults.map(r => r.source);
+    
+    // 2. Detect appropriate schema type based on query (with image awareness)
+    const schemaType = detectSchemaType(message, hasImages);
+    const schemaInfo = getSchemaInstruction(schemaType);
+    
+    // 3. Build system prompt with RAG context and schema enforcement
+    const systemPrompt = [
+      'You are BADU, the official SINAIQ Marketing Engine copilot with vision capabilities.',
+      '',
+      '⚠️ YOUR CAPABILITIES:',
+      '✅ YES - I CAN analyze images (photos, screenshots, artwork, etc.)',
+      '✅ YES - I CAN create detailed prompts from images',
+      '✅ YES - I CAN recommend models based on image analysis',
+      '✅ YES - I CAN see attachments when provided',
+      '❌ NO - I CANNOT analyze video files (only images)',
+      '❌ NO - I CANNOT analyze audio files',
+      '',
+      'Core Rules:',
+      '1. Answer ONLY from the provided documentation context',
+      '2. ⚠️ WHEN USER ASKS FOR A PROMPT: Always include the full detailed prompt text (300-500 words) in the "Complete Prompt" setting. NEVER skip it.',
+      '   - For images: Include full detailed visual description',
+      '   - For content: Include full marketing copy example (headline, body, CTA)',
+      '   - DO NOT just describe what should be in a prompt - GIVE THE ACTUAL PROMPT',
+      '3. MAINTAIN CONTEXT: If you recommended a model (e.g., FLUX Pro) and user asks about "the model" or "settings", they mean THAT model',
+      '4. When asked about settings/parameters, provide ACTUAL UI SETTINGS from documentation, not generic descriptions:',
+      '   ❌ WRONG: "Style: Photorealistic", "Lighting: Dramatic"',
+      '   ✅ RIGHT: "Style Presets: Product, Photographic, Cinematic, etc.", "Aspect Ratio: 1:1, 16:9, 9:16, etc."',
+      '5. For image analysis, describe style, composition, lighting, colors, mood, and technical details',
+      '6. When creating prompts from images, be extremely detailed and specific (300-500 words minimum)',
+      '7. For Luma Ray-2 video, list ALL 15+ parameters: duration, resolution, loop, camera (movement/angle/distance), style, lighting, mood, motion (intensity/speed), subject movement, quality, color grading, film look, technical settings',
+      '8. For Content Panel, list ALL 11 settings: Brief, Persona (5 options), Tone (6 options), CTA (7 options), Language (EN/AR/FR), Copy Length (3 options), Platforms (6 channels), Keywords (optional), Hashtags (optional), Avoid (optional), Attachments (max 3 files, 5MB each)',
+      '9. Only include "next_steps" if user needs to take action in the app. Omit for purely informational questions.',
+      '10. Never invent URLs, prices, or feature claims',
+      '11. Use clean, professional formatting',
+      '',
+      '⚠️ CRITICAL CONTEXT RULE:',
+      'If conversation history shows you recommended Model X, and user asks "give me settings for the model",',
+      'they mean Model X, NOT a different model. Always check conversation history for context.',
+      '',
+      '# DOCUMENTATION CONTEXT',
+      contextChunks,
+      '',
+      '# SMART CONTEXT UNDERSTANDING',
+      hasImages ? [
+        '⚡ CRITICAL: When images are attached, BE SMART ABOUT USER INTENT:',
+        '',
+        '1. If user says "give me a prompt" → ⚠️ MUST INCLUDE THE FULL DETAILED PROMPT TEXT',
+        '   ⚠️ CRITICAL: NEVER skip the prompt - it is MANDATORY',
+        '   • Primary content: ONE detailed, comprehensive prompt (300-500 words) in "Complete Prompt" setting',
+        '   • Analyze the image DEEPLY: subject, pose, accessories, lighting, materials, textures, colors, mood',
+        '   • Write a FULL prompt that captures EVERY visual detail you see',
+        '   • The prompt MUST be 300-500 words long with ALL visual details',
+        '   • Make it copyable as ONE complete block',
+        '   • Secondary: Brief model recommendation',
+        '   • Then: basic_settings (provider-specific settings)',
+        '   • Then: advanced_settings (Advanced section settings)',
+        '   • DO NOT create multiple copy buttons for every setting',
+        '   • DO NOT give generic titles - give the ACTUAL DETAILED PROMPT',
+        '',
+        '2. Structure for prompt + settings requests:',
+        '   • "title": Brief title',
+        '   • "message": Short intro',
+        '   • "panel": "pictures" (if relevant)',
+        '   • "settings": [ // ONLY for prompt itself',
+        '       {',
+        '         "name": "Complete Prompt",',
+        '         "value": "[FULL 300-500 WORD DETAILED PROMPT HERE]",',
+        '         "explanation": "Copy this entire prompt"',
+        '       },',
+        '       {',
+        '         "name": "Recommended Model",',
+        '         "value": "Stability SD 3.5",',
+        '         "explanation": "Brief reason why"',
+        '       }',
+        '     ]',
+        '   • "basic_settings": [ // Provider-specific settings',
+        '       { "name": "Model", "value": "large", "explanation": "..." },',
+        '       { "name": "CFG Scale", "value": "10", "explanation": "..." },',
+        '       { "name": "Steps", "value": "40", "explanation": "..." },',
+        '       { "name": "Style Preset", "value": "line-art", "explanation": "..." },',
+        '       { "name": "Aspect Ratio", "value": "1:1", "explanation": "..." }',
+        '     ]',
+        '   • "advanced_settings": [ // Shared Advanced section',
+        '       { "name": "Brand Colors", "value": "Flexible", "explanation": "..." },',
+        '       { "name": "Backdrop", "value": "Clean", "explanation": "..." },',
+        '       { "name": "Lighting", "value": "Soft", "explanation": "..." },',
+        '       { "name": "Quality", "value": "High detail", "explanation": "..." },',
+        '       { "name": "Avoid", "value": "None", "explanation": "..." }',
+        '     ]',
+        '',
+        '3. AVOID:',
+        '   • ❌ Multiple copy buttons (one for model, one for style, one for aspect ratio)',
+        '   • ❌ Generic short descriptions: "A black panther with diamond necklace"',
+        '   • ❌ Listing settings as separate copyable items',
+        '   • ❌ Irrelevant sources (only include sources related to the query)',
+        '',
+        '4. DO:',
+        '   • ✅ ONE comprehensive detailed prompt (300-500 words)',
+        '   • ✅ Describe EVERYTHING you see: pose, expression, accessories, materials, lighting, shadows, reflections, textures, colors, mood, atmosphere',
+        '   • ✅ Use professional terminology',
+        '   • ✅ Include quality markers',
+        '   • ✅ Make it ready to copy and paste directly',
+        '',
+        '5. FOLLOW-UP QUESTIONS - CRITICAL CONTEXT RULE:',
+        '   • If you recommended "FLUX Pro" and user asks "give me settings for the model" → They mean FLUX Pro',
+        '   • If you recommended "Ideogram" and user asks "what about advanced settings" → They mean Ideogram',
+        '   • "the model" ALWAYS refers to the model YOU recommended in the conversation',
+        '   • Check conversation history BEFORE answering settings questions',
+        '   • DO NOT switch to a different model (e.g., don\'t give Stability settings if you recommended FLUX Pro)',
+        '   • Be consistent with your previous recommendations',
+        '',
+        '6. WHEN PROVIDING SETTINGS - MUST LIST ALL AVAILABLE OPTIONS:',
+        '   ⚠️ CRITICAL: When user asks for "advanced settings" or "all settings", list EVERY option available',
+        '   • DO NOT be selective - show ALL options from documentation',
+        '   • DO NOT use "etc." - list complete options',
+        '   ',
+        '   PICTURES PANEL ADVANCED SETTINGS (applies to ALL providers):',
+        '     - Brand Colors: Locked, Flexible',
+        '     - Backdrop: Clean, Gradient, Real-world',
+        '     - Lighting: Soft, Hard, Neon',
+        '     - Quality: High detail, Sharp, Minimal noise',
+        '     - Avoid: None, Logos, Busy background, Extra hands, Glare',
+        '   ',
+        '   FLUX Pro - BASIC SETTINGS:',
+        '     - Mode: standard, ultra',
+        '     - Aspect Ratio: 1:1, 16:9, 2:3, 3:2, 7:9, 9:7 (all 6 options)',
+        '     - Guidance: 1.5-5 (slider, only in standard mode)',
+        '     - Steps: 20-50 (slider, only in standard mode)',
+        '     - Prompt Upsampling: Off/On',
+        '     - RAW Mode: Off/On',
+        '     - Output Format: jpeg, png, webp',
+        '   ',
+        '   Stability SD 3.5 - BASIC SETTINGS:',
+        '     - Model: large, large-turbo, medium (all 3 options)',
+        '     - CFG Scale: 1-20 (full range slider)',
+        '     - Steps: 20-60 (full range slider)',
+        '     - Style Preset: None, 3d-model, analog-film, anime, cinematic, comic-book, digital-art, enhance, fantasy-art, isometric, line-art, low-poly, modeling-compound, neon-punk, origami, photographic, pixel-art, tile-texture (ALL 18 options)',
+        '     - Negative Prompt: Up to 500 characters (optional textarea)',
+        '     - Aspect Ratio: 1:1, 2:3, 3:2, 16:9 (all 4 options)',
+        '   ',
+        '   Ideogram - BASIC SETTINGS:',
+        '     - Model: v2, v1, turbo',
+        '     - Magic Prompt: Off/On',
+        '     - Style Type: AUTO, GENERAL, REALISTIC, DESIGN, RENDER_3D, ANIME (all 6 options)',
+        '     - Negative Prompt: textarea (optional)',
+        '     - Aspect Ratio: 1:1, 16:9, 2:3, 3:2, 7:9, 9:7 (all options)',
+        '   ',
+        '   DALL-E 3 - BASIC SETTINGS:',
+        '     - Size: 1024x1024, 1024x1792, 1792x1024 (all 3 options)',
+        '     - Quality: standard, hd (both options)',
+        '     - Style: vivid, natural (both options)',
+        '   ',
+        '   ⚠️ When user asks for "advanced settings", include BOTH:',
+        '   1. The Advanced section (Brand Colors, Backdrop, Lighting, Quality, Avoid)',
+        '   2. The provider-specific settings (Model, CFG, Steps, etc.)',
+        '',
+        '# IMAGE ANALYSIS GUIDELINES',
+        'When analyzing images, describe:',
+        '- Subject: What/who is in the image (detailed description)',
+        '- Composition: Camera angle, shot type, framing',
+        '- Lighting: Type, direction, quality, shadows',
+        '- Colors: Palette, dominant colors, saturation, temperature',
+        '- Mood: Emotion, atmosphere, feeling',
+        '- Style: Photorealistic, artistic, editorial, etc.',
+        '- Background: What\'s behind, how it\'s treated',
+        '- Technical: Focus, depth of field, quality markers',
+        '',
+        '⚠️ CRITICAL: MODEL RECOMMENDATION BASED ON IMAGE ANALYSIS',
+        'Before recommending a model, ANALYZE THE IMAGE to determine the best fit:',
+        '',
+        '1. If image contains TEXT, TYPOGRAPHY, LOGOS, LETTERS:',
+        '   → Recommend Ideogram',
+        '   → Reason: Specialized for text rendering and typography',
+        '',
+        '2. If image is PHOTOREALISTIC (products, portraits, realistic scenes):',
+        '   → Recommend FLUX Pro',
+        '   → Reason: Best for photorealistic detail and textures',
+        '',
+        '3. If image is ARTISTIC, STYLIZED, ILLUSTRATED, PAINTED:',
+        '   → Recommend Stability SD 3.5',
+        '   → Reason: Offers 18 style presets for artistic control',
+        '',
+        '4. If image is CREATIVE, CONCEPTUAL, IMAGINATIVE:',
+        '   → Recommend DALL-E 3',
+        '   → Reason: Best for creative interpretation',
+        '',
+        'DO NOT default to FLUX Pro without analyzing the image!',
+        '',
+        'When creating prompts from images:',
+        '- Be EXTREMELY specific about every visual detail you see',
+        '- Use professional photography terminology',
+        '- Include all color descriptions (be specific: "midnight black", "rose gold", "deep emerald")',
+        '- Mention lighting setup and direction',
+        '- Describe composition precisely',
+        '- Include texture details (fur, fabric, metal, etc.)',
+        '- Add quality markers (8K, professional, photorealistic, etc.)',
+        '- Mention any accessories, props, or details',
+        '- Describe the overall mood and atmosphere',
+        '- For products/objects: material, finish, reflections',
+        '- For people: age, expression, styling, clothing',
+        '',
+      ].join('\n') : '',
+      '# IMPORTANT FOR VIDEO QUERIES',
+      'If the query is about Luma Ray-2 or video settings, you MUST include ALL these parameters:',
+      '- Duration: 5s or 9s',
+      '- Resolution: 720p or 1080p',
+      '- Loop: Off or Seamless',
+      '- Camera Movement: Static, Pan Left, Pan Right, Zoom In, Zoom Out, Orbit Right',
+      '- Camera Angle: Low, Eye Level, High, Bird\'s Eye',
+      '- Camera Distance: Close-up, Medium, Wide, Extreme Wide',
+      '- Style: Cinematic, Photorealistic, Artistic, Animated, Vintage',
+      '- Lighting: Natural, Dramatic, Soft, Hard, Golden Hour, Blue Hour',
+      '- Mood: Energetic, Calm, Mysterious, Joyful, Serious, Epic',
+      '- Motion Intensity: Minimal, Moderate, High, Extreme',
+      '- Motion Speed: Slow Motion, Normal, Fast Motion',
+      '- Subject Movement: Static, Subtle, Active, Dynamic',
+      '- Quality: Standard, High, Premium',
+      '- Color Grading: Natural, Warm, Cool, Dramatic, Desaturated',
+      '- Film Look: Digital, 35mm, 16mm, Vintage',
+      '- Technical: Seed (optional), Guidance Scale (1-20), Negative Prompt (optional)',
+      '',
+      '# RESPONSE FORMAT',
+      schemaInfo.instruction,
+      '',
+      '# SCHEMA',
+      schemaInfo.schema,
+      '',
+      '# EXAMPLE',
+      JSON.stringify(schemaInfo.example, null, 2),
+      '',
+      'Now answer the user\'s question using ONLY the documentation above.',
+      'If images are attached, analyze them in detail.',
+      'If asked about settings, provide COMPLETE list of all parameters.',
+      'Return ONLY valid JSON matching the schema. No markdown, no extra text.',
+    ].join('\n');
+    
+    // 4. Build messages array with vision support + maintain context
+    // Convert structured responses to text summaries for better context retention
+    const formatHistoryMessage = (msg) => {
+      // User messages: always plain text
+      if (msg.role === 'user') {
+        return {
+          role: 'user',
+          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+        };
+      }
+      
+      // Assistant messages: convert structured JSON to text summary
+      if (msg.role === 'assistant' && typeof msg.content === 'object') {
+        const content = msg.content;
+        let summary = '';
+        
+        if (content.title) summary += `${content.title}\n\n`;
+        if (content.brief || content.message) summary += `${content.brief || content.message}\n\n`;
+        
+        // Extract recommended model if present
+        if (content.settings && Array.isArray(content.settings)) {
+          const modelSetting = content.settings.find(s => s.name?.toLowerCase().includes('model'));
+          if (modelSetting) summary += `Recommended Model: ${modelSetting.value}\n`;
+        }
+        
+        if (content.recommendation) summary += `Recommendation: ${content.recommendation}\n`;
+        
+        return {
+          role: 'assistant',
+          content: summary.trim() || JSON.stringify(content),
+        };
+      }
+      
+      // Fallback: keep as-is
+      return {
+        role: msg.role,
+        content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+      };
+    };
+    
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...history.slice(-10).map(formatHistoryMessage),
+    ];
+    
+    // 5. Build user message with images if attached
+    if (hasImages) {
+      // Vision mode: Build content array with text + images
+      const imageContent = attachments
+        .filter(att => att.type?.startsWith('image/'))
+        .map(att => ({
+          type: 'image_url',
+          image_url: {
+            url: `data:${att.type};base64,${att.data}`,
+            detail: 'high', // High detail for better analysis
+          },
+        }));
+      
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: message },
+          ...imageContent,
+        ],
+      });
+    } else {
+      // Text-only mode
+      messages.push({ role: 'user', content: message });
+    }
+    
+    // 5. Call LLM with low temperature for consistency
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      temperature: 0.2, // Low temp for factual, consistent responses
+      max_tokens: 1500,
+      response_format: { type: 'json_object' },
+    });
+    
+    let responseText = completion.choices?.[0]?.message?.content || '';
+    
+    // 6. Parse and validate response
+    let parsedResponse = safeParseOrRepair(responseText);
+    
+    if (!parsedResponse) {
+      // Fallback error response
+      parsedResponse = {
+        title: 'Response Error',
+        message: 'I encountered an error processing the response. Please try rephrasing your question.',
+        type: 'unknown',
+        next_steps: [
+          'Try asking about a specific panel (Content, Pictures, or Video)',
+          'Ask about a specific feature or setting',
+        ],
+      };
+    }
+    
+    // 7. Validate against schema
+    const validation = validateResponse(parsedResponse, schemaType);
+    
+    // 8. Self-check validation: if invalid, try repair
+    if (!validation.valid) {
+      console.warn('[Badu Enhanced] Schema validation failed:', validation.errors);
+      
+      // Attempt repair with focused prompt
+      const repairPrompt = [
+        'The previous response had validation errors:',
+        ...validation.errors,
+        '',
+        'Please return a corrected JSON response that strictly follows this schema:',
+        schemaInfo.schema,
+        '',
+        'Use this example as reference:',
+        JSON.stringify(schemaInfo.example, null, 2),
+      ].join('\n');
+      
+      try {
+        const repairCompletion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            ...messages,
+            { role: 'assistant', content: responseText },
+            { role: 'user', content: repairPrompt },
+          ],
+          temperature: 0.1,
+          max_tokens: 1500,
+          response_format: { type: 'json_object' },
+        });
+        
+        const repairedText = repairCompletion.choices?.[0]?.message?.content || '';
+        const repairedResponse = safeParseOrRepair(repairedText);
+        
+        if (repairedResponse) {
+          const revalidation = validateResponse(repairedResponse, schemaType);
+          if (revalidation.valid) {
+            parsedResponse = repairedResponse;
+          }
+        }
+      } catch (repairError) {
+        console.error('[Badu Enhanced] Repair attempt failed:', repairError);
+      }
+    }
+    
+    // 9. Add sources to response
+    if (sources.length > 0 && !parsedResponse.sources) {
+      parsedResponse.sources = sources;
+    }
+    
+    // 10. Sanitize response for disallowed terms (guardrail check)
+    // Recursive sanitization to catch disallowed terms in nested fields and arrays
+    const recursiveSanitize = (obj, path = '') => {
+      if (typeof obj === 'string') {
+        const sanitized = sanitizeBaduReply(obj);
+        if (sanitized.flagged) {
+          console.warn(`[Badu Enhanced] Sanitized field at ${path} for disallowed term: ${sanitized.reason}`);
+          return sanitized.content;
+        }
+        return obj;
+      }
+      
+      if (Array.isArray(obj)) {
+        return obj.map((item, index) => recursiveSanitize(item, `${path}[${index}]`));
+      }
+      
+      if (obj !== null && typeof obj === 'object') {
+        const sanitized = {};
+        for (const [key, value] of Object.entries(obj)) {
+          sanitized[key] = recursiveSanitize(value, path ? `${path}.${key}` : key);
+        }
+        return sanitized;
+      }
+      
+      return obj;
+    };
+    
+    parsedResponse = recursiveSanitize(parsedResponse);
+    
+    // 11. Return structured response
+    return res.json({
+      response: parsedResponse,
+      type: schemaType,
+      model: 'gpt-4o',
+      temperature: 0.2,
+      sources_used: sources.length,
+      validated: validation.valid,
+    });
+    
+  } catch (error) {
+    console.error('[Badu Enhanced] Error:', error);
+    
+    // Categorize errors for better user feedback
+    let errorTitle = 'Error';
+    let errorMessage = 'I\'m having trouble processing your request. Please try again.';
+    let errorSteps = ['Try rephrasing your question', 'Ask about a specific panel or feature'];
+    let statusCode = 500;
+    
+    if (error.message?.includes('rate_limit')) {
+      errorTitle = 'Rate Limit Exceeded';
+      errorMessage = 'Too many requests. Please wait a moment before trying again.';
+      errorSteps = ['Wait 30 seconds', 'Try your request again'];
+      statusCode = 429;
+    } else if (error.message?.includes('timeout') || error.message?.includes('ETIMEDOUT')) {
+      errorTitle = 'Request Timeout';
+      errorMessage = 'The request took too long. Please try a simpler question.';
+      errorSteps = ['Try asking about one specific feature', 'Break complex questions into smaller parts'];
+      statusCode = 504;
+    } else if (error.message?.includes('API key') || error.message?.includes('authentication')) {
+      errorTitle = 'Configuration Error';
+      errorMessage = 'There\'s a configuration issue. Please contact support.';
+      errorSteps = ['Contact your administrator'];
+      statusCode = 503;
+    } else if (error.message?.includes('content_policy') || error.message?.includes('moderation')) {
+      errorTitle = 'Content Policy Violation';
+      errorMessage = 'Your request was flagged by content moderation. Please rephrase.';
+      errorSteps = ['Rephrase your question', 'Focus on marketing-related topics'];
+      statusCode = 400;
+    } else if (error.message?.includes('JSON')) {
+      errorTitle = 'Response Format Error';
+      errorMessage = 'I had trouble formatting the response. Please try again.';
+      errorSteps = ['Try rephrasing your question', 'Ask for specific settings or features'];
+      statusCode = 500;
+    }
+    
+    return res.status(statusCode).json({
+      response: {
+        title: errorTitle,
+        message: errorMessage,
+        type: 'error',
+        next_steps: errorSteps,
+      },
+      type: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEEDBACK TRACKING ENDPOINT
+// ═══════════════════════════════════════════════════════════════════════════════
+app.post('/api/feedback', extractUserIdMiddleware, async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const {
+      userId,
+      touchpointType,
+      interactionType = 'complete',
+      rating,
+      ratingLabel,
+      sessionId = null,
+      timeSpentSeconds = null,
+      interactionStartTime = null,
+      interactionEndTime = null,
+      contextData = {},
+      pageUrl = null,
+      comments = null,
+      isAnonymous = false
+    } = req.body;
+
+    // Extract request metadata
+    const ipAddress = feedbackTracker.extractIPAddress(req);
+    const userAgent = feedbackTracker.extractUserAgent(req);
+
+    // Use userId from body or from auth middleware
+    const finalUserId = userId || req.userId;
+
+    if (!finalUserId && !isAnonymous) {
+      return res.status(401).json({
+        error: 'User ID required',
+        message: 'Please log in to submit feedback'
+      });
+    }
+
+    // Validate required fields
+    if (!touchpointType || rating === undefined || rating === null) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        message: 'touchpointType and rating are required'
+      });
+    }
+
+    // Track feedback
+    const feedbackRecord = await feedbackTracker.trackUserFeedback({
+      userId: finalUserId,
+      touchpointType,
+      interactionType,
+      rating,
+      ratingLabel,
+      sessionId,
+      timeSpentSeconds,
+      interactionStartTime,
+      interactionEndTime,
+      contextData,
+      pageUrl,
+      comments,
+      isAnonymous,
+      ipAddress,
+      userAgent
+    });
+
+    const latency = Date.now() - startTime;
+
+    console.log('[Feedback API] Feedback tracked:', {
+      id: feedbackRecord?.id,
+      touchpoint: touchpointType,
+      rating: ratingLabel,
+      latency: `${latency}ms`
+    });
+
+    res.json({
+      success: true,
+      feedback: feedbackRecord,
+      latency,
+      message: 'Feedback submitted successfully'
+    });
+  } catch (error) {
+    console.error('[Feedback API] Error:', error);
+    res.status(500).json({
+      error: 'Feedback submission failed',
+      message: error.message
+    });
+  }
+});
+
+// Get user's feedback history
+app.get('/api/feedback/history', extractUserIdMiddleware, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const limit = parseInt(req.query.limit) || 50;
+    
+    // If no userId (admin/analytics view), get all recent feedback
+    if (!userId) {
+      const allFeedback = await feedbackTracker.getAllFeedback(limit);
+      return res.json({
+        success: true,
+        feedback: allFeedback,
+        count: allFeedback.length,
+        type: 'all'
+      });
+    }
+
+    // If userId exists, get user-specific feedback
+    const feedbackHistory = await feedbackTracker.getUserFeedback(userId, limit);
+
+    res.json({
+      success: true,
+      feedback: feedbackHistory,
+      count: feedbackHistory.length,
+      type: 'user'
+    });
+  } catch (error) {
+    console.error('[Feedback API] Get history error:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve feedback history',
+      message: error.message
+    });
+  }
+});
+
+// Get feedback aggregations (analytics)
+app.get('/api/feedback/aggregations', async (req, res) => {
+  try {
+    const periodType = req.query.period || 'daily';
+    const limit = parseInt(req.query.limit) || 30;
+    
+    const aggregations = await feedbackTracker.getFeedbackAggregations(periodType, limit);
+
+    res.json({
+      success: true,
+      aggregations,
+      period: periodType,
+      count: aggregations.length
+    });
+  } catch (error) {
+    console.error('[Feedback API] Get aggregations error:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve feedback aggregations',
+      message: error.message
+    });
+  }
+});
+
+// Get feedback summary
+app.get('/api/feedback/summary', async (req, res) => {
+  try {
+    const touchpointType = req.query.touchpoint || null;
+    const summary = await feedbackTracker.getFeedbackSummary(touchpointType);
+
+    res.json({
+      success: true,
+      summary,
+      touchpoint: touchpointType || 'all'
+    });
+  } catch (error) {
+    console.error('[Feedback API] Get summary error:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve feedback summary',
+      message: error.message
+    });
+  }
+});
+
 app.listen(process.env.PORT || 8787, () => {
   console.log(`AI Gateway listening on ${process.env.PORT || 8787}`)
+  
+  // Start analytics scheduler for budget monitoring, alerts, and optimizations
+  analyticsScheduler.startScheduler()
+  console.log('📊 Analytics scheduler started - monitoring budgets, alerts, and generating insights')
 })

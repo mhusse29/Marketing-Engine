@@ -7,6 +7,7 @@ import { MediaPlanner } from './MediaPlanner';
 import { Platforms } from './Platforms';
 import { CardsSelector } from './CardsSelector';
 import { OutputVersions } from './OutputVersions';
+import { Feedback } from '../ui/feedback';
 
 interface SettingsPanelProps {
   settings: SettingsState;
@@ -50,7 +51,27 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
           <OutputVersions settings={settings} onSettingsChange={onSettingsChange} />
         </motion.div>
       </div>
+      
       <hr className="mt-6 border-white/10" />
+      
+      {/* Feedback Widget */}
+      <motion.div 
+        variants={SECTION_VARIANTS} 
+        initial="initial" 
+        animate="animate" 
+        transition={{ duration: 0.16, delay: 0.16 }}
+        className="mt-4 flex justify-center"
+      >
+        <Feedback 
+          label="Share Feedback" 
+          type="inline"
+          touchpointType="window_open"
+          contextData={{
+            panel: 'settings',
+            section: 'campaign-settings'
+          }}
+        />
+      </motion.div>
     </div>
   );
 }

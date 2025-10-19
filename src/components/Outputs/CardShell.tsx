@@ -2,13 +2,16 @@ import type { HTMLMotionProps } from 'framer-motion';
 import { motion } from 'framer-motion';
 
 import { cn } from '../../lib/format';
+import { InteractiveCardWrapper } from './InteractiveCardWrapper';
+import './InteractiveCard.css';
 
 interface CardShellProps extends HTMLMotionProps<'div'> {
   sheen?: boolean;
+  enableInteractive?: boolean;
 }
 
-export default function CardShell({ children, className, sheen = false, style, ...rest }: CardShellProps) {
-  return (
+export default function CardShell({ children, className, sheen = false, enableInteractive = true, style, ...rest }: CardShellProps) {
+  const cardContent = (
     <motion.div
       layout
       initial={{ 
@@ -34,7 +37,7 @@ export default function CardShell({ children, className, sheen = false, style, .
         scale: { duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }, // Slight overshoot for premium feel
       }}
       className={cn(
-        'glass-card relative flex flex-col overflow-hidden rounded-2xl p-4 sm:p-5 lg:p-6 ring-1 ring-white/10 shadow-[0_8px_40px_rgba(0,0,0,0.45)]',
+        'glass-card relative flex flex-col overflow-hidden rounded-2xl p-4 sm:p-5 lg:p-6 ring-1 ring-white/10 shadow-[0_8px_40px_rgba(0,0,0,0.45)] transition-shadow duration-300',
         sheen && 'sheen',
         className
       )}
@@ -48,5 +51,15 @@ export default function CardShell({ children, className, sheen = false, style, .
     >
       {children}
     </motion.div>
+  );
+
+  if (!enableInteractive) {
+    return cardContent;
+  }
+
+  return (
+    <InteractiveCardWrapper enableTilt={true} enableMobileTilt={false}>
+      {cardContent}
+    </InteractiveCardWrapper>
   );
 }

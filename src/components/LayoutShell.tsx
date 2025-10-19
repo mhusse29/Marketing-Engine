@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { TwoDimensionStackedGrid } from './TwoDimensionStackedGrid';
+import { SessionTimeoutBanner } from './SessionTimeoutBanner';
 
 interface LayoutShellProps {
   menu: ReactNode;
@@ -9,8 +11,18 @@ export function LayoutShell({ menu, main }: LayoutShellProps) {
   return (
     <div className="notebook min-h-screen overflow-x-hidden w-full">
       <div className="grid-walkers" aria-hidden="true" />
+      
+      {/* 3D Stacked Grid Background */}
+      <div className="fixed inset-0 pointer-events-none z-[-1]" aria-hidden="true">
+        <TwoDimensionStackedGrid />
+      </div>
 
-      <div className="relative min-h-screen w-full max-w-full overflow-x-hidden">
+      <SessionTimeoutBanner />
+
+      <div 
+        className="relative min-h-screen w-full max-w-full overflow-x-hidden"
+        style={{ scrollPaddingTop: 'calc(var(--topbar-h, 64px) + 16px)' }}
+      >
         <div className="fixed inset-0 pointer-events-none z-10" aria-hidden="true" />
 
         <header
@@ -23,7 +35,7 @@ export function LayoutShell({ menu, main }: LayoutShellProps) {
           {menu}
         </header>
 
-        <main className="relative z-[20] w-full max-w-full overflow-x-hidden pb-24 pt-[var(--topbar-h,64px)]">
+        <main className="relative z-[20] w-full max-w-full overflow-x-hidden pb-24 pt-[calc(var(--topbar-h,64px)+16px)]">
           {main}
         </main>
       </div>

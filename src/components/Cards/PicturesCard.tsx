@@ -5,10 +5,10 @@ import { Download, Maximize2, X } from 'lucide-react';
 
 import { cn } from '../../lib/format';
 import type { GeneratedPictures, PictureAsset, PictureRemixOptions } from '../../types';
+import type { StageManagerEntryInput } from '@/components/StageManager/types';
 import type { GridStepState } from '../../state/ui';
 import CardShell from '../Outputs/CardShell';
-import NanoGridBloom from '@/ui/NanoGridBloom';
-import PerimeterProgressSegmented from '@/ui/PerimeterProgressSegmented';
+import { MinimizeButton } from '../StageManager/MinimizeButton';
 
 const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
   flux: 'FLUX Pro 1.1',
@@ -17,7 +17,7 @@ const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
   ideogram: 'Ideogram v1',
 };
 
-async function downloadAsset(asset: PictureAsset, _index: number) {
+async function downloadAsset(asset: PictureAsset) {
   console.log('[Download] Starting download for:', asset.url);
   
   // Extract filename from URL
@@ -143,16 +143,14 @@ type PicturesCardProps = {
   onRegenerate: (options?: PictureRemixOptions) => Promise<void> | void;
   onReplaceImages?: () => void;
   status: GridStepState;
+  onMinimize?: (entry: StageManagerEntryInput) => void;
 };
 
 export function PicturesCard({
   pictures,
   currentVersion,
-  brandLocked: _brandLocked,
-  onSave: _onSave,
-  onRegenerate: _onRegenerate,
-  onReplaceImages: _onReplaceImages,
   status,
+  onMinimize,
 }: PicturesCardProps) {
   const [selectedAssetIndex, setSelectedAssetIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -182,6 +180,26 @@ export function PicturesCard({
     versionPictures?.mode === 'image' && 'assets' in versionPictures
       ? versionPictures.assets[selectedAssetIndex]
       : undefined;
+
+  const handleMinimize = () => {
+    if (!onMinimize) return;
+    if (!versionPictures) return;
+
+    const previewUrl =
+      selectedAsset?.url ||
+      (versionPictures.mode === 'image' && 'assets' in versionPictures && versionPictures.assets[0]?.url) ||
+      '';
+
+    onMinimize({
+      cardType: 'pictures',
+      data: {
+        pictures: {
+          url: previewUrl,
+          provider: versionPictures.provider,
+        },
+      },
+    });
+  };
 
   // Fullscreen Popup Component
   const fullscreenPortal = isFullscreen && selectedAsset ? createPortal(
@@ -236,6 +254,8 @@ export function PicturesCard({
   return (
     <>
       <CardShell sheen={false} className="relative isolate overflow-hidden p-0">
+        {onMinimize && <MinimizeButton onMinimize={handleMinimize} />}
+        
         <div className="relative z-10">
           {/* Image Display with Overlays */}
           {versionPictures?.mode === 'image' && selectedAsset ? (
@@ -327,6 +347,10 @@ export function PicturesCard({
                     >
                       <Download className="h-4 w-4" />
                     </button>
+
+                    {onMinimize && (
+                      <MinimizeButton onMinimize={handleMinimize} />
+                    )}
                   </div>
                 </div>
               </div>
@@ -361,9 +385,6 @@ export function PicturesCard({
           </div>
         )}
       </div>
-
-        <NanoGridBloom busy={isBusy} />
-        <PerimeterProgressSegmented status={status} radius={16} />
     </CardShell>
 
       {/* Fullscreen Popup (rendered via portal) */}

@@ -4,8 +4,9 @@ import ContentVariantCard from '@/cards/ContentVariantCard'
 import type { ContentGenerationMeta, ContentVariantResult } from '@/types'
 import { useBusyProgress } from '@/hooks/useBusyProgress'
 import PlatformRail from '@/ui/PlatformRail'
-import { getPlatformLabel } from '@/ui/platformUtils'
+import { getPlatformId, getPlatformLabel } from '@/ui/platformUtils'
 import { saveRun } from '@/lib/saves'
+import type { StageManagerEntryInput } from '@/components/StageManager/types'
 
 interface ContentCardProps {
   status: string
@@ -23,6 +24,7 @@ interface ContentCardProps {
     versions: number,
     hint?: string
   ) => void
+  onMinimize?: (entry: StageManagerEntryInput) => void
 }
 
 type RunStatus = 'idle' | 'queued' | 'thinking' | 'rendering' | 'ready' | 'error'
@@ -55,6 +57,7 @@ export default function ContentCard({
   versions,
   runId,
   onRegenerate,
+  onMinimize,
 }: ContentCardProps) {
   const settingsPlatforms = useMemo(
     () => (Array.isArray(platformIds) ? platformIds.filter((p) => p !== 'Auto') : []),
@@ -205,6 +208,32 @@ export default function ContentCard({
     }
   }
 
+  const handleContentMinimize = () => {
+    if (!onMinimize) {
+      return
+    }
+
+    const platformSource = typeof displayVariant?.platform === 'string' && displayVariant.platform.trim().length > 0
+      ? displayVariant.platform
+      : activePlat
+    const platformId = getPlatformId(platformSource) ?? platformSource
+
+    const entry: StageManagerEntryInput = {
+      cardType: 'content',
+      data: {
+        content: {
+          platformId,
+          platformLabel,
+          headline: cardHeadline ?? variantData?.headline ?? undefined,
+          caption: cardCaption ?? variantData?.caption ?? undefined,
+          hashtags: cardHashtags ?? undefined,
+        },
+      },
+    }
+
+    onMinimize(entry)
+  }
+
   return (
     <section className="grid grid-cols-[auto_1fr] gap-6">
       <PlatformRail
@@ -262,6 +291,7 @@ export default function ContentCard({
           variant={currentVariant}
           onRegenerate={handleRegenerate}
           onSave={hasReadyContent ? handleSave : undefined}
+          onMinimize={onMinimize ? handleContentMinimize : undefined}
         />
       </div>
     </section>

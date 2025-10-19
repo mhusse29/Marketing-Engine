@@ -1,17 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from './contexts/AuthContext';
+import SettingsPage from './pages/SettingsPage';
+import { logActivity } from './lib/activityLogger';
 
 import { LayoutShell } from './components/LayoutShell';
-import { Stepper } from './components/AskAI/Stepper';
 import ContentCard from './components/Cards/ContentCard';
 import { PicturesCard } from './components/Cards/PicturesCard';
 import { VideoCard } from './components/Cards/VideoCard';
-import { SkeletonCard } from './components/AskAI/SkeletonCard';
 import AppTopBar from './components/AppTopBar';
 import { TopBarPanels } from './components/TopBarPanels';
 import { useTopBarPanels } from './components/useTopBarPanels';
-import { MenuContent, MenuPictures, MenuVideo } from './components/AppMenuBar';
-import { BaduAssistant } from './components/BaduAssistant';
+import { MenuContent, MenuPictures } from './components/AppMenuBar';
+import { MenuVideo } from './components/MenuVideo';
+import { BaduAssistantEnhanced as BaduAssistant } from './components/BaduAssistantEnhanced';
+import SmartOutputGrid from './components/Outputs/SmartOutputGrid';
+import { SmartGenerationLoader } from './components/SmartGenerationLoader';
+import { StageManager } from './components/StageManager/StageManager';
+import FeedbackSlider from './components/ui/feedback-slider';
+import { feedbackManager, type FeedbackTouchpoint } from './lib/feedbackManager';
+import {
+  createStageManagerEntry,
+  defaultStageManager3DSettings,
+  defaultStageManagerTraySettings,
+  type StageManagerEntry,
+  type StageManagerEntryInput,
+} from './components/StageManager/types';
+// import { InteractiveCardController } from './components/Debug/InteractiveCardController';
 
 import {
   loadSettings,
@@ -112,6 +128,24 @@ function App() {
   const [currentVersions, setCurrentVersions] = useState({ content: 0, pictures: 0, video: 0 });
   const generationAbortRef = useRef<AbortController | null>(null);
 
+  // Stage Manager: minimized entries and visibility
+  const [stageEntries, setStageEntries] = useState<StageManagerEntry[]>([]);
+  const [hiddenCardTypes, setHiddenCardTypes] = useState<Set<CardKey>>(() => new Set());
+
+  // Stage Manager positioning and tray styling
+  const threeDSettings = useMemo(
+    () => ({
+      ...defaultStageManager3DSettings,
+    }),
+    []
+  );
+  const traySettings = useMemo(
+    () => ({
+      ...defaultStageManagerTraySettings,
+    }),
+    []
+  );
+
   const {
     status: contentStatus,
     result: contentResult,
@@ -124,15 +158,33 @@ function App() {
   const [contentMeta, setContentMeta] = useState<ContentGenerationMeta | null>(null);
   const contentStatusRef = useRef(contentStatus);
   const contentErrorRef = useRef<string | undefined>(undefined);
+  const picturesStatusRef = useRef(aiState.stepStatus.pictures ?? 'idle');
+  const videoStatusRef = useRef(aiState.stepStatus.video ?? 'idle');
+
+  // DEBUG: Log contentVariants after update
+  useEffect(() => {
+    if (contentStatus === 'ready' && contentResult) {
+      if (import.meta.env?.DEV) {
+        console.log('[App] applying contentResult', contentResult)
+      }
+      setContentVariants(contentResult.variants ?? []);
+      setContentMeta(contentResult.meta ?? null);
+      console.log('App.tsx - contentVariants updated:', contentResult.variants);
+    } else if (contentStatus === 'queued') {
+      setContentVariants([]);
+      setContentMeta(null);
+    } else if (contentStatus === 'error') {
+      setContentMeta(null);
+    }
+  }, [contentStatus, contentResult]);
 
   const cardsEnabled = useCardsStore((state) => state.enabled);
-  const cardsHidden = useCardsStore((state) => state.hidden);
   const cardsOrder = useCardsStore((state) => state.order);
   const selectedCard = useCardsStore((state) => state.selected);
   const setCardEnabled = useCardsStore((state) => state.setEnabled);
   const selectCard = useCardsStore((state) => state.select);
   const toggleHiddenCard = useCardsStore((state) => state.toggleHidden);
-  const { open: panelOpen, toggle: togglePanel, close: closePanel } = useTopBarPanels();
+  const { open: panelOpen, toggle: togglePanel, close: closePanel, openPanel, setHovering } = useTopBarPanels();
 
   const syncAiStateWithSettings = useCallback((nextSettings: SettingsState) => {
     const nextBrief = nextSettings.quickProps.content.brief;
@@ -209,12 +261,55 @@ function App() {
   }, [cardsOrder, cardsEnabled, selectedCard, selectCard, toggleHiddenCard]);
 
   useEffect(() => {
+    const previous = contentStatusRef.current;
     contentStatusRef.current = contentStatus;
+    if (contentStatus === 'ready' && previous && previous !== 'ready') {
+      setHiddenCardTypes((prev) => {
+        if (!prev.has('content')) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete('content');
+        return next;
+      });
+    }
   }, [contentStatus]);
 
   useEffect(() => {
     contentErrorRef.current = contentError;
   }, [contentError]);
+
+  useEffect(() => {
+    const nextStatus = aiState.stepStatus.pictures ?? (aiState.outputs.pictures ? 'ready' : 'idle');
+    const previous = picturesStatusRef.current;
+    picturesStatusRef.current = nextStatus;
+    if (nextStatus === 'ready' && previous !== 'ready') {
+      setHiddenCardTypes((prev) => {
+        if (!prev.has('pictures')) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete('pictures');
+        return next;
+      });
+    }
+  }, [aiState.outputs.pictures, aiState.stepStatus.pictures]);
+
+  useEffect(() => {
+    const nextStatus = aiState.stepStatus.video ?? (aiState.outputs.video ? 'ready' : 'idle');
+    const previous = videoStatusRef.current;
+    videoStatusRef.current = nextStatus;
+    if (nextStatus === 'ready' && previous !== 'ready') {
+      setHiddenCardTypes((prev) => {
+        if (!prev.has('video')) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete('video');
+        return next;
+      });
+    }
+  }, [aiState.outputs.video, aiState.stepStatus.video]);
 
   useEffect(() => {
     if (contentStatus === 'ready' && contentResult) {
@@ -244,6 +339,35 @@ function App() {
       };
     });
   }, [contentStatus, settings.cards.content]);
+
+  // Handle aiState.generating for any card regeneration/generation
+  useEffect(() => {
+    const isContentBusy = settings.cards.content && 
+      (contentStatus === 'queued' || contentStatus === 'thinking' || contentStatus === 'rendering');
+    
+    const isPicturesBusy = settings.cards.pictures && 
+      (aiState.stepStatus.pictures === 'queued' || 
+       aiState.stepStatus.pictures === 'thinking' || 
+       aiState.stepStatus.pictures === 'rendering');
+    
+    const isVideoBusy = settings.cards.video && 
+      (aiState.stepStatus.video === 'queued' || 
+       aiState.stepStatus.video === 'thinking' || 
+       aiState.stepStatus.video === 'rendering');
+    
+    const shouldBeGenerating = isContentBusy || isPicturesBusy || isVideoBusy;
+    
+    setAiState((prev) => {
+      // Only update if state actually changed
+      if (prev.generating === shouldBeGenerating) {
+        return prev;
+      }
+      return {
+        ...prev,
+        generating: shouldBeGenerating,
+      };
+    });
+  }, [contentStatus, aiState.stepStatus.pictures, aiState.stepStatus.video, settings.cards]);
 
   useEffect(() => {
     setAiGeneratingState(aiState.generating);
@@ -660,6 +784,34 @@ function App() {
           generating: false,
         }));
         setCurrentVersions({ content: 0, pictures: 0, video: 0 });
+        
+        // Record generation and check if we should show feedback
+        feedbackManager.recordGeneration();
+        const { show, touchpoint } = feedbackManager.shouldShowAfterGeneration();
+        if (show && touchpoint) {
+          setCurrentFeedbackTouchpoint(touchpoint);
+          
+          // Smart delays for generation feedback
+          if (touchpoint === 'first_generation') {
+            // First generation: 5 minutes delay to let user explore
+            console.log('[Feedback] First generation complete - will show feedback in 5 minutes');
+            feedbackTimeoutRef.current = setTimeout(() => {
+              setShowFeedbackModal(true);
+              console.log('[Feedback] Showing first generation feedback after 5 minutes');
+            }, 5 * 60 * 1000); // 5 minutes
+          } else if (touchpoint === 'milestone_generation') {
+            // Milestone generation: 2-3 minutes delay (randomized for natural feel)
+            const delayMinutes = Math.random() < 0.5 ? 2 : 3;
+            console.log(`[Feedback] Milestone generation complete - will show feedback in ${delayMinutes} minutes`);
+            feedbackTimeoutRef.current = setTimeout(() => {
+              setShowFeedbackModal(true);
+              console.log('[Feedback] Showing milestone feedback after delay');
+            }, delayMinutes * 60 * 1000);
+          } else {
+            // For other touchpoints, show immediately
+            setShowFeedbackModal(true);
+          }
+        }
       }
 
       if (generationAbortRef.current === controller) {
@@ -699,6 +851,10 @@ function App() {
     setContentVariants([]);
     setContentMeta(null);
     setCurrentVersions({ content: 0, pictures: 0, video: 0 });
+    // Clear stage manager entries
+    setStageEntries([]);
+    setHiddenCardTypes(new Set());
+    console.log('App.tsx - Cleared stage manager entries');
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -708,11 +864,24 @@ function App() {
     closePanel();
     saveSettings(settings);
     console.info('Campaign saved');
+    
+    // Check if we should show feedback after save
+    const { show, touchpoint } = feedbackManager.shouldShowAfterCampaignSave();
+    if (show && touchpoint) {
+      setCurrentFeedbackTouchpoint(touchpoint);
+      setShowFeedbackModal(true);
+    }
   };
+
+  const [showSettings, setShowSettings] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackRating, setFeedbackRating] = useState<number | null>(null);
+  const [currentFeedbackTouchpoint, setCurrentFeedbackTouchpoint] = useState<FeedbackTouchpoint | null>(null);
+  const feedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleOpenSettingsPanel = () => {
     closePanel();
-    // Settings panel removed - this function kept for compatibility
+    setShowSettings(true);
   };
 
   const handleHelp = () => {
@@ -720,14 +889,86 @@ function App() {
     console.info('Open help');
   };
 
-  const handleSignOut = () => {
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
     closePanel();
-    console.info('Sign out');
+    
+    // Check if we should show feedback before sign out
+    const { show, touchpoint } = feedbackManager.shouldShowBeforeSignOut();
+    if (show && touchpoint) {
+      setCurrentFeedbackTouchpoint(touchpoint);
+      setShowFeedbackModal(true);
+      // Delay sign out until feedback is given or modal is closed
+      return;
+    }
+    
+    try {
+      await logActivity({ action: 'user_signed_out' });
+      await signOut();
+      navigate('/auth');
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
   };
+
+  // Check for extended usage periodically
+  useEffect(() => {
+    const checkExtendedUsage = () => {
+      const { show, touchpoint } = feedbackManager.shouldShowForExtendedUsage();
+      if (show && touchpoint && !showFeedbackModal) {
+        setCurrentFeedbackTouchpoint(touchpoint);
+        setShowFeedbackModal(true);
+      }
+    };
+
+    // Check every 5 minutes
+    const interval = setInterval(checkExtendedUsage, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [showFeedbackModal]);
+
+  // Cleanup feedback timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+        console.log('[Feedback] Cleared pending feedback timeout');
+      }
+    };
+  }, []);
 
   const handleCardSave = (type: string) => {
     console.log(`Saving ${type} card`);
   };
+
+  // Stage Manager: Minimize/Restore handlers
+  const handleMinimizeCard = useCallback((entryInput: StageManagerEntryInput) => {
+    const entry = createStageManagerEntry(entryInput);
+    setStageEntries((prev) => [entry, ...prev]);
+    setHiddenCardTypes((prev) => {
+      if (prev.has(entryInput.cardType)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.add(entryInput.cardType);
+      return next;
+    });
+    console.log('App.tsx - Minimized card entry:', entry);
+  }, []);
+
+  const handleRestoreCard = useCallback((entryId: string, cardType: CardKey) => {
+    console.log(`App.tsx - Restoring card entry: ${entryId}`);
+    setStageEntries((prev) => prev.filter((entry) => entry.id !== entryId));
+    setHiddenCardTypes((hidden) => {
+      if (!hidden.has(cardType)) {
+        return hidden;
+      }
+      const next = new Set(hidden);
+      next.delete(cardType);
+      return next;
+    });
+  }, []);
 
   const handleCardRegenerate = async (type: CardKey, pictureOptions?: PictureRemixOptions) => {
     if (type === 'content') {
@@ -888,19 +1129,16 @@ function App() {
   const cardItems: Array<{ id: string; element: ReactNode }> = [];
   const activeCards = cardsOrder.filter((card) => cardsEnabled[card]);
   const activeTab = (selectedCard ?? activeCards[0] ?? 'content') as CardKey;
-
-  if (aiState.generating) {
-    activeCards.forEach((card) => {
-      const title = card === 'content' ? 'Content' : card === 'pictures' ? 'Pictures' : 'Video';
-      cardItems.push({ id: `${card}-skeleton`, element: <SkeletonCard title={title} /> });
-    });
-  } else {
+  
+  // Determine which cards are actually being generated
+  if (!aiState.generating) {
     // Only show Content card if it was actually validated AND has generated content
     // This prevents empty content card from showing when only Pictures is generated
-    const shouldShowContentCard =
+  const shouldShowContentCard =
       cardsEnabled.content && 
       settings.quickProps.content.validated && 
-      (contentVariants.length > 0 || contentStatus !== 'idle');
+      (contentVariants.length > 0 || contentStatus !== 'idle') &&
+      !hiddenCardTypes.has('content');
 
     if (shouldShowContentCard) {
       cardItems.push({
@@ -917,16 +1155,18 @@ function App() {
             versions={settings.versions}
             runId={contentRunId}
             onRegenerate={regenerateContent}
+            onMinimize={handleMinimizeCard}
           />
         ),
       });
     }
 
     // Only show Pictures card if it was validated AND has generated images
-    const shouldShowPicturesCard = 
+  const shouldShowPicturesCard = 
       cardsEnabled.pictures && 
       settings.quickProps.pictures.validated &&
-      picturesVersions.length > 0;
+      picturesVersions.length > 0 &&
+      !hiddenCardTypes.has('pictures');
 
     if (shouldShowPicturesCard) {
       cardItems.push({
@@ -939,16 +1179,18 @@ function App() {
             onSave={() => handleCardSave('pictures')}
             onRegenerate={(options) => handleCardRegenerate('pictures', options)}
             status={getCardStatus('pictures')}
+            onMinimize={handleMinimizeCard}
           />
         ),
       });
     }
 
     // Only show Video card if it was validated AND has generated videos
-    const shouldShowVideoCard = 
+  const shouldShowVideoCard = 
       cardsEnabled.video && 
       settings.quickProps.video.validated &&
-      videoVersions.length > 0;
+      videoVersions.length > 0 &&
+      !hiddenCardTypes.has('video');
 
     if (shouldShowVideoCard) {
       cardItems.push({
@@ -960,6 +1202,7 @@ function App() {
             onSave={() => handleCardSave('video')}
             onRegenerate={() => handleCardRegenerate('video')}
             status={getCardStatus('video')}
+            onMinimize={handleMinimizeCard}
           />
         ),
       });
@@ -975,10 +1218,17 @@ function App() {
       picturesValidated={settings.quickProps.pictures.validated}
       videoValidated={settings.quickProps.video.validated}
       isGenerating={aiState.generating}
+      settings={settings}
+      onSettingsChange={setSettings}
       onChange={(tab) => {
         selectCard(tab);
         togglePanel(tab);
       }}
+      onOpenPanel={(tab) => {
+        selectCard(tab);
+        openPanel(tab);
+      }}
+      onSetHovering={setHovering}
       onGenerate={() => handleGenerate(settings.quickProps.content.brief, aiState.uploads)}
       onNewCampaign={handleNewCampaign}
       onSave={handleSaveCampaign}
@@ -988,6 +1238,82 @@ function App() {
     />
   );
 
+  const getFeedbackTitle = (touchpoint: FeedbackTouchpoint | null): string => {
+    switch (touchpoint) {
+      case 'first_generation':
+        return 'How was your first generation experience?';
+      case 'milestone_generation':
+        return `Congrats on ${feedbackManager.getState().generationCount} generations! How is it going?`;
+      case 'campaign_saved':
+        return 'How was your campaign creation experience?';
+      case 'extended_usage':
+        return 'You have been creating amazing content! How is your experience?';
+      case 'sign_out':
+        return 'Before you go, how was your session today?';
+      case 'random_sampling':
+        return 'Quick feedback: How are you enjoying the app?';
+      default:
+        return 'How was your experience?';
+    }
+  };
+
+  const handleFeedbackDone = async () => {
+    if (feedbackRating === null || !user || !currentFeedbackTouchpoint) return;
+
+    // Submit feedback to backend
+    try {
+      await fetch('http://localhost:8787/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          touchpointType: currentFeedbackTouchpoint,
+          rating: feedbackRating,
+          ratingLabel: feedbackRating === 0 ? 'BAD' : feedbackRating === 1 ? 'NOT BAD' : 'GOOD',
+          comments: null,
+          contextData: {
+            location: 'feedback-modal',
+            touchpoint: currentFeedbackTouchpoint,
+            cardsGenerated: cardItems.length,
+            cardTypes: cardItems.map(item => item.id),
+            generationCount: feedbackManager.getState().generationCount
+          },
+          pageUrl: window.location.href,
+          userAgent: navigator.userAgent
+        })
+      });
+      
+      console.log('[Feedback] Submitted:', { rating: feedbackRating, touchpoint: currentFeedbackTouchpoint });
+      
+      // Record feedback given
+      feedbackManager.recordFeedbackGiven();
+    } catch (error) {
+      console.error('[Feedback] Submission error:', error);
+    }
+
+    // Close modal and reset
+    setShowFeedbackModal(false);
+    setFeedbackRating(null);
+    setCurrentFeedbackTouchpoint(null);
+    
+    // Clear any pending feedback timeout
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
+      feedbackTimeoutRef.current = null;
+    }
+    
+    // If sign out was pending, complete it now
+    if (currentFeedbackTouchpoint === 'sign_out') {
+      try {
+        await logActivity({ action: 'user_signed_out' });
+        await signOut();
+        navigate('/auth');
+      } catch (error) {
+        console.error('Sign out error:', error);
+      }
+    }
+  };
+
   const mainContent = (
     <>
       <TopBarPanels
@@ -996,44 +1322,117 @@ function App() {
         renderContent={<MenuContent settings={settings} onSettingsChange={setSettings} />}
         renderPictures={<MenuPictures settings={settings} onSettingsChange={setSettings} />}
         renderVideo={<MenuVideo settings={settings} onSettingsChange={setSettings} />}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+      />
+
+      {/* Stage Manager - Minimized Cards */}
+      <StageManager
+        entries={stageEntries}
+        onRestoreEntry={handleRestoreCard}
+        threeDSettings={threeDSettings}
+        traySettings={traySettings}
       />
 
       {/* Main content area - now empty, cards will appear after generation */}
 
-      <AnimatePresence>
-        {aiState.generating && (
-          <motion.div
-            key="stepper"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.2 }}
-            className="outputs-stage mx-auto max-w-[1400px] px-6"
+      <AnimatePresence mode="wait">
+        {cardItems.length > 0 && !aiState.generating && (
+          <motion.section
+            key={`cards-display-${cardItems.length}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{
+              duration: 1.5,
+              ease: "easeInOut",
+              delay: 0.2,
+            }}
+            className="outputs-stage mx-auto w-full max-w-[1600px] px-6 pb-24"
+            aria-label="Generated outputs"
+            style={{
+              paddingTop: cardItems.length === 1 ? '0' : '48px',
+            }}
           >
-            <Stepper steps={aiState.steps} stepStatus={aiState.stepStatus} hiddenSteps={cardsHidden} />
+            <SmartOutputGrid 
+              cardCount={cardItems.length}
+              isGenerating={false}
+            >
+              {cardItems.map((item, index) => (
+                <motion.div 
+                  key={item.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{
+                    duration: 1.0,
+                    ease: "easeInOut",
+                    delay: 0.3 + (index * 0.15),
+                  }}
+                >
+                  {item.element}
+                </motion.div>
+              ))}
+            </SmartOutputGrid>
+
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* Badu Assistant - Floating Chat */}
+      <BaduAssistant />
+
+      {/* Smart Generation Loader - Shows real-time progress */}
+      <SmartGenerationLoader aiState={aiState} enabledCards={cardsEnabled} />
+
+      {/* Full-Screen Feedback Modal - After Generation */}
+      <AnimatePresence>
+        {showFeedbackModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ 
+                type: "spring", 
+                stiffness: 300, 
+                damping: 30
+              }}
+              className="relative w-full h-full max-w-[95vw] max-h-[95vh] flex items-center justify-center"
+            >
+              <FeedbackSlider 
+                className="h-full w-full rounded-3xl shadow-[0_8px_64px_rgba(0,0,0,0.6)]"
+                title={getFeedbackTitle(currentFeedbackTouchpoint)}
+                onSubmit={(rating) => {
+                  setFeedbackRating(rating);
+                }}
+                onDone={handleFeedbackDone}
+              />
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {cardItems.length > 0 && (
-        <section
-          className="outputs-stage masonry mx-auto max-w-[1400px] px-6 pb-24"
-          aria-label="Generated outputs"
-        >
-          {cardItems.map((item) => (
-            <div key={item.id} className="masonry-item">
-              {item.element}
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* Badu Assistant - Floating Chat */}
-      <BaduAssistant />
+      {/* Interactive Card FX Controller - Debug Tool (Removed - settings locked in) */}
+      {/* <InteractiveCardController /> */}
     </>
   );
 
-  return <LayoutShell menu={topBar} main={mainContent} />;
+  return (
+    <>
+      <LayoutShell menu={topBar} main={mainContent} />
+      
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {showSettings && <SettingsPage onClose={() => setShowSettings(false)} />}
+      </AnimatePresence>
+    </>
+  );
 }
 
 export default App;

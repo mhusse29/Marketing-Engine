@@ -114,15 +114,63 @@ const defaultPicturesQuickProps: PicturesQuickProps = {
 };
 
 const defaultVideoQuickProps: VideoQuickProps = {
+  // Provider selection
+  provider: 'auto' as VideoProvider, // Show provider selection first
   // Runway API parameters
-  model: 'gen3a_turbo',
+  model: 'veo3', // veo3 available in Tier 1 (ray-2 for Luma)
   promptText: '',
-  duration: 5,
+  promptImage: undefined,
+  duration: 8, // veo3 requires 8 seconds
   aspect: '9:16',
   watermark: false,
   seed: undefined,
+  // Luma-specific parameters
+  lumaLoop: false,
+  lumaDuration: '5s',
+  lumaResolution: '1080p',
+  lumaKeyframes: undefined,
+  
+  // Luma advanced parameters (matching Veo-3 style)
+  lumaCameraMovement: 'static',
+  lumaCameraAngle: 'eye_level',
+  lumaCameraDistance: 'medium',
+  lumaStyle: 'cinematic',
+  lumaLighting: 'natural',
+  lumaMood: 'energetic',
+  lumaMotionIntensity: 'moderate',
+  lumaMotionSpeed: 'normal',
+  lumaSubjectMovement: 'subtle',
+  lumaQuality: 'standard',
+  lumaColorGrading: 'natural',
+  lumaFilmLook: 'digital',
+  lumaSeed: undefined,
+  lumaNegativePrompt: '',
+  lumaGuidanceScale: 7.5,
+  
+  // Camera & Movement
+  cameraMovement: 'static',
+  motionSpeed: 'normal',
+  motionAmount: 'moderate',
+  
+  // Visual & Style
+  visualStyle: 'cinematic',
+  lightingStyle: 'natural',
+  mood: 'energetic',
+  
+  // Framing & Composition
+  subjectFocus: 'medium',
+  depthOfField: 'medium',
+  
+  // Environment
+  timeOfDay: 'golden_hour',
+  weather: 'clear',
+  
+  // Professional Film
+  filmLook: '35mm',
+  colorGrading: 'natural',
   
   // Advanced prompt engineering
+  enhancePrompt: false,
   hook: 'Question',
   captions: true,
   cta: 'Learn more',
@@ -357,20 +405,24 @@ function normalizeVideoQuickProps(
     ...video,
   };
 
-  // Runway API parameters
-  const runwayModels = ['gen3a_turbo', 'gen3a'] as const;
-  const model = runwayModels.includes(candidate.model as any)
-    ? candidate.model
-    : defaultVideoQuickProps.model;
+  // Provider selection
+  const provider = (candidate.provider === 'luma' || candidate.provider === 'runway' || candidate.provider === 'auto')
+    ? candidate.provider
+    : defaultVideoQuickProps.provider;
+
+  // Model based on provider
+  const model: VideoModel = provider === 'luma'
+    ? ((candidate.model as LumaModel) === 'ray-2'
+      ? 'ray-2'
+      : 'ray-2')
+    : 'veo3'; // Runway default
 
   const promptText = typeof candidate.promptText === 'string'
     ? candidate.promptText.trim().slice(0, 1000)
     : defaultVideoQuickProps.promptText;
 
-  const validDurations = [5, 10] as const;
-  const duration = validDurations.includes(candidate.duration as any)
-    ? candidate.duration
-    : defaultVideoQuickProps.duration;
+  // Veo-3 requires fixed 8-second duration
+  const duration = 8;
 
   const aspect = VIDEO_ASPECTS.includes(candidate.aspect as VideoAspect)
     ? (candidate.aspect as VideoAspect)
@@ -414,13 +466,75 @@ function normalizeVideoQuickProps(
   const validated = typeof candidate.validated === 'boolean' ? candidate.validated : defaultVideoQuickProps.validated;
   const validatedAt = typeof candidate.validatedAt === 'string' ? candidate.validatedAt : null;
 
+  // Luma-specific parameters
+  const lumaLoop = typeof candidate.lumaLoop === 'boolean' ? candidate.lumaLoop : defaultVideoQuickProps.lumaLoop;
+  const lumaDuration = (candidate.lumaDuration === '5s' || candidate.lumaDuration === '9s')
+    ? candidate.lumaDuration
+    : defaultVideoQuickProps.lumaDuration;
+  const lumaResolution = (candidate.lumaResolution === '720p' || candidate.lumaResolution === '1080p')
+    ? candidate.lumaResolution
+    : defaultVideoQuickProps.lumaResolution;
+  const lumaKeyframes = candidate.lumaKeyframes || undefined;
+  
+  // Luma advanced parameters
+  const lumaCameraMovement = candidate.lumaCameraMovement || defaultVideoQuickProps.lumaCameraMovement;
+  const lumaCameraAngle = candidate.lumaCameraAngle || defaultVideoQuickProps.lumaCameraAngle;
+  const lumaCameraDistance = candidate.lumaCameraDistance || defaultVideoQuickProps.lumaCameraDistance;
+  const lumaStyle = candidate.lumaStyle || defaultVideoQuickProps.lumaStyle;
+  const lumaLighting = candidate.lumaLighting || defaultVideoQuickProps.lumaLighting;
+  const lumaMood = candidate.lumaMood || defaultVideoQuickProps.lumaMood;
+  const lumaMotionIntensity = candidate.lumaMotionIntensity || defaultVideoQuickProps.lumaMotionIntensity;
+  const lumaMotionSpeed = candidate.lumaMotionSpeed || defaultVideoQuickProps.lumaMotionSpeed;
+  const lumaSubjectMovement = candidate.lumaSubjectMovement || defaultVideoQuickProps.lumaSubjectMovement;
+  const lumaQuality = candidate.lumaQuality || defaultVideoQuickProps.lumaQuality;
+  const lumaColorGrading = candidate.lumaColorGrading || defaultVideoQuickProps.lumaColorGrading;
+  const lumaFilmLook = candidate.lumaFilmLook || defaultVideoQuickProps.lumaFilmLook;
+  const lumaSeed = typeof candidate.lumaSeed === 'number' && candidate.lumaSeed >= 0 ? candidate.lumaSeed : undefined;
+  const lumaNegativePrompt = typeof candidate.lumaNegativePrompt === 'string' ? candidate.lumaNegativePrompt : '';
+  const lumaGuidanceScale = typeof candidate.lumaGuidanceScale === 'number' && candidate.lumaGuidanceScale >= 1 && candidate.lumaGuidanceScale <= 20 
+    ? candidate.lumaGuidanceScale 
+    : defaultVideoQuickProps.lumaGuidanceScale;
+
   return {
+    provider,
     model,
     promptText,
     duration,
     aspect,
     watermark,
     seed,
+    lumaLoop,
+    lumaDuration,
+    lumaResolution,
+    lumaKeyframes,
+    lumaCameraMovement,
+    lumaCameraAngle,
+    lumaCameraDistance,
+    lumaStyle,
+    lumaLighting,
+    lumaMood,
+    lumaMotionIntensity,
+    lumaMotionSpeed,
+    lumaSubjectMovement,
+    lumaQuality,
+    lumaColorGrading,
+    lumaFilmLook,
+    lumaSeed,
+    lumaNegativePrompt,
+    lumaGuidanceScale,
+    cameraMovement: candidate.cameraMovement,
+    motionSpeed: candidate.motionSpeed,
+    motionAmount: candidate.motionAmount,
+    visualStyle: candidate.visualStyle,
+    lightingStyle: candidate.lightingStyle,
+    mood: candidate.mood,
+    subjectFocus: candidate.subjectFocus,
+    depthOfField: candidate.depthOfField,
+    timeOfDay: candidate.timeOfDay,
+    weather: candidate.weather,
+    filmLook: candidate.filmLook,
+    colorGrading: candidate.colorGrading,
+    enhancePrompt: candidate.enhancePrompt,
     hook,
     captions,
     cta,

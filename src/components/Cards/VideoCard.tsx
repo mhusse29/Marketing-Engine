@@ -6,8 +6,41 @@ import { cn } from '../../lib/format';
 import type { GeneratedVideo } from '../../types';
 import type { GridStepState } from '../../state/ui';
 import CardShell from '../Outputs/CardShell';
-import NanoGridBloom from '@/ui/NanoGridBloom';
-import PerimeterProgressSegmented from '@/ui/PerimeterProgressSegmented';
+import { MinimizeButton } from '../StageManager/MinimizeButton';
+import type { StageManagerEntryInput } from '@/components/StageManager/types';
+
+function videoModelBadge(video?: GeneratedVideo): string {
+  if (!video) return 'VIDEO';
+  
+  const provider = video.provider?.toUpperCase() || 'UNKNOWN';
+  const model = video.model;
+
+  // Runway models
+  if (video.provider === 'runway') {
+    switch (model) {
+      case 'gen3a_turbo':
+        return 'RUNWAY-GEN3A-TURBO';
+      case 'gen4_turbo':
+        return 'RUNWAY-GEN4-TURBO';
+      case 'gen4_aleph':
+        return 'RUNWAY-GEN4-ALEPH';
+      case 'veo3':
+        return 'RUNWAY-VEO-3';
+      default:
+        return `RUNWAY-${model?.toUpperCase() || 'VIDEO'}`;
+    }
+  }
+  
+  // Luma models
+  if (video.provider === 'luma') {
+    if (model === 'ray-2') {
+      return 'LUMA-RAY-2';
+    }
+    return `LUMA-${model?.toUpperCase() || 'RAY-2'}`;
+  }
+
+  return `${provider}-${model?.toUpperCase() || 'VIDEO'}`;
+}
 
 // Removed STATUS_LABELS - not needed in minimal design
 
@@ -17,9 +50,10 @@ interface VideoCardProps {
   onSave: () => void;
   onRegenerate: () => Promise<void> | void;
   status: GridStepState;
+  onMinimize?: (entry: StageManagerEntryInput) => void;
 }
 
-export function VideoCard({ videos, currentVersion: _currentVersion, onSave: _onSave, onRegenerate: _onRegenerate, status }: VideoCardProps) {
+export function VideoCard({ videos, status, onMinimize }: VideoCardProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [showFullscreen, setShowFullscreen] = useState(false);
@@ -28,7 +62,6 @@ export function VideoCard({ videos, currentVersion: _currentVersion, onSave: _on
   const video = videos[currentIndex];
   const totalVideos = videos.length;
   const isBusy = status === 'queued' || status === 'thinking' || status === 'rendering';
-
   const handleDownload = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -82,9 +115,28 @@ export function VideoCard({ videos, currentVersion: _currentVersion, onSave: _on
     setShowFullscreen(true);
   };
 
+  const handleMinimize = () => {
+    if (!onMinimize) return;
+    const target = video ?? videos[0];
+    if (!target) return;
+
+    onMinimize({
+      cardType: 'video',
+      data: {
+        video: {
+          url: target.url,
+          provider: target.provider,
+          model: target.model,
+        },
+      },
+    });
+  };
+
   return (
     <>
-      <CardShell sheen={false} className="relative isolate overflow-hidden">
+      <CardShell sheen={false} className="relative isolate overflow-hidden" aria-busy={isBusy}>
+        {onMinimize && <MinimizeButton onMinimize={handleMinimize} />}
+        
         <div className="relative z-10 flex h-full flex-col">
           {!video ? (
             <div className="flex h-full min-h-[400px] items-center justify-center rounded-xl border border-white/6 bg-white/[0.03] px-6 text-sm text-white/60">
@@ -111,7 +163,7 @@ export function VideoCard({ videos, currentVersion: _currentVersion, onSave: _on
                     PREVIEW
                   </span>
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-white/90 drop-shadow-lg">
-                    {video.model === 'gen3a_turbo' ? 'RUNWAY-GEN3-TURBO' : 'RUNWAY-GEN3-ALPHA'}
+                    {videoModelBadge(video)}
                   </span>
                 </div>
 
@@ -143,6 +195,10 @@ export function VideoCard({ videos, currentVersion: _currentVersion, onSave: _on
                       <Download className="h-4 w-4" />
                     )}
                   </button>
+
+                    {onMinimize && (
+                      <MinimizeButton onMinimize={handleMinimize} />
+                    )}
                 </div>
               </div>
 
@@ -174,9 +230,6 @@ export function VideoCard({ videos, currentVersion: _currentVersion, onSave: _on
             </div>
           )}
         </div>
-
-        <NanoGridBloom busy={isBusy} />
-        <PerimeterProgressSegmented status={status} />
       </CardShell>
 
       {/* Fullscreen popup */}
@@ -212,7 +265,7 @@ export function VideoCard({ videos, currentVersion: _currentVersion, onSave: _on
                 PREVIEW
               </span>
               <span className="text-xs font-semibold uppercase tracking-wide text-white/95 drop-shadow-lg">
-                {video.model === 'gen3a_turbo' ? 'RUNWAY-GEN3-TURBO' : 'RUNWAY-GEN3-ALPHA'}
+                {videoModelBadge(video)}
               </span>
             </div>
           </div>

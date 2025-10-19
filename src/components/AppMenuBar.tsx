@@ -1,9 +1,10 @@
 import type { ReactNode, ChangeEvent } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronRight, HelpCircle, LogOut, Wand2, Paperclip, FileText, X, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import { cn } from '../lib/format';
+import { MenuVideo } from './MenuVideo';
 import type {
   CardKey,
   Language,
@@ -13,8 +14,6 @@ import type {
   PicturesQuickProps,
   SettingsState,
   Tone,
-  VideoAspect,
-  VideoHook,
   Platform,
 } from '../types';
 import { useCardsStore } from '../store/useCardsStore';
@@ -26,9 +25,10 @@ import {
   MenubarSeparator,
   MenubarTrigger,
 } from './ui/menubar';
-import { menuSurface, barHeight, hairline } from '../ui/tokens';
+import { menuSurface, barHeight } from '../ui/tokens';
 import CTAChip from './ui/CTAChip';
 import TooltipPrimitive from './primitives/Tooltip';
+import GradientMenu from './ui/gradient-menu';
 import PlatformPill from '../ui/PlatformPill';
 import { getApiBase } from '../lib/api';
 import {
@@ -41,6 +41,7 @@ import {
 import { MAX_ATTACHMENT_SIZE_MB } from '../lib/attachmentLimits';
 import { 
   craftPicturesPrompt,
+  enhancePicturesPrompt,
   MAX_PICTURE_PROMPT_LENGTH,
 } from '../store/picturesPrompts';
 
@@ -185,63 +186,14 @@ const PICTURE_NEGATIVE_HINTS: Record<(typeof PICTURE_NEGATIVE_OPTIONS)[number], 
   Glare: 'Reduce reflective glare and hotspots.',
 };
 
-// Runway Gen-3 supports 5s and 10s durations
-const VIDEO_DURATION_OPTIONS = [5, 10] as const;
-const VIDEO_DURATION_HINTS: Record<number, string> = {
-  5: 'Quick clip - Perfect for social media reels & ads (5 credits)',
-  10: 'Standard video - Full storytelling & product demos (10 credits)',
-};
-
-const VIDEO_HOOK_OPTIONS: VideoHook[] = ['Pain-point', 'Bold claim', 'Question', 'Pattern interrupt'];
-const VIDEO_HOOK_HINTS: Record<VideoHook, string> = {
-  'Pain-point': 'Lead with the audience’s main frustration.',
-  'Bold claim': 'Grab attention with a strong promise.',
-  Question: 'Engage viewers with a provocative question.',
-  'Pattern interrupt': 'Unexpected opener to reset attention.',
-};
-
-const VIDEO_ASPECT_OPTIONS: VideoAspect[] = ['9:16', '1:1', '16:9'];
-const VIDEO_ASPECT_HINTS: Record<VideoAspect, string> = {
-  '9:16': 'Vertical video for Reels, Shorts, TikTok.',
-  '1:1': 'Square feed-friendly layout.',
-  '16:9': 'Landscape for YouTube or widescreen placements.',
-};
-
-const VIDEO_VOICEOVER_OPTIONS = ['On-screen text only', 'AI voiceover'] as const;
-const VIDEO_VOICEOVER_HINTS: Record<(typeof VIDEO_VOICEOVER_OPTIONS)[number], string> = {
-  'On-screen text only': 'Captions + supers without narration.',
-  'AI voiceover': 'Adds generated narration to the script.',
-};
-
-const VIDEO_DENSITY_OPTIONS = ['Light (3–4)', 'Medium (5–6)', 'Fast (7–8)'] as const;
-const VIDEO_DENSITY_HINTS: Record<(typeof VIDEO_DENSITY_OPTIONS)[number], string> = {
-  'Light (3–4)': 'Fewer scenes, slower pace.',
-  'Medium (5–6)': 'Balanced pacing for most stories.',
-  'Fast (7–8)': 'Rapid sequence for high-energy edits.',
-};
-
-const VIDEO_PROOF_OPTIONS = ['Social proof', 'Feature highlight', 'Before/After'] as const;
-const VIDEO_PROOF_HINTS: Record<(typeof VIDEO_PROOF_OPTIONS)[number], string> = {
-  'Social proof': 'Testimonials, stats, credibility cues.',
-  'Feature highlight': 'Focus on key product capabilities.',
-  'Before/After': 'Show the transformation or outcome.',
-};
-
-const VIDEO_DONOT_OPTIONS = ['No claims', 'No cramped shots', 'No busy bg'] as const;
-const VIDEO_DONOT_HINTS: Record<(typeof VIDEO_DONOT_OPTIONS)[number], string> = {
-  'No claims': 'Avoid unverified benefit statements.',
-  'No cramped shots': 'Keep framing airy and spacious.',
-  'No busy bg': 'Maintain clean, simple backdrops.',
-};
-
+// Video constants - all moved to MenuVideo.tsx
 const BRAND_LOCK_HINT = 'Locks palettes to your brand colours for consistency.';
-const CAPTIONS_HINT = 'Toggle burned-in captions for accessibility.';
 
 export function AppMenuBar({ settings, onSettingsChange, onGenerate, isGenerating = false }: AppMenuBarProps) {
-  const order = useCardsStore((state) => state.order);
+  // const order = useCardsStore((state) => state.order); // Removed - using GradientMenu instead
   const enabled = useCardsStore((state) => state.enabled);
 
-  const cards = useMemo(() => order.filter((card) => enabled[card]), [order, enabled]);
+  // const cards = useMemo(() => order.filter((card) => enabled[card]), [order, enabled]); // Removed - using GradientMenu instead
 
   // Check validation states
   const contentValidated = enabled.content && settings.quickProps.content.validated && settings.platforms.length > 0;
@@ -251,7 +203,9 @@ export function AppMenuBar({ settings, onSettingsChange, onGenerate, isGeneratin
   const canGenerate = anyValidated && !isGenerating;
 
   return (
-    <div className={cn('flex h-full w-full items-center bg-white/4 backdrop-blur', hairline, barHeight)}>
+    <div 
+      className={cn('flex h-full w-full items-center border-b border-white/10 bg-white/[0.05] backdrop-blur-xl shadow-[0_1px_0_rgba(255,255,255,0.02)_inset]', barHeight)}
+    >
       <div className="mx-auto flex h-full w-full max-w-[1240px] items-center px-4">
         <Menubar className="flex h-full w-full items-center border-0 bg-transparent px-0">
           <div className="flex w-full items-center gap-2" role="presentation">
@@ -278,15 +232,31 @@ export function AppMenuBar({ settings, onSettingsChange, onGenerate, isGeneratin
 
             <div className="flex-1" role="presentation" />
 
-            <div className="flex items-center justify-center gap-2" role="presentation">
-              {cards.map((card) => (
-                <CardMenu
-                  key={card}
-                  card={card}
-                  settings={settings}
-                  onSettingsChange={onSettingsChange}
-                />
-              ))}
+            <div className="flex items-center justify-center" role="presentation">
+              <GradientMenu 
+                onItemClick={(item) => {
+                  const card = item as CardKey;
+                  useCardsStore.getState().select(card);
+                }}
+                activeItem={useCardsStore((state) => state.selected) || undefined}
+                validatedItems={[
+                  ...(contentValidated ? ['content'] : []),
+                  ...(picturesValidated ? ['pictures'] : []),
+                  ...(videoValidated ? ['video'] : [])
+                ]}
+                renderContent={(item) => {
+                  if (item === 'content') {
+                    return <MenuContent settings={settings} onSettingsChange={onSettingsChange} />;
+                  }
+                  if (item === 'pictures') {
+                    return <MenuPictures settings={settings} onSettingsChange={onSettingsChange} />;
+                  }
+                  if (item === 'video') {
+                    return <MenuVideo settings={settings} onSettingsChange={onSettingsChange} />;
+                  }
+                  return null;
+                }}
+              />
             </div>
 
             <div className="flex-1" role="presentation" />
@@ -331,106 +301,38 @@ export function AppMenuBar({ settings, onSettingsChange, onGenerate, isGeneratin
   );
 }
 
-function CardMenu({
-  card,
-  settings,
-  onSettingsChange,
-}: {
-  card: CardKey;
-  settings: SettingsState;
-  onSettingsChange: (settings: SettingsState) => void;
-}) {
-  const selectCard = useCardsStore((state) => state.select);
-  const selected = useCardsStore((state) => state.selected);
-  // Removed isEnabled check - all cards always clickable now
-  const { justEnabled } = useGlowOnEnable(card);
+// CardMenu component removed - replaced with GradientMenu
 
-  return (
-    <MenubarMenu>
-      <MenubarTrigger
-        asChild
-        onClick={() => {
-          // ALWAYS allow clicks - removed isEnabled check
-          selectCard(card);
-        }}
-      >
-        <CTAChip
-          label={labelFor(card)}
-          active={selected === card}
-          disabled={false}  // FORCE always enabled
-          className={cn(justEnabled && 'animate-[pulse_1.2s_ease-in-out_2]')}
-        />
-      </MenubarTrigger>
-      <MenubarContent
-        className={cn(menuSurface, 'menu-sheet w-[95vw] max-w-[580px] space-y-3 rounded-2xl p-4 sm:p-5')}
-        sideOffset={8}
-        align="center"
-        onCloseAutoFocus={(event) => event.preventDefault()}
-      >
-        {card === 'content' && <MenuContent settings={settings} onSettingsChange={onSettingsChange} />}
-        {card === 'pictures' && <MenuPictures settings={settings} onSettingsChange={onSettingsChange} />}
-        {card === 'video' && <MenuVideo settings={settings} onSettingsChange={onSettingsChange} />}
-      </MenubarContent>
-    </MenubarMenu>
-  );
-}
 
-function useGlowOnEnable(card: CardKey) {
-  const isEnabled = useCardsStore((state) => state.enabled[card]);
-  const previousEnabled = useRef(isEnabled);
-  const [justEnabled, setJustEnabled] = useState(false);
+// function labelFor(card: CardKey): string { // Removed - using GradientMenu instead
+//   switch (card) {
+//     case 'pictures':
+//       return 'Pictures';
+//     case 'video':
+//       return 'Video';
+//     default:
+//       return 'Content';
+//   }
+// }
 
-  useEffect(() => {
-    const wasEnabled = previousEnabled.current;
-    previousEnabled.current = isEnabled;
-    let timeout: number | undefined;
-
-    if (isEnabled && !wasEnabled) {
-      setJustEnabled(true);
-      timeout = window.setTimeout(() => setJustEnabled(false), 1200);
-    }
-
-    if (!isEnabled && wasEnabled) {
-      setJustEnabled(false);
-    }
-
-    return () => {
-      if (timeout !== undefined) {
-        window.clearTimeout(timeout);
-      }
-    };
-  }, [isEnabled]);
-
-  return { justEnabled };
-}
-
-function labelFor(card: CardKey): string {
-  switch (card) {
-    case 'pictures':
-      return 'Pictures';
-    case 'video':
-      return 'Video';
-    default:
-      return 'Content';
-  }
-}
-
-function HintChip({
+export function HintChip({
   label,
   hint,
   active,
   onClick,
+  disabled,
   size = 'default',
 }: {
   label: string;
   hint?: string;
   active?: boolean;
   onClick?: () => void;
+  disabled?: boolean;
   size?: 'default' | 'small';
 }) {
   return (
     <TooltipPrimitive label={hint ?? label}>
-      <CTAChip label={label} active={active} onClick={onClick} size={size} />
+      <CTAChip label={label} active={active} onClick={onClick} size={size} disabled={disabled} />
     </TooltipPrimitive>
   );
 }
@@ -1026,14 +928,25 @@ export function MenuPictures({
     setIsSuggesting(true);
 
     try {
-      const suggested = craftPicturesPrompt(qp);
-      setPictures({ promptText: suggested });
+      // Try LLM-powered enhancement first
+      const { suggestion } = await enhancePicturesPrompt(
+        qp,
+        settings.quickProps.content.brief // Include campaign brief for context
+      );
+      setPictures({ promptText: suggestion }, { resetValidation: false });
     } catch (error) {
-      console.error('Failed to craft prompt', error);
+      console.error('LLM enhancement failed, using template fallback:', error);
+      // Fallback to template-based suggestion
+      try {
+        const suggested = craftPicturesPrompt(qp);
+        setPictures({ promptText: suggested }, { resetValidation: false });
+      } catch (fallbackError) {
+        console.error('Template fallback also failed:', fallbackError);
+      }
     } finally {
       setIsSuggesting(false);
     }
-  }, [isSuggesting, qp, setPictures]);
+  }, [isSuggesting, qp, settings.quickProps.content.brief, setPictures]);
 
   const setCardEnabled = useCardsStore((state) => state.setEnabled);
   
@@ -1094,7 +1007,7 @@ export function MenuPictures({
             <button
               key={provider.id}
               type="button"
-              onClick={() => setPictures({ imageProvider: provider.id as any })}
+              onClick={() => setPictures({ imageProvider: provider.id as any })} // eslint-disable-line @typescript-eslint/no-explicit-any
               className="group rounded-xl border border-white/10 bg-white/5 p-4 text-left transition-all hover:border-white/20 hover:bg-white/8"
             >
               <div className="text-sm font-semibold text-white">{provider.label}</div>
@@ -1407,7 +1320,7 @@ export function MenuPictures({
                   <Label>Style Type</Label>
                   <select
                     value={qp.ideogramStyleType || 'AUTO'}
-                    onChange={(e) => setPictures({ ideogramStyleType: e.target.value as any })}
+                    onChange={(e) => setPictures({ ideogramStyleType: e.target.value as PicturesQuickProps['ideogramStyleType'] })}
                     className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/35"
                   >
                     <option value="AUTO">Auto</option>
@@ -1530,340 +1443,7 @@ export function MenuPictures({
   );
 }
 
-export function MenuVideo({
-  settings,
-  onSettingsChange,
-}: {
-  settings: SettingsState;
-  onSettingsChange: (settings: SettingsState) => void;
-}) {
-  const qp = settings.quickProps.video;
-  const [_validationNotice, setValidationNotice] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const latestSettingsRef = useRef(settings);
-
-  useEffect(() => {
-    latestSettingsRef.current = settings;
-  }, [settings]);
-
-  const autosize = useCallback((node?: HTMLTextAreaElement | null) => {
-    const textarea = node ?? textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = 'auto';
-    const maxHeight = 8 * 24;
-    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
-  }, []);
-
-  const currentPrompt = qp.promptText || '';
-  const promptLength = currentPrompt.length;
-
-  useEffect(() => {
-    autosize(textareaRef.current);
-  }, [autosize, currentPrompt]);
-
-  const setVideo = useCallback(
-    (patch: Partial<typeof qp>, options?: { resetValidation?: boolean }) => {
-      const shouldResetValidation = options?.resetValidation ?? true;
-    onSettingsChange({
-        ...latestSettingsRef.current,
-      quickProps: {
-          ...latestSettingsRef.current.quickProps,
-        video: {
-            ...latestSettingsRef.current.quickProps.video,
-          ...patch,
-            ...(shouldResetValidation ? { validated: false } : {}),
-        },
-      },
-    });
-      if (shouldResetValidation) {
-        setValidationNotice('');
-      }
-    },
-    [onSettingsChange]
-  );
-
-  const handlePromptChange = useCallback(
-    (event: ChangeEvent<HTMLTextAreaElement>) => {
-      const value = event.target.value.slice(0, 1000); // Max 1000 chars for Runway
-      setVideo({ promptText: value });
-    },
-    [setVideo]
-  );
-
-  const setCardEnabled = useCardsStore((state) => state.setEnabled);
-  
-  const MIN_PROMPT_LENGTH = 10;
-  const isValidateDisabled = promptLength < MIN_PROMPT_LENGTH;
-  const isValidated = qp.validated && !isValidateDisabled;
-
-  const handleValidate = useCallback(() => {
-    setVideo({ validated: true, validatedAt: new Date().toISOString() }, { resetValidation: false });
-    setValidationNotice('Settings locked. Ready to generate video.');
-    setCardEnabled('video', true);
-  }, [setVideo, setCardEnabled]);
-
-  const validateButtonClass = cn(
-    'inline-flex h-12 w-full items-center justify-center rounded-2xl px-6 text-base font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
-    isValidateDisabled
-      ? 'cursor-not-allowed border border-white/10 bg-white/5 text-white/45'
-      : isValidated
-      ? 'border border-transparent bg-gradient-to-r from-[#3EE594] to-[#1CC8A8] text-[#052c23] shadow-[0_16px_32px_rgba(34,197,94,0.35)]'
-      : 'border border-transparent bg-gradient-to-r from-[#3E8BFF] to-[#6B70FF] text-white shadow-[0_16px_32px_rgba(62,139,255,0.32)] hover:-translate-y-[1px]'
-  );
-
-  const validationHint = isValidated
-    ? '✓ Validated and ready to generate video.'
-    : isValidateDisabled
-    ? `Prompt needs ${MIN_PROMPT_LENGTH - promptLength} more character${MIN_PROMPT_LENGTH - promptLength === 1 ? '' : 's'} (${promptLength}/${MIN_PROMPT_LENGTH})`
-    : 'Validate to lock in these settings for generation.';
-
-  const sectionLabel = (label: string) => (
-    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/50">{label}</span>
-  );
-
-  return (
-    <div className="relative z-[1] w-[95vw] max-w-[580px] rounded-3xl border border-white/10 bg-white/[0.05] p-5 pb-6 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur lg:p-6 lg:pb-7">
-      {/* Model Selection */}
-      <section className="space-y-3 pb-6">
-        {sectionLabel('Runway Model')}
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => setVideo({ model: 'gen3a_turbo' })}
-            className={cn(
-              'group rounded-xl border p-4 text-left transition-all',
-              qp.model === 'gen3a_turbo'
-                ? 'border-blue-400/40 bg-blue-500/10'
-                : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/8'
-            )}
-          >
-            <div className="text-sm font-semibold text-white">Gen-3 Alpha Turbo</div>
-            <div className="mt-1 text-xs text-white/60">7x faster • Lower cost</div>
-          </button>
-          <button
-            type="button"
-            onClick={() => setVideo({ model: 'gen3a' })}
-            className={cn(
-              'group rounded-xl border p-4 text-left transition-all',
-              qp.model === 'gen3a'
-                ? 'border-blue-400/40 bg-blue-500/10'
-                : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/8'
-            )}
-          >
-            <div className="text-sm font-semibold text-white">Gen-3 Alpha</div>
-            <div className="mt-1 text-xs text-white/60">Standard quality</div>
-          </button>
-        </div>
-      </section>
-
-      {/* Video Prompt */}
-      <section className="space-y-3 pb-6">
-        {sectionLabel('Video Description')}
-        <textarea
-          ref={textareaRef}
-          value={currentPrompt}
-          onChange={handlePromptChange}
-          placeholder="Describe the video you want to generate..."
-          className="content-brief-input w-full resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/90 placeholder-white/40 transition-colors focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          rows={3}
-        />
-        <div className="mt-1.5 flex items-center justify-between text-xs">
-          <span
-            className={cn(
-              'font-medium',
-              promptLength < MIN_PROMPT_LENGTH ? 'text-amber-400' : 'text-emerald-400'
-            )}
-          >
-            {promptLength < MIN_PROMPT_LENGTH
-              ? `Need ${MIN_PROMPT_LENGTH - promptLength} more chars to validate`
-              : '✓ Ready to validate'}
-          </span>
-          <span className="text-white/40">{promptLength} / 1000</span>
-        </div>
-      </section>
-
-      {/* Core Settings - Duration & Aspect */}
-      <section className="space-y-5 rounded-2xl border border-white/10 bg-white/5 p-5 pb-6">
-    <div>
-          {sectionLabel('Duration')}
-          <div className="flex flex-wrap gap-2">
-            {VIDEO_DURATION_OPTIONS.map((duration) => (
-              <HintChip
-                key={duration}
-                label={`${duration}s`}
-                hint={VIDEO_DURATION_HINTS[duration]}
-                active={qp.duration === duration}
-                onClick={() => setVideo({ duration })}
-              />
-            ))}
-        </div>
-        </div>
-
-        <div>
-          {sectionLabel('Aspect Ratio')}
-          <div className="flex flex-wrap gap-2">
-            {VIDEO_ASPECT_OPTIONS.map((aspect) => (
-              <HintChip
-                key={aspect}
-                label={aspect}
-                hint={VIDEO_ASPECT_HINTS[aspect]}
-                active={qp.aspect === aspect}
-                onClick={() => setVideo({ aspect })}
-              />
-            ))}
-        </div>
-        </div>
-
-        <div>
-          {sectionLabel('Watermark')}
-          <div className="flex flex-wrap gap-2">
-            <HintChip
-              label="No Watermark"
-              hint="Remove Runway watermark (production quality)"
-              active={!qp.watermark}
-              onClick={() => setVideo({ watermark: false })}
-            />
-            <HintChip
-              label="With Watermark"
-              hint="Include Runway watermark (free tier)"
-              active={qp.watermark}
-              onClick={() => setVideo({ watermark: true })}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Advanced Settings */}
-        <AdvancedSection>
-        <div>
-          <Label>Hook Style</Label>
-          <div className="flex flex-wrap gap-2">
-            {VIDEO_HOOK_OPTIONS.map((hook) => (
-              <HintChip
-                key={hook}
-                label={hook}
-                hint={VIDEO_HOOK_HINTS[hook]}
-                active={qp.hook === hook}
-                onClick={() => setVideo({ hook })}
-                size="small"
-              />
-            ))}
-          </div>
-        </div>
-
-          <div>
-            <Label>Captions</Label>
-          <div className="flex flex-wrap gap-2">
-              <HintChip
-                label={qp.captions ? 'Captions on' : 'Captions off'}
-                hint={CAPTIONS_HINT}
-                active={qp.captions}
-              onClick={() => setVideo({ captions: !qp.captions })}
-                size="small"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label>CTA</Label>
-          <div className="flex flex-wrap gap-2">
-              {CTA_OPTIONS.map((cta) => (
-                <HintChip
-                  key={cta}
-                  label={cta}
-                  hint={CTA_HINTS[cta]}
-                  active={qp.cta === cta}
-                onClick={() => setVideo({ cta })}
-                  size="small"
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <Label>Voiceover</Label>
-          <div className="flex flex-wrap gap-2">
-              {VIDEO_VOICEOVER_OPTIONS.map((option) => (
-                <HintChip
-                  key={option}
-                  label={option}
-                  hint={VIDEO_VOICEOVER_HINTS[option]}
-                  active={qp.voiceover === option}
-                onClick={() => setVideo({ voiceover: option })}
-                  size="small"
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-          <Label>Shot Density</Label>
-          <div className="flex flex-wrap gap-2">
-              {VIDEO_DENSITY_OPTIONS.map((option) => (
-                <HintChip
-                  key={option}
-                  label={option}
-                  hint={VIDEO_DENSITY_HINTS[option]}
-                  active={qp.density === option}
-                onClick={() => setVideo({ density: option })}
-                  size="small"
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-          <Label>Proof Point</Label>
-          <div className="flex flex-wrap gap-2">
-              {VIDEO_PROOF_OPTIONS.map((option) => (
-                <HintChip
-                  key={option}
-                  label={option}
-                  hint={VIDEO_PROOF_HINTS[option]}
-                  active={qp.proof === option}
-                onClick={() => setVideo({ proof: option })}
-                  size="small"
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-          <Label>Do-Nots</Label>
-          <div className="flex flex-wrap gap-2">
-              {VIDEO_DONOT_OPTIONS.map((option) => (
-                <HintChip
-                  key={option}
-                  label={option}
-                  hint={VIDEO_DONOT_HINTS[option]}
-                  active={qp.doNots === option}
-                onClick={() => setVideo({ doNots: option })}
-                  size="small"
-                />
-              ))}
-            </div>
-          </div>
-        </AdvancedSection>
-
-      {/* Validation CTA */}
-      <section className="pt-10">
-        <button
-          type="button"
-          onClick={handleValidate}
-          disabled={isValidateDisabled}
-          className={validateButtonClass}
-        >
-          {isValidated ? 'Validated' : 'Validate video settings'}
-        </button>
-        <div className={cn('mt-2 text-xs', isValidated ? 'text-emerald-200' : 'text-white/55')}>
-          {isValidated && qp.validatedAt
-            ? `Locked ${new Date(qp.validatedAt).toLocaleTimeString()}`
-            : validationHint}
-      </div>
-      </section>
-    </div>
-  );
-}
+// MenuVideoLegacy removed - see MenuVideo.tsx for implementation
 
 function AdvancedSection({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);

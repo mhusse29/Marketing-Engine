@@ -4,6 +4,7 @@
  */
 
 import type { VideoQuickProps } from '../types';
+import { buildVideoPrompt } from './videoPromptBuilder';
 
 const GATEWAY_DEFAULT_URL = 'http://localhost:8787';
 
@@ -15,13 +16,47 @@ function getApiBase(): string {
   return GATEWAY_DEFAULT_URL;
 }
 
-export interface RunwayGenerationRequest {
+export interface VideoGenerationRequest {
+  provider: 'runway' | 'luma';
   promptText: string;
-  model: 'gen3a_turbo' | 'gen3a';
-  duration: 5 | 10;
-  aspect: '9:16' | '1:1' | '16:9';
+  model: string;
+  duration: 8;
+  aspect: string;
   watermark: boolean;
   seed?: number;
+  promptImage?: string;
+  
+  // Luma-specific core settings
+  loop?: boolean;
+  lumaDuration?: string;
+  lumaResolution?: string;
+  keyframes?: {
+    frame0?: {
+      type: 'image' | 'generation';
+      url?: string;
+    };
+    frame1?: {
+      type: 'image' | 'generation';
+      url?: string;
+    };
+  };
+  
+  // Luma advanced parameters (FIX #2: Added all 15 missing parameters)
+  lumaCameraMovement?: string;
+  lumaCameraAngle?: string;
+  lumaCameraDistance?: string;
+  lumaStyle?: string;
+  lumaLighting?: string;
+  lumaMood?: string;
+  lumaMotionIntensity?: string;
+  lumaMotionSpeed?: string;
+  lumaSubjectMovement?: string;
+  lumaQuality?: string;
+  lumaColorGrading?: string;
+  lumaFilmLook?: string;
+  lumaSeed?: number;
+  lumaNegativePrompt?: string;
+  lumaGuidanceScale?: number;
 }
 
 export interface RunwayTask {
@@ -46,19 +81,23 @@ export interface GeneratedVideo {
 }
 
 /**
- * Start Runway video generation
+ * Start video generation (Runway or Luma)
  */
 export async function startVideoGeneration(
   props: VideoQuickProps
-): Promise<{ taskId: string; status: string }> {
-  const { promptText, model, duration, aspect, watermark, seed } = props;
+): Promise<{ taskId: string; status: string; provider: string }> {
+  const { provider, model, duration, aspect, watermark, seed, promptImage, lumaLoop, lumaKeyframes } = props;
 
-  if (!promptText || promptText.trim().length < 10) {
+  // Build enhanced prompt from all parameters
+  const enhancedPrompt = buildVideoPrompt(props);
+  
+  if (!enhancedPrompt || enhancedPrompt.length < 10) {
     throw new Error('Video prompt must be at least 10 characters');
   }
 
-  const request: RunwayGenerationRequest = {
-    promptText: promptText.trim(),
+  const request: VideoGenerationRequest = {
+    provider,
+    promptText: enhancedPrompt,
     model,
     duration,
     aspect,
@@ -69,7 +108,53 @@ export async function startVideoGeneration(
     request.seed = seed;
   }
 
-  console.log('[Video Generation] Starting:', request);
+  // Add image if provided (image-to-video)
+  if (promptImage) {
+    request.promptImage = promptImage;
+  }
+
+  // Add Luma-specific parameters (FIX #2: Send ALL 19 parameters to backend)
+  if (provider === 'luma') {
+    // Core settings
+    if (lumaLoop !== undefined) request.loop = lumaLoop;
+    if (props.lumaDuration) request.lumaDuration = props.lumaDuration;
+    if (props.lumaResolution) request.lumaResolution = props.lumaResolution;
+    if (lumaKeyframes) request.keyframes = lumaKeyframes;
+    
+    // Camera controls
+    if (props.lumaCameraMovement) request.lumaCameraMovement = props.lumaCameraMovement;
+    if (props.lumaCameraAngle) request.lumaCameraAngle = props.lumaCameraAngle;
+    if (props.lumaCameraDistance) request.lumaCameraDistance = props.lumaCameraDistance;
+    
+    // Visual style & aesthetic
+    if (props.lumaStyle) request.lumaStyle = props.lumaStyle;
+    if (props.lumaLighting) request.lumaLighting = props.lumaLighting;
+    if (props.lumaMood) request.lumaMood = props.lumaMood;
+    
+    // Motion controls
+    if (props.lumaMotionIntensity) request.lumaMotionIntensity = props.lumaMotionIntensity;
+    if (props.lumaMotionSpeed) request.lumaMotionSpeed = props.lumaMotionSpeed;
+    if (props.lumaSubjectMovement) request.lumaSubjectMovement = props.lumaSubjectMovement;
+    
+    // Quality & color
+    if (props.lumaQuality) request.lumaQuality = props.lumaQuality;
+    if (props.lumaColorGrading) request.lumaColorGrading = props.lumaColorGrading;
+    if (props.lumaFilmLook) request.lumaFilmLook = props.lumaFilmLook;
+    
+    // Technical controls
+    if (props.lumaSeed !== undefined) request.lumaSeed = props.lumaSeed;
+    if (props.lumaNegativePrompt) request.lumaNegativePrompt = props.lumaNegativePrompt;
+    if (props.lumaGuidanceScale !== undefined) request.lumaGuidanceScale = props.lumaGuidanceScale;
+  }
+
+  console.log('[Video Generation] Starting:', {
+    provider,
+    model,
+    aspect,
+    promptLength: enhancedPrompt.length,
+    hasImage: !!promptImage,
+    loop: request.loop,
+  });
 
   const response = await fetch(`${getApiBase()}/v1/videos/generate`, {
     method: 'POST',
@@ -86,19 +171,25 @@ export async function startVideoGeneration(
   }
 
   const result = await response.json();
-  console.log('[Video Generation] Task created:', result.taskId);
+  console.log('[Video Generation] Task created:', result.taskId, 'provider:', result.provider);
 
   return {
     taskId: result.taskId,
     status: result.status,
+    provider: result.provider || provider,
   };
 }
 
 /**
- * Poll Runway task status
+ * Poll video task status (Runway or Luma)
  */
-export async function pollVideoTask(taskId: string): Promise<RunwayTask> {
-  const response = await fetch(`${getApiBase()}/v1/videos/tasks/${taskId}`, {
+export async function pollVideoTask(taskId: string, provider?: string): Promise<RunwayTask> {
+  const url = new URL(`${getApiBase()}/v1/videos/tasks/${taskId}`);
+  if (provider) {
+    url.searchParams.set('provider', provider);
+  }
+
+  const response = await fetch(url.toString(), {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -112,7 +203,7 @@ export async function pollVideoTask(taskId: string): Promise<RunwayTask> {
   }
 
   const result: RunwayTask = await response.json();
-  console.log('[Video Generation] Task status:', result.taskId, result.status, `${result.progress || 0}%`);
+  console.log('[Video Generation] Task status:', result.taskId, result.status, `${result.progress || 0}%`, 'provider:', (result as RunwayTask & { provider?: string }).provider);
 
   return result;
 }
@@ -166,7 +257,7 @@ export async function waitForVideoCompletion(
 }
 
 /**
- * Generate video with full polling flow
+ * Generate video with full polling flow (Runway or Luma)
  */
 export async function generateRunwayVideo(
   props: VideoQuickProps,
@@ -188,6 +279,7 @@ export async function generateRunwayVideo(
     url: result.videoUrl,
     taskId: result.taskId,
     model: props.model,
+    provider: props.provider,
     duration: props.duration,
     aspect: props.aspect,
     watermark: props.watermark,
@@ -195,4 +287,3 @@ export async function generateRunwayVideo(
     createdAt: result.createdAt || new Date().toISOString(),
   };
 }
-

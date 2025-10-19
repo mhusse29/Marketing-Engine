@@ -11,9 +11,11 @@ type PanelsProps = {
   renderContent: ReactNode;
   renderPictures: ReactNode;
   renderVideo: ReactNode;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 };
 
-export function TopBarPanels({ open, close, renderContent, renderPictures, renderVideo }: PanelsProps) {
+export function TopBarPanels({ open, close, renderContent, renderPictures, renderVideo, onMouseEnter, onMouseLeave }: PanelsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
 
@@ -117,12 +119,14 @@ export function TopBarPanels({ open, close, renderContent, renderPictures, rende
       />
       <div
         className={cn(
-          'cta-popover transition-all duration-200 ease-out',
-          open ? 'pointer-events-auto opacity-100 translate-y-0' : 'pointer-events-none opacity-0 -translate-y-2'
+          'cta-popover transition-all duration-300 ease-out',
+          open ? 'pointer-events-auto opacity-100 translate-y-0' : 'pointer-events-none opacity-0 -translate-y-5'
         )}
         role="dialog"
         aria-modal="true"
         aria-label={panelTitle || 'panel'}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
       >
         {showHeader ? (
           <header className="cta-head">
