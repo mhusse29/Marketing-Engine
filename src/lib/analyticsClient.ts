@@ -72,10 +72,10 @@ export interface ExecutiveSummary {
   total_users: number;
   active_users_today: number;
   total_requests_today: number;
-  success_rate: number;
-  total_cost_today: number;
+  success_rate: number; // Already a percentage (0-100)
+  total_cost_today: number | string; // Can be numeric or string
   avg_latency_ms: number;
-  health_score: number;
+  health_score: number; // 0-100 scale
 }
 
 export interface RealtimeApiUsage {

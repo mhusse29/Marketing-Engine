@@ -48,40 +48,38 @@ export function ExecutiveOverview() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <KPICard
           title="Active Users Today"
-          value={summary?.active_users_today || 0}
-          change={summary?.dau_change_pct}
-          changeLabel="vs yesterday"
+          value={summary?.active_users_today ?? 0}
           icon={Users}
-          status={summary?.dau_change_pct > 0 ? 'good' : 'warning'}
+          status="good"
+          subtitle={`${summary?.total_users ?? 0} total users`}
         />
         <KPICard
           title="Success Rate"
-          value={`${summary?.success_rate_pct || 0}%`}
+          value={`${summary?.success_rate ?? 0}%`}
           icon={Activity}
-          status={summary?.success_rate_pct > 99 ? 'good' : summary?.success_rate_pct > 95 ? 'warning' : 'critical'}
-          subtitle={`${summary?.successful_requests || 0} / ${summary?.total_requests || 0} requests`}
+          status={(summary?.success_rate ?? 0) > 99 ? 'good' : (summary?.success_rate ?? 0) > 95 ? 'warning' : 'critical'}
+          subtitle={`${summary?.total_requests_today ?? 0} requests today`}
         />
         <KPICard
           title="Health Score"
-          value={summary?.health_score || 0}
+          value={summary?.health_score ?? 0}
           icon={Zap}
-          status={summary?.health_score > 80 ? 'good' : summary?.health_score > 50 ? 'warning' : 'critical'}
+          status={(summary?.health_score ?? 0) > 80 ? 'good' : (summary?.health_score ?? 0) > 50 ? 'warning' : 'critical'}
           subtitle="System health composite"
         />
         <KPICard
           title="Cost Today"
-          value={`$${Number(summary?.cost_today || 0).toFixed(2)}`}
-          change={summary?.cost_yesterday ? ((Number(summary.cost_today) - Number(summary.cost_yesterday)) / Number(summary.cost_yesterday)) * 100 : 0}
-          changeLabel="vs yesterday"
+          value={`$${Number(summary?.total_cost_today ?? 0).toFixed(2)}`}
           icon={DollarSign}
           status="neutral"
+          subtitle="API usage cost"
         />
         <KPICard
-          title="MRR"
-          value={`$${Number(summary?.monthly_recurring_revenue || 0).toFixed(2)}`}
+          title="Avg Latency"
+          value={`${Math.round(summary?.avg_latency_ms ?? 0)}ms`}
           icon={TrendingUp}
-          status="good"
-          subtitle="Monthly Recurring Revenue"
+          status={(summary?.avg_latency_ms ?? 0) < 1000 ? 'good' : (summary?.avg_latency_ms ?? 0) < 2000 ? 'warning' : 'critical'}
+          subtitle="Average response time"
         />
         <KPICard
           title="Active Alerts"
@@ -229,19 +227,19 @@ export function ExecutiveOverview() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div>
             <p className="text-sm text-white/60 mb-1">Total Requests</p>
-            <p className="text-2xl font-bold text-white">{summary?.total_requests?.toLocaleString() || 0}</p>
+            <p className="text-2xl font-bold text-white">{summary?.total_requests_today?.toLocaleString() ?? 0}</p>
           </div>
           <div>
             <p className="text-sm text-white/60 mb-1">Avg Latency</p>
             <p className="text-2xl font-bold text-white">{summary?.avg_latency_ms || 0}ms</p>
           </div>
           <div>
-            <p className="text-sm text-white/60 mb-1">P95 Latency</p>
-            <p className="text-2xl font-bold text-white">{summary?.p95_latency_ms || 0}ms</p>
+            <p className="text-sm text-white/60 mb-1">Success Rate</p>
+            <p className="text-2xl font-bold text-white">{summary?.success_rate ?? 0}%</p>
           </div>
           <div>
-            <p className="text-sm text-white/60 mb-1">Subscribers</p>
-            <p className="text-2xl font-bold text-white">{summary?.total_active_subs || 0}</p>
+            <p className="text-sm text-white/60 mb-1">Total Users</p>
+            <p className="text-2xl font-bold text-white">{summary?.total_users ?? 0}</p>
           </div>
         </div>
       </div>
