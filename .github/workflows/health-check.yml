@@ -26,3 +26,32 @@ jobs:
           ANALYTICS_GATEWAY_URL: ${{ secrets.ANALYTICS_GATEWAY_URL }}
           ANALYTICS_HEALTH_TOKEN: ${{ secrets.ANALYTICS_HEALTH_TOKEN }}
         run: npm run monitor:health
+
+      - name: Slack alert
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {
+              "text": ":rotating_light: Analytics gateway health check failed on *${{ github.repository }}* (run <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>)"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Email alert
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: '[Alert] Analytics Gateway Health Check Failed'
+          to: ${{ secrets.ALERT_EMAIL }}
+          from: ${{ secrets.ALERT_FROM }}
+          body: |
+            Analytics gateway health check failed.
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
