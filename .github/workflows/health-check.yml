@@ -1,9 +1,9 @@
 name: Gateway Health Check
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'
-  workflow_dispatch:
+  # schedule:
+  #   - cron: '*/15 * * * *'  # Disabled: Uncomment to re-enable alerts every 15 minutes
+  workflow_dispatch:  # Can still be run manually
 
 jobs:
   health-check:
