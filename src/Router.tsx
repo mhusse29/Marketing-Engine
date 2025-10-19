@@ -36,7 +36,14 @@ export default function Router() {
       />
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/reset-password" element={<PasswordResetPage />} />
-      <Route path="/analytics-standalone" element={<StandaloneAnalyticsDashboard />} />
+      <Route
+        path="/analytics-standalone"
+        element={
+          <ProtectedRoute>
+            <StandaloneAnalyticsDashboard />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 }
