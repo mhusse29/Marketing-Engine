@@ -6,7 +6,7 @@ import AdminProtectedRoute from './components/AdminProtectedRoute';
 export default function AdminRouter() {
   return (
     <Routes>
-      <Route path="/admin" element={<AdminAuthPage />} />
+      <Route path="/" element={<AdminAuthPage />} />
       <Route
         path="/dashboard"
         element={
@@ -15,7 +15,7 @@ export default function AdminRouter() {
           </AdminProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to="/admin" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
