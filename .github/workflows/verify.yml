@@ -22,8 +22,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run lint + tests
+      - name: Run lint
+        run: npm run lint -- --max-warnings=0
+
+      - name: Run tests
         env:
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
-        run: npm run verify
+        run: npm test
