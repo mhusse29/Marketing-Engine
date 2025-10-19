@@ -12,6 +12,8 @@
     "web:dev": "vite",
     "web:build": "tsc -b && vite build",
     "web:preview": "vite preview",
+    "admin:dev": "vite admin.html --port 5174 --strictPort",
+    "admin:build": "tsc -b && vite build admin.html --outDir dist-admin",
     "analytics:dev": "vite --config vite.analytics.config.ts",
     "analytics:build": "tsc -b && vite build --config vite.analytics.config.ts",
     "test": "node --test tests",

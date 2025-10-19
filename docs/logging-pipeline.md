@@ -7,33 +7,23 @@ The analytics gateway emits structured JSON logs. To ship them into a collector:
 Set `ANALYTICS_LOG_FILE` when starting the gateway:
 
 ```bash
-ANALYTICS_LOG_FILE=/var/log/analytics-gateway.log npm run gateway:start
+mkdir -p logs
+ANALYTICS_LOG_FILE=logs/analytics-gateway.log npm run gateway:start
 ```
 
 ## 2. Promtail + Loki + Grafana (Example)
 
-### Promtail Config (`promtail-config.yml`)
-```yaml
-server:
-  http_listen_port: 9080
-  grpc_listen_port: 0
+### Local Stack (Docker Compose)
 
-positions:
-  filename: /tmp/positions.yml
+A full Loki/Promtail/Grafana stack is provided under `ops/logging/docker-compose.yml`.
 
-clients:
-  - url: http://localhost:3100/loki/api/v1/push
-
-scrape_configs:
-  - job_name: analytics-gateway
-    static_configs:
-      - targets: ['localhost']
-        labels:
-          job: analytics-gateway
-          __path__: /var/log/analytics-gateway.log
-```
-
-Start Promtail pointing to this config and confirm logs show up in Grafana Loki.
+1. Start the stack:
+   ```bash
+   docker compose -f ops/logging/docker-compose.yml up -d
+   ```
+2. Ensure the gateway writes logs into `logs/analytics-gateway.log` from the project root.
+3. Visit Grafana at http://localhost:3000 (default credentials `admin` / `admin`).
+4. Add Loki (`http://loki:3100`) as a data source and query `{job="analytics-gateway"}`.
 
 ## 3. Structured Fields
 

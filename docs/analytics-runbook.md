@@ -66,3 +66,9 @@
 - `0`: healthy
 - `1`: degraded
 - `2`: error/unreachable
+
+> GitHub Actions: `.github/workflows/health-check.yml` runs every 15 minutes using `ANALYTICS_GATEWAY_URL` and `ANALYTICS_HEALTH_TOKEN` secrets.
+
+### Alerting
+- **Slack:** Set `SLACK_WEBHOOK_URL` in GitHub repository secrets (Slack → Integrations → Incoming Webhook).
+- **Email:** Provide `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `ALERT_EMAIL`, and `ALERT_FROM` secrets. The workflow sends a message whenever the health check fails.
