@@ -71,22 +71,22 @@ export function ModelUsage() {
   // Cost breakdown by model
   const costData = topModels.map(m => ({
     name: m.model,
-    cost: Number(m.total_cost.toFixed(2)),
-    calls: m.total_calls,
+    cost: Number((m.total_cost || (m as any).cost || 0).toFixed(2)),
+    calls: m.total_calls || (m as any).requests || 0,
   }));
 
   // Token usage breakdown
   const tokenData = topModels.map(m => ({
     name: m.model,
-    input: m.input_tokens,
-    output: m.output_tokens,
+    input: m.input_tokens || 0,
+    output: m.output_tokens || 0,
   }));
 
   // Success rate comparison
   const successRateData = topModels.map(m => ({
     name: m.model,
-    successRate: Number(m.success_rate.toFixed(2)),
-    failedCalls: m.failed_calls,
+    successRate: Number((m.success_rate || 0).toFixed(2)),
+    failedCalls: m.failed_calls || 0,
   }));
 
   // Service type distribution
