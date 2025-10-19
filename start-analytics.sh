@@ -10,6 +10,9 @@ echo ""
 # Supabase Configuration
 export SUPABASE_URL="https://wkhcakxjhmwapvqjrxld.supabase.co"
 
+# Analytics Gateway Key (for admin dashboard to bypass Supabase auth)
+export ANALYTICS_GATEWAY_KEY="admin-analytics-2024"
+
 # Check if service role key is set
 if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
   echo "❌ ERROR: SUPABASE_SERVICE_ROLE_KEY is not set!"

@@ -153,10 +153,13 @@ export interface HealthStatus {
 class AnalyticsClient {
   private baseUrl: string;
   private rateLimitMap: Map<string, number> = new Map();
+  private gatewayKey: string | null = null;
 
   constructor() {
     // Default to localhost, can be overridden via env var
     this.baseUrl = import.meta.env.VITE_ANALYTICS_GATEWAY_URL || 'http://localhost:8788';
+    // Check for gateway key (used by admin dashboard)
+    this.gatewayKey = import.meta.env.VITE_ANALYTICS_GATEWAY_KEY || null;
   }
 
   /**
@@ -193,6 +196,13 @@ class AnalyticsClient {
       headers.set('Content-Type', 'application/json');
     }
 
+    // If gateway key is set (admin mode), use it instead of Supabase JWT
+    if (this.gatewayKey) {
+      headers.set('x-analytics-key', this.gatewayKey);
+      return headers;
+    }
+
+    // Otherwise, use Supabase JWT
     try {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
