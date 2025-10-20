@@ -11,10 +11,10 @@ export function UserIntelligence() {
   if (segmentsLoading || churnLoading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-8">
-          <div className="flex items-center gap-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-white/20 border-t-white/80" />
-            <span className="text-white/70">Loading user intelligence...</span>
+        <div className="terminal-panel p-8">
+          <div className="terminal-loader">
+            <div className="terminal-loader__spinner">|</div>
+            <span>Loading user intelligence...</span>
           </div>
         </div>
       </div>
@@ -41,7 +41,7 @@ export function UserIntelligence() {
     return acc;
   }, {} as Record<string, number>);
 
-  const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'];
+  const COLORS = ['#33ff33', '#00ff00', '#66ff66', '#99ff99'];
 
   // Filter for specific segments used in KPIs
   const powerUsers = filteredSegments.filter(s => s.usage_segment === 'Power User');
@@ -54,9 +54,9 @@ export function UserIntelligence() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold text-white mb-2">User Intelligence</h2>
-        <p className="text-white/60">User behavior, segments, and engagement</p>
+      <div className="terminal-panel p-6">
+        <h2 className="text-3xl font-bold terminal-text-glow terminal-uppercase mb-2" style={{color: '#33ff33'}}>User Intelligence</h2>
+        <p className="text-[#7a7a7a]">User behavior, segments, and engagement</p>
       </div>
 
       {/* KPIs */}
@@ -72,14 +72,14 @@ export function UserIntelligence() {
           value={powerUsers.length}
           icon={Award}
           status="good"
-          subtitle={`${((powerUsers.length / segments.length) * 100).toFixed(1)}% of total`}
+          subtitle={segments.length > 0 ? `${((powerUsers.length / segments.length) * 100).toFixed(1)}% of total` : '0% of total'}
         />
         <KPICard
           title="At Risk Users"
           value={atRiskUsers.length}
           icon={AlertCircle}
           status={atRiskUsers.length > segments.length * 0.3 ? 'critical' : 'warning'}
-          subtitle={`${((atRiskUsers.length / segments.length) * 100).toFixed(1)}% of total`}
+          subtitle={segments.length > 0 ? `${((atRiskUsers.length / segments.length) * 100).toFixed(1)}% of total` : '0% of total'}
         />
         <KPICard
           title="Churn Risk"
@@ -92,8 +92,8 @@ export function UserIntelligence() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">User Segments</h3>
+        <div className="terminal-panel p-6">
+          <h3 className="terminal-panel__title mb-4">User Segments</h3>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
@@ -112,17 +112,20 @@ export function UserIntelligence() {
               </Pie>
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(0,0,0,0.8)', 
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
+                  backgroundColor: 'rgba(11,13,19,0.95)', 
+                  border: '1px solid #33ff33',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
                 }}
+                labelStyle={{ color: '#33ff33' }}
               />
             </PieChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Churn Risk Distribution</h3>
+        <div className="terminal-panel p-6">
+          <h3 className="terminal-panel__title mb-4">Churn Risk Distribution</h3>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
@@ -139,19 +142,22 @@ export function UserIntelligence() {
                   <Cell 
                     key={`cell-${index}`} 
                     fill={
-                      entry.name === 'Critical' ? '#ef4444' :
-                      entry.name === 'High' ? '#f59e0b' :
-                      entry.name === 'Medium' ? '#eab308' : '#10b981'
+                      entry.name === 'Critical' ? '#ff3333' :
+                      entry.name === 'High' ? '#ffff33' :
+                      entry.name === 'Medium' ? '#ffff66' : '#33ff33'
                     } 
                   />
                 ))}
               </Pie>
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(0,0,0,0.8)', 
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
+                  backgroundColor: 'rgba(11,13,19,0.95)', 
+                  border: '1px solid #33ff33',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
                 }}
+                labelStyle={{ color: '#33ff33' }}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -159,34 +165,34 @@ export function UserIntelligence() {
       </div>
 
       {/* Top Users Table */}
-      <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Top Power Users</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full">
+      <div className="terminal-panel p-6">
+        <h3 className="terminal-panel__title mb-4">Top Power Users</h3>
+        <div className="overflow-x-auto terminal-scroll">
+          <table className="terminal-table">
             <thead>
-              <tr className="border-b border-white/10">
-                <th className="text-left text-sm font-medium text-white/60 pb-3">User ID</th>
-                <th className="text-left text-sm font-medium text-white/60 pb-3">Total Calls</th>
-                <th className="text-left text-sm font-medium text-white/60 pb-3">Total Spent</th>
-                <th className="text-left text-sm font-medium text-white/60 pb-3">Features Used</th>
-                <th className="text-left text-sm font-medium text-white/60 pb-3">Last Active</th>
-                <th className="text-left text-sm font-medium text-white/60 pb-3">Status</th>
+              <tr>
+                <th className="text-left">User ID</th>
+                <th className="text-left">Total Calls</th>
+                <th className="text-left">Total Spent</th>
+                <th className="text-left">Features Used</th>
+                <th className="text-left">Last Active</th>
+                <th className="text-left">Status</th>
               </tr>
             </thead>
             <tbody>
               {powerUsers.slice(0, 10).map((user, idx) => (
-                <tr key={user.user_id || idx} className="border-b border-white/5">
-                  <td className="py-3 text-sm text-white/80 font-mono">{user.user_id ? user.user_id.slice(0, 8) + '...' : 'N/A'}</td>
-                  <td className="py-3 text-sm text-white">{user.total_calls?.toLocaleString() || '0'}</td>
-                  <td className="py-3 text-sm text-white">${Number(user.total_spent || 0).toFixed(2)}</td>
-                  <td className="py-3 text-sm text-white">{user.features_used || 'N/A'}</td>
-                  <td className="py-3 text-sm text-white/60">{user.last_active ? new Date(user.last_active).toLocaleDateString() : 'N/A'}</td>
-                  <td className="py-3">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      user.churn_risk_segment === 'Active' ? 'bg-emerald-500/10 text-emerald-400' :
-                      user.churn_risk_segment === 'Low Churn Risk' ? 'bg-blue-500/10 text-blue-400' :
-                      user.churn_risk_segment === 'Medium Churn Risk' ? 'bg-amber-500/10 text-amber-400' :
-                      'bg-red-500/10 text-red-400'
+                <tr key={user.user_id || idx}>
+                  <td className="font-mono">{user.user_id ? user.user_id.slice(0, 8) + '...' : 'N/A'}</td>
+                  <td>{user.total_calls?.toLocaleString() || '0'}</td>
+                  <td>${Number(user.total_spent || 0).toFixed(2)}</td>
+                  <td>{user.features_used || 'N/A'}</td>
+                  <td className="terminal-text-muted">{user.last_active ? new Date(user.last_active).toLocaleDateString() : 'N/A'}</td>
+                  <td>
+                    <span className={`terminal-badge ${
+                      user.churn_risk_segment === 'Active' ? 'terminal-badge--active' :
+                      user.churn_risk_segment === 'Low Churn Risk' ? '' :
+                      user.churn_risk_segment === 'Medium Churn Risk' ? 'terminal-badge--warning' :
+                      'terminal-badge--alert'
                     }`}>
                       {user.churn_risk_segment || 'Unknown'}
                     </span>
@@ -200,27 +206,31 @@ export function UserIntelligence() {
 
       {/* Churn Risk Users */}
       {churnRiskUsers.length > 0 && (
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-red-400" />
+        <div className="terminal-panel p-6">
+          <h3 className="terminal-panel__title mb-4 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-[#ff3333]" />
             High Churn Risk Users
           </h3>
-          <div className="space-y-2">
+          <div className="terminal-list">
             {churnRiskUsers.slice(0, 5).map((user: any) => ( // eslint-disable-line @typescript-eslint/no-explicit-any
-              <div key={user.user_id} className="backdrop-blur-sm bg-white/[0.02] border border-white/5 rounded-lg p-4">
-                <div className="flex items-center justify-between">
+              <div key={user.user_id} className="terminal-list__row">
+                <div className="flex items-center justify-between w-full">
                   <div className="flex items-center gap-4">
-                    <div className="font-mono text-sm text-white/80">{user.user_id.slice(0, 8)}...</div>
-                    <div className="text-sm text-white/60">{user.days_inactive} days inactive</div>
-                    <div className="text-sm text-white/60">Lifetime: ${Number(user.lifetime_cost || 0).toFixed(2)}</div>
+                    <div className="font-mono text-sm terminal-text">{user.user_id.slice(0, 8)}...</div>
+                    <div className="text-sm terminal-text-muted">{user.days_inactive} days inactive</div>
+                    <div className="text-sm terminal-text-muted">Lifetime: ${Number(user.lifetime_cost || 0).toFixed(2)}</div>
                   </div>
-                  <div className={`px-3 py-1 rounded-lg font-medium text-sm ${
-                    user.risk_category === 'Critical' ? 'bg-red-500/20 text-red-400' :
-                    user.risk_category === 'High' ? 'bg-orange-500/20 text-orange-400' :
-                    'bg-yellow-500/20 text-yellow-400'
+                  <span className={`terminal-badge ${
+                    user.risk_category === 'Critical' ? 'terminal-badge--alert' :
+                    user.risk_category === 'High' ? 'terminal-badge--warning' :
+                    'terminal-badge--warning'
                   }`}>
+                    <span className={`terminal-led ${
+                      user.risk_category === 'Critical' ? 'terminal-led--alert' :
+                      'terminal-led--warning'
+                    }`}></span>
                     {user.risk_category} Risk (Score: {user.churn_score})
-                  </div>
+                  </span>
                 </div>
               </div>
             ))}

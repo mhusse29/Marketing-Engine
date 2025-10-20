@@ -17,6 +17,7 @@ import { Server } from 'socket.io';
 import { createClient } from '@supabase/supabase-js';
 import NodeCache from 'node-cache';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const app = express();
 const PORT = process.env.ANALYTICS_GATEWAY_PORT || 8788;
@@ -24,7 +25,7 @@ const httpServer = createServer(app);
 const ANALYTICS_GATEWAY_KEY = process.env.ANALYTICS_GATEWAY_KEY;
 const ALLOWED_ORIGINS = process.env.ANALYTICS_ALLOWED_ORIGINS
   ? process.env.ANALYTICS_ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
-  : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'];
+  : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176'];
 
 // Supabase client
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -83,8 +84,18 @@ function handleError(res, err, context = {}) {
 app.use(cors({
   origin: ALLOWED_ORIGINS,
   credentials: true,
+  exposedHeaders: ['X-Total-Count', 'X-Cache-Hit'],
 }));
 app.use(express.json());
+
+// Add CORS headers explicitly
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', ALLOWED_ORIGINS.includes(req.headers.origin) ? req.headers.origin : ALLOWED_ORIGINS[0]);
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  next();
+});
 
 // Socket.io server for real-time subscriptions
 const io = new Server(httpServer, {
@@ -148,24 +159,40 @@ async function verifySupabaseUser(token) {
 
 async function authenticateRequest(req, res, next) {
   try {
+    // Option 1: Service key authentication
     if (ANALYTICS_GATEWAY_KEY && req.headers['x-analytics-key'] === ANALYTICS_GATEWAY_KEY) {
       req.analyticsService = true;
       return next();
     }
 
+    // Option 2: JWT authentication
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
-    const user = await verifySupabaseUser(token);
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    if (token) {
+      const user = await verifySupabaseUser(token);
+      if (user) {
+        req.analyticsUser = user;
+        return next();
+      }
     }
 
-    req.analyticsUser = user;
-    return next();
+    // Option 3: Development mode - allow unauthenticated access
+    if (process.env.NODE_ENV !== 'production' || process.env.ANALYTICS_PUBLIC_ACCESS === 'true') {
+      req.publicAccess = true;
+      logger.warn('unauthenticated_access_allowed', { 
+        path: req.path,
+        ip: req.ip,
+        mode: process.env.NODE_ENV || 'development'
+      });
+      return next();
+    }
+
+    // Reject if no valid auth in production
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
   } catch (err) {
     logger.error('request_authentication_failed', { error: err.message });
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+    return res.status(500).json({ success: false, error: 'Authentication error' });
   }
 }
 
@@ -830,7 +857,11 @@ async function stopServer() {
   });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Auto-start if run directly
+const __filename = fileURLToPath(import.meta.url);
+const isMainModule = process.argv[1] === __filename;
+
+if (isMainModule) {
   startServer().catch((error) => {
     logger.error('gateway_start_failed', { error: error.message });
     process.exit(1);

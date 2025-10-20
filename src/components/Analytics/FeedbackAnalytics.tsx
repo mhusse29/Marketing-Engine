@@ -37,9 +37,9 @@ const touchpointLabels: Record<string, string> = {
 };
 
 const ratingIcons = {
-  0: { icon: Frown, color: 'text-red-400', bg: 'bg-red-500/10', label: 'BAD' },
-  1: { icon: Meh, color: 'text-yellow-400', bg: 'bg-yellow-500/10', label: 'NOT BAD' },
-  2: { icon: Smile, color: 'text-green-400', bg: 'bg-green-500/10', label: 'GOOD' }
+  0: { icon: Frown, color: 'text-[#ff3333]', bg: 'bg-[#111111] border border-[#ff3333]', label: 'BAD' },
+  1: { icon: Meh, color: 'text-[#ffff00]', bg: 'bg-[#111111] border border-[#ffff00]', label: 'NOT BAD' },
+  2: { icon: Smile, color: 'text-[#00ff00]', bg: 'bg-[#111111] border border-[#00ff00]', label: 'GOOD' }
 };
 
 export function FeedbackAnalytics() {
@@ -109,9 +109,9 @@ export function FeedbackAnalytics() {
     const good = summary.reduce((sum, item) => sum + item.good_count, 0);
 
     return [
-      { label: 'Good', count: good, percentage: total > 0 ? (good / total) * 100 : 0, color: 'bg-green-500' },
-      { label: 'Not Bad', count: notBad, percentage: total > 0 ? (notBad / total) * 100 : 0, color: 'bg-yellow-500' },
-      { label: 'Bad', count: bad, percentage: total > 0 ? (bad / total) * 100 : 0, color: 'bg-red-500' }
+      { label: 'Good', count: good, percentage: total > 0 ? (good / total) * 100 : 0, color: 'bg-[#00ff00]' },
+      { label: 'Not Bad', count: notBad, percentage: total > 0 ? (notBad / total) * 100 : 0, color: 'bg-[#ffff00]' },
+      { label: 'Bad', count: bad, percentage: total > 0 ? (bad / total) * 100 : 0, color: 'bg-[#ff3333]' }
     ];
   };
 
@@ -131,12 +131,10 @@ export function FeedbackAnalytics() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-8">
-          <div className="flex items-center gap-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-white/20 border-t-white/80" />
-            <span className="text-white/70">Loading feedback data...</span>
-          </div>
+      <div className="terminal-panel p-8">
+        <div className="terminal-loader">
+          <div className="terminal-loader__spinner">|</div>
+          <span>Loading feedback data...</span>
         </div>
       </div>
     );
@@ -144,12 +142,10 @@ export function FeedbackAnalytics() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-8">
-          <div className="text-center">
-            <div className="text-red-400 text-lg mb-2">⚠️ {error}</div>
-            <p className="text-white/50 text-sm">Check that API server is running at {import.meta.env.VITE_API_URL || 'http://localhost:8787'}</p>
-          </div>
+      <div className="terminal-panel p-8">
+        <div className="text-center">
+          <div className="text-[#ff3333] text-lg mb-2 terminal-uppercase">⚠️ {error}</div>
+          <p className="terminal-text-muted text-sm">Check that API server is running at {import.meta.env.VITE_API_URL || 'http://localhost:8787'}</p>
         </div>
       </div>
     );
@@ -196,22 +192,22 @@ export function FeedbackAnalytics() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl"
+        className="terminal-panel p-6"
       >
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-blue-400" />
+        <h3 className="terminal-panel__title text-lg mb-4 flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-[#33ff33]" />
           Rating Distribution
         </h3>
         <div className="space-y-4">
           {distribution.map((item) => (
             <div key={item.label} className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-white/70">{item.label}</span>
-                <span className="text-white font-medium">
+                <span className="terminal-text-muted">{item.label}</span>
+                <span className="terminal-metric font-medium">
                   {item.count} ({item.percentage.toFixed(1)}%)
                 </span>
               </div>
-              <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-2 bg-[#111111] overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${item.percentage}%` }}
@@ -229,38 +225,38 @@ export function FeedbackAnalytics() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl"
+        className="terminal-panel p-6"
       >
-        <h3 className="text-lg font-semibold text-white mb-4">Feedback by Touchpoint</h3>
+        <h3 className="terminal-panel__title text-lg mb-4">Feedback by Touchpoint</h3>
         <div className="space-y-3">
           {summary.sort((a, b) => b.total_feedback - a.total_feedback).map((item) => (
-            <div key={item.touchpoint_type} className="rounded-lg border border-white/5 bg-white/5 p-4">
+            <div key={item.touchpoint_type} className="terminal-card p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-white font-medium">
+                <span className="terminal-metric font-medium">
                   {touchpointLabels[item.touchpoint_type] || item.touchpoint_type}
                 </span>
-                <span className="text-white/50 text-sm">{item.total_feedback} responses</span>
+                <span className="terminal-text-muted text-sm">{item.total_feedback} responses</span>
               </div>
               <div className="grid grid-cols-3 gap-2 mt-3">
-                <div className="text-center p-2 rounded bg-green-500/10">
-                  <div className="text-green-400 font-bold">{item.good_count}</div>
-                  <div className="text-green-400/70 text-xs">Good</div>
+                <div className="text-center p-2 bg-[#111111] border border-[#00ff00]">
+                  <div className="text-[#00ff00] font-bold">{item.good_count}</div>
+                  <div className="text-[#00ff00] text-xs">Good</div>
                 </div>
-                <div className="text-center p-2 rounded bg-yellow-500/10">
-                  <div className="text-yellow-400 font-bold">{item.not_bad_count}</div>
-                  <div className="text-yellow-400/70 text-xs">Not Bad</div>
+                <div className="text-center p-2 bg-[#111111] border border-[#ffff00]">
+                  <div className="text-[#ffff00] font-bold">{item.not_bad_count}</div>
+                  <div className="text-[#ffff00] text-xs">Not Bad</div>
                 </div>
-                <div className="text-center p-2 rounded bg-red-500/10">
-                  <div className="text-red-400 font-bold">{item.bad_count}</div>
-                  <div className="text-red-400/70 text-xs">Bad</div>
+                <div className="text-center p-2 bg-[#111111] border border-[#ff3333]">
+                  <div className="text-[#ff3333] font-bold">{item.bad_count}</div>
+                  <div className="text-[#ff3333] text-xs">Bad</div>
                 </div>
               </div>
               <div className="mt-3 flex items-center justify-between text-xs">
-                <span className="text-white/50">
+                <span className="terminal-text-muted">
                   Satisfaction: {item.satisfaction_percentage.toFixed(1)}%
                 </span>
                 {item.avg_time_spent > 0 && (
-                  <span className="text-white/50">
+                  <span className="terminal-text-muted">
                     Avg time: {item.avg_time_spent.toFixed(0)}s
                   </span>
                 )}
@@ -275,12 +271,12 @@ export function FeedbackAnalytics() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl"
+        className="terminal-panel p-6"
       >
-        <h3 className="text-lg font-semibold text-white mb-4">Recent Feedback</h3>
+        <h3 className="terminal-panel__title text-lg mb-4">Recent Feedback</h3>
         <div className="space-y-3">
           {recentFeedback.length === 0 ? (
-            <div className="text-center py-8 text-white/50">No feedback received yet</div>
+            <div className="text-center py-8 terminal-text-muted">No feedback received yet</div>
           ) : (
             recentFeedback.map((feedback) => {
               const ratingInfo = ratingIcons[feedback.rating as keyof typeof ratingIcons];
@@ -289,7 +285,7 @@ export function FeedbackAnalytics() {
               return (
                 <div
                   key={feedback.id}
-                  className="rounded-lg border border-white/5 bg-white/5 p-4 hover:bg-white/10 transition-colors"
+                  className="terminal-card p-4 transition-colors"
                 >
                   <div className="flex items-start gap-3">
                     <div className={`p-2 rounded-lg ${ratingInfo.bg}`}>
@@ -297,10 +293,10 @@ export function FeedbackAnalytics() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-white font-medium text-sm">
+                        <span className="terminal-metric font-medium text-sm">
                           {touchpointLabels[feedback.touchpoint_type] || feedback.touchpoint_type}
                         </span>
-                        <span className="text-white/40 text-xs">
+                        <span className="terminal-text-muted text-xs">
                           {formatTimeAgo(feedback.created_at)}
                         </span>
                       </div>
@@ -309,18 +305,18 @@ export function FeedbackAnalytics() {
                           {feedback.rating_label}
                         </span>
                         {feedback.time_spent_seconds && (
-                          <span className="text-white/40 text-xs">
+                          <span className="terminal-text-muted text-xs">
                             • {feedback.time_spent_seconds}s session
                           </span>
                         )}
                       </div>
                       {feedback.comments && (
-                        <p className="text-white/70 text-sm mt-2 italic">
+                        <p className="terminal-text-muted text-sm mt-2 italic">
                           "{feedback.comments}"
                         </p>
                       )}
                       {feedback.context_data?.feedbackType && (
-                        <span className="inline-block mt-2 px-2 py-1 rounded text-xs bg-blue-500/10 text-blue-400">
+                        <span className="inline-block mt-2 px-2 py-1 text-xs bg-[#111111] border border-[#33ff33] text-[#33ff33]">
                           {feedback.context_data.feedbackType}
                         </span>
                       )}

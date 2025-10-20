@@ -38,8 +38,13 @@ export function IncidentTimeline() {
       }, () => fetchIncidents())
       .subscribe();
 
+    // Listen for manual refresh events
+    const handleRefresh = () => fetchIncidents();
+    window.addEventListener('refreshAnalytics', handleRefresh);
+
     return () => {
       supabase.removeChannel(subscription);
+      window.removeEventListener('refreshAnalytics', handleRefresh);
     };
   }, []);
 
@@ -52,7 +57,7 @@ export function IncidentTimeline() {
         .limit(10);
 
       if (!error && data) {
-        setIncidents(data as Incident[]);
+        setIncidents(data as unknown as Incident[]);
       }
     } catch (err) {
       console.error('Failed to fetch incidents:', err);
@@ -63,10 +68,10 @@ export function IncidentTimeline() {
 
   if (loading) {
     return (
-      <div className="glass-card p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-white/10 rounded w-1/4"></div>
-          <div className="h-20 bg-white/5 rounded"></div>
+      <div className="terminal-panel p-8">
+        <div className="terminal-loader">
+          <div className="terminal-loader__spinner">|</div>
+          <span>Loading incidents...</span>
         </div>
       </div>
     );
@@ -74,24 +79,24 @@ export function IncidentTimeline() {
 
   if (incidents.length === 0) {
     return (
-      <div className="glass-card p-6">
+      <div className="terminal-panel p-6">
         <div className="flex items-center gap-3 mb-4">
           <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-          <h3 className="text-lg font-semibold text-white">Incident Timeline</h3>
+          <h3 className="terminal-panel__title">Incident Timeline</h3>
         </div>
-        <p className="text-white/60 text-sm">No incidents in the last 90 days. All systems operational! 🎉</p>
+        <p className="terminal-text-muted text-sm">No incidents in the last 90 days. All systems operational! 🎉</p>
       </div>
     );
   }
 
   return (
-    <div className="glass-card p-6">
+    <div className="terminal-panel p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-amber-400" />
-          <h3 className="text-lg font-semibold text-white">Incident Timeline</h3>
+          <h3 className="terminal-panel__title">Incident Timeline</h3>
         </div>
-        <span className="text-sm text-white/50">{incidents.length} incidents (90 days)</span>
+        <span className="text-sm terminal-text-muted">{incidents.length} incidents (90 days)</span>
       </div>
 
       <div className="space-y-3">
@@ -108,7 +113,7 @@ export function IncidentTimeline() {
             <div className="flex items-start justify-between gap-3 mb-2">
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-semibold text-white">{incident.title}</h4>
+                  <h4 className="text-sm font-semibold terminal-text">{incident.title}</h4>
                   <span className={`
                     px-2 py-0.5 rounded text-xs font-medium
                     ${getSeverityBadge(incident.severity)}
@@ -116,7 +121,7 @@ export function IncidentTimeline() {
                     {incident.severity}
                   </span>
                 </div>
-                <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
+                <div className="flex items-center gap-3 mt-1 text-xs terminal-text-muted">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {new Date(incident.started_at).toLocaleString()}
@@ -142,7 +147,7 @@ export function IncidentTimeline() {
                 {incident.affected_services.map((service) => (
                   <span
                     key={service}
-                    className="px-2 py-0.5 bg-white/5 border border-white/10 rounded text-xs text-white/70"
+                    className="px-2 py-0.5 bg-[#111111] border border-[#33ff33]/20 rounded text-xs terminal-text-muted"
                   >
                     {service}
                   </span>
@@ -154,7 +159,7 @@ export function IncidentTimeline() {
             {incident.recent_deployments && incident.recent_deployments.length > 0 && (
               <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded text-xs">
                 <span className="text-amber-400 font-medium">⚠ Recent deployment detected</span>
-                <span className="text-white/60 ml-2">
+                <span className="terminal-text-muted ml-2">
                   {incident.recent_deployments[0].version} deployed {
                     Math.round((new Date(incident.started_at).getTime() - 
                                new Date(incident.recent_deployments[0].deployed_at).getTime()) / 60000)
@@ -172,7 +177,7 @@ export function IncidentTimeline() {
 
             {/* Owner */}
             {incident.owner && (
-              <div className="mt-2 text-xs text-white/50">
+              <div className="mt-2 text-xs terminal-text-muted">
                 Owner: {incident.owner}
               </div>
             )}

@@ -19,8 +19,8 @@ export function AnalyticsHeader({ activeTab, onTabChange }: AnalyticsHeaderProps
   ] as const;
 
   return (
-    <div className="flex items-center justify-between gap-4 mb-6">
-      <div className="flex items-center gap-2">
+    <div className="flex items-center gap-4">
+      <div className="terminal-nav">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -28,14 +28,9 @@ export function AnalyticsHeader({ activeTab, onTabChange }: AnalyticsHeaderProps
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`
-                flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all
-                ${
-                  isActive
-                    ? 'bg-white/10 text-white border border-white/20 backdrop-blur-md'
-                    : 'bg-white/5 text-white/60 border border-white/5 hover:bg-white/10 hover:text-white/80 backdrop-blur-sm'
-                }
-              `}
+              className={`terminal-nav__item flex items-center gap-2 ${
+                isActive ? 'terminal-nav__item--active' : ''
+              }`}
             >
               <Icon className="w-4 h-4" />
               {tab.label}

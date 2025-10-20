@@ -44,8 +44,13 @@ export function ExperimentDashboard() {
       }, () => fetchExperiments())
       .subscribe();
 
+    // Listen for manual refresh events
+    const handleRefresh = () => fetchExperiments();
+    window.addEventListener('refreshAnalytics', handleRefresh);
+
     return () => {
       supabase.removeChannel(subscription);
+      window.removeEventListener('refreshAnalytics', handleRefresh);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
@@ -77,10 +82,10 @@ export function ExperimentDashboard() {
 
   if (loading) {
     return (
-      <div className="glass-card p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-white/10 rounded w-1/4"></div>
-          <div className="h-32 bg-white/5 rounded"></div>
+      <div className="terminal-panel p-8">
+        <div className="terminal-loader">
+          <div className="terminal-loader__spinner">|</div>
+          <span>Loading experiments...</span>
         </div>
       </div>
     );
@@ -89,13 +94,13 @@ export function ExperimentDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="glass-card p-6">
+      <div className="terminal-panel p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Beaker className="w-6 h-6 text-violet-400" />
+            <Beaker className="w-6 h-6 text-[#33ff33]" />
             <div>
-              <h2 className="text-2xl font-bold text-white">Experiments</h2>
-              <p className="text-sm text-white/60 mt-1">A/B tests and feature rollouts</p>
+              <h2 className="text-3xl font-bold terminal-text-glow terminal-uppercase mb-2" style={{color: '#33ff33'}}>Experiments</h2>
+              <p className="text-[#7a7a7a]">A/B tests and feature rollouts</p>
             </div>
           </div>
 
@@ -103,37 +108,19 @@ export function ExperimentDashboard() {
           <div className="flex gap-2">
             <button
               onClick={() => setFilter('all')}
-              className={`
-                px-4 py-2 rounded-lg text-sm font-medium transition-all
-                ${filter === 'all' 
-                  ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' 
-                  : 'glass-button'
-                }
-              `}
+              className={`terminal-filter__chip ${filter === 'all' ? 'terminal-filter__chip--active' : ''}`}
             >
               All ({experiments.length})
             </button>
             <button
               onClick={() => setFilter('running')}
-              className={`
-                px-4 py-2 rounded-lg text-sm font-medium transition-all
-                ${filter === 'running' 
-                  ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' 
-                  : 'glass-button'
-                }
-              `}
+              className={`terminal-filter__chip ${filter === 'running' ? 'terminal-filter__chip--active' : ''}`}
             >
               Running ({experiments.filter(e => e.status === 'running').length})
             </button>
             <button
               onClick={() => setFilter('completed')}
-              className={`
-                px-4 py-2 rounded-lg text-sm font-medium transition-all
-                ${filter === 'completed' 
-                  ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' 
-                  : 'glass-button'
-                }
-              `}
+              className={`terminal-filter__chip ${filter === 'completed' ? 'terminal-filter__chip--active' : ''}`}
             >
               Completed ({experiments.filter(e => e.status === 'completed').length})
             </button>
@@ -144,12 +131,12 @@ export function ExperimentDashboard() {
       {/* Experiments Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {experiments.map((exp) => (
-          <div key={exp.id} className="glass-card p-6 hover-lift">
+          <div key={exp.id} className="terminal-panel p-6 hover-lift">
             {/* Header */}
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-lg font-semibold text-white">{exp.name}</h3>
+                  <h3 className="text-lg font-semibold terminal-text">{exp.name}</h3>
                   <span className={`
                     px-2 py-1 rounded-full text-xs font-medium
                     ${getStatusBadge(exp.status)}
@@ -158,7 +145,7 @@ export function ExperimentDashboard() {
                   </span>
                 </div>
                 {exp.description && (
-                  <p className="text-sm text-white/60">{exp.description}</p>
+                  <p className="text-sm terminal-text-muted">{exp.description}</p>
                 )}
               </div>
               <div className={`
@@ -171,22 +158,22 @@ export function ExperimentDashboard() {
 
             {/* Target Metric */}
             <div className="mb-4">
-              <div className="text-xs text-white/50 mb-1">Target Metric</div>
-              <div className="text-sm font-medium text-white">{exp.target_metric}</div>
+              <div className="text-xs terminal-text-muted mb-1">Target Metric</div>
+              <div className="text-sm font-medium terminal-text">{exp.target_metric}</div>
             </div>
 
             {/* Variants */}
             <div className="mb-4">
-              <div className="text-xs text-white/50 mb-2">Variants</div>
+              <div className="text-xs terminal-text-muted mb-2">Variants</div>
               <div className="space-y-2">
                 {/* Control */}
-                <div className="flex items-center justify-between p-2 bg-white/5 rounded">
+                <div className="flex items-center justify-between p-2 bg-[#111111] border border-[#33ff33]/10 rounded">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-medium text-white/70">
                       {exp.control_variant} (control)
                     </span>
                     {exp.control_value !== undefined && (
-                      <span className="text-xs text-white/50">
+                      <span className="text-xs terminal-text-muted">
                         {formatValue(exp.control_value)}
                       </span>
                     )}
@@ -198,16 +185,16 @@ export function ExperimentDashboard() {
 
                 {/* Test Variants */}
                 {exp.test_variants.map((variant) => (
-                  <div key={variant} className="flex items-center justify-between p-2 bg-white/5 rounded">
+                  <div key={variant} className="flex items-center justify-between p-2 bg-[#111111] border border-[#33ff33]/10 rounded">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-white/70">{variant}</span>
+                      <span className="text-xs font-medium terminal-text-muted">{variant}</span>
                       {exp.test_values?.[variant] !== undefined && (
-                        <span className="text-xs text-emerald-400">
+                        <span className="text-xs terminal-text">
                           {formatValue(exp.test_values[variant])}
                         </span>
                       )}
                     </div>
-                    <span className="text-xs text-white/40">
+                    <span className="text-xs terminal-text-muted">
                       {exp.traffic_allocation[variant] || 50}%
                     </span>
                   </div>
@@ -226,7 +213,7 @@ export function ExperimentDashboard() {
               `}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-xs text-white/60 mb-1">Lift</div>
+                    <div className="text-xs terminal-text-muted mb-1">Lift</div>
                     <div className={`
                       text-xl font-bold flex items-center gap-1
                       ${exp.lift_percentage > 0 ? 'text-emerald-400' : 'text-red-400'}
@@ -238,8 +225,8 @@ export function ExperimentDashboard() {
                   
                   {exp.confidence_level && (
                     <div className="text-right">
-                      <div className="text-xs text-white/60 mb-1">Confidence</div>
-                      <div className="text-sm font-semibold text-white">
+                      <div className="text-xs terminal-text-muted mb-1">Confidence</div>
+                      <div className="text-sm font-semibold terminal-text">
                         {(exp.confidence_level * 100).toFixed(1)}%
                       </div>
                     </div>
@@ -254,15 +241,15 @@ export function ExperimentDashboard() {
                 )}
 
                 {exp.winner && (
-                  <div className="mt-2 text-xs text-white/70">
-                    Winner: <span className="font-semibold text-white">{exp.winner}</span>
+                  <div className="mt-2 text-xs terminal-text-muted">
+                    Winner: <span className="font-semibold terminal-text">{exp.winner}</span>
                   </div>
                 )}
               </div>
             )}
 
             {/* Footer */}
-            <div className="flex items-center justify-between text-xs text-white/50">
+            <div className="flex items-center justify-between text-xs terminal-text-muted">
               {exp.owner && <span>Owner: {exp.owner}</span>}
               {exp.started_at && (
                 <span>Started {new Date(exp.started_at).toLocaleDateString()}</span>
@@ -273,10 +260,10 @@ export function ExperimentDashboard() {
       </div>
 
       {experiments.length === 0 && (
-        <div className="glass-card p-12 text-center">
-          <Beaker className="w-12 h-12 text-white/20 mx-auto mb-4" />
-          <p className="text-white/60">No experiments found</p>
-          <p className="text-sm text-white/40 mt-2">Create your first experiment to get started</p>
+        <div className="terminal-panel p-12 text-center">
+          <Beaker className="w-12 h-12 terminal-text-muted mx-auto mb-4" />
+          <p className="terminal-text-muted">No experiments found</p>
+          <p className="text-sm terminal-text-muted mt-2">Create your first experiment to get started</p>
         </div>
       )}
     </div>
@@ -289,8 +276,8 @@ function getStatusBadge(status: string): string {
     case 'completed': return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
     case 'paused': return 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
     case 'cancelled': return 'bg-red-500/20 text-red-400 border border-red-500/30';
-    case 'draft': return 'bg-white/10 text-white/70';
-    default: return 'bg-white/10 text-white/70';
+    case 'draft': return 'bg-[#111111] border border-[#33ff33]/30 terminal-text-muted';
+    default: return 'bg-[#111111] border border-[#33ff33]/30 terminal-text-muted';
   }
 }
 
@@ -300,7 +287,7 @@ function getStatusIcon(status: string) {
     case 'completed': return <CheckCircle2 className="w-5 h-5 text-emerald-400" />;
     case 'paused': return <Pause className="w-5 h-5 text-amber-400" />;
     case 'cancelled': return <X className="w-5 h-5 text-red-400" />;
-    default: return <Beaker className="w-5 h-5 text-white/40" />;
+    default: return <Beaker className="w-5 h-5 terminal-text-muted" />;
   }
 }
 
@@ -310,7 +297,7 @@ function getStatusIconBg(status: string): string {
     case 'completed': return 'bg-emerald-500/10';
     case 'paused': return 'bg-amber-500/10';
     case 'cancelled': return 'bg-red-500/10';
-    default: return 'bg-white/5';
+    default: return 'bg-[#111111] border border-[#33ff33]/10';
   }
 }
 

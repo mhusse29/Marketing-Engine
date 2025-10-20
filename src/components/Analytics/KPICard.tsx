@@ -14,13 +14,26 @@ export function KPICard({ title, value, change, changeLabel, icon: Icon, status 
   const getStatusColor = () => {
     switch (status) {
       case 'good':
-        return 'text-emerald-400 border-emerald-500/20 bg-emerald-500/5';
+        return 'text-[#33ff33] border-[#33ff33]/30 bg-[#33ff33]/8';
       case 'warning':
-        return 'text-amber-400 border-amber-500/20 bg-amber-500/5';
+        return 'text-[#ffff33] border-[#ffff33]/30 bg-[#ffff33]/8';
       case 'critical':
-        return 'text-red-400 border-red-500/20 bg-red-500/5';
+        return 'text-[#ff3333] border-[#ff3333]/30 bg-[#ff3333]/8';
       default:
-        return 'text-blue-400 border-blue-500/20 bg-blue-500/5';
+        return 'text-[#33ff33] border-[#33ff33]/30 bg-[#33ff33]/8';
+    }
+  };
+
+  const getMetricClass = () => {
+    switch (status) {
+      case 'good':
+        return 'terminal-metric--success';
+      case 'warning':
+        return 'terminal-metric--warning';
+      case 'critical':
+        return 'terminal-metric--alert';
+      default:
+        return 'terminal-metric';
     }
   };
 
@@ -30,35 +43,41 @@ export function KPICard({ title, value, change, changeLabel, icon: Icon, status 
   };
 
   const getChangeColor = () => {
-    if (change === undefined || change === null) return 'text-white/40';
-    return change > 0 ? 'text-emerald-400' : change < 0 ? 'text-red-400' : 'text-white/40';
+    if (change === undefined || change === null) return 'text-[#8a939f]';
+    return change > 0 ? 'text-[#33ff33]' : change < 0 ? 'text-[#ff3333]' : 'text-[#7a7a7a]';
   };
 
   const ChangeIcon = getChangeIcon();
 
   return (
     <div className="relative group">
-      {/* Glass card */}
-      <div className="relative backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6 hover:bg-white/[0.07] transition-all duration-300">
+      {/* Terminal card with enhanced hierarchy */}
+      <div className="terminal-card">
         {/* Icon badge */}
         {Icon && (
-          <div className={`absolute top-6 right-6 flex items-center justify-center w-10 h-10 rounded-lg ${getStatusColor()}`}>
+          <div className={`absolute top-6 right-6 flex items-center justify-center w-10 h-10 rounded-lg border ${getStatusColor()}`}>
             <Icon className="w-5 h-5" />
           </div>
         )}
 
         {/* Content */}
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-white/60">{title}</p>
-          <p className="text-3xl font-bold text-white">{value}</p>
+        <div className="space-y-2 relative z-10">
+          {/* Title with subtle divider */}
+          <div className="pb-2 border-b border-[#33ff33]/10">
+            <p className="terminal-panel__title font-bold">{title}</p>
+          </div>
           
+          {/* Value */}
+          <p className={`text-3xl font-bold tracking-tight ${getMetricClass()}`}>{value}</p>
+          
+          {/* Subtitle */}
           {subtitle && (
-            <p className="text-xs text-white/40">{subtitle}</p>
+            <p className="text-xs terminal-text-muted">{subtitle}</p>
           )}
 
           {/* Change indicator */}
           {change !== undefined && change !== null && (
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex items-center gap-2 pt-2 border-t border-[#33ff33]/10">
               <div className={`flex items-center gap-1 ${getChangeColor()}`}>
                 <ChangeIcon className="w-4 h-4" />
                 <span className="text-sm font-medium">
@@ -66,14 +85,11 @@ export function KPICard({ title, value, change, changeLabel, icon: Icon, status 
                 </span>
               </div>
               {changeLabel && (
-                <span className="text-xs text-white/40">{changeLabel}</span>
+                <span className="text-xs terminal-text-muted">{changeLabel}</span>
               )}
             </div>
           )}
         </div>
-
-        {/* Hover glow effect */}
-        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-blue-500/0 via-purple-500/0 to-pink-500/0 group-hover:from-blue-500/5 group-hover:via-purple-500/5 group-hover:to-pink-500/5 transition-all duration-500 pointer-events-none" />
       </div>
     </div>
   );

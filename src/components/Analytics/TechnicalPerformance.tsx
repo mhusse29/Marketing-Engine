@@ -14,10 +14,10 @@ export function TechnicalPerformance() {
   if (providersLoading || metricsLoading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-8">
-          <div className="flex items-center gap-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-white/20 border-t-white/80" />
-            <span className="text-white/70">Loading technical metrics...</span>
+        <div className="terminal-panel p-8">
+          <div className="terminal-loader">
+            <div className="terminal-loader__spinner">|</div>
+            <span>Loading technical metrics...</span>
           </div>
         </div>
       </div>
@@ -42,16 +42,18 @@ export function TechnicalPerformance() {
   return (
     <div className="space-y-6">
       {/* Header with Filters */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-2">Technical Performance</h2>
-          <p className="text-white/60">Provider metrics and system reliability • Last 30 days</p>
+      <div className="terminal-panel p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-3xl font-bold terminal-text-glow terminal-uppercase mb-2" style={{color: '#33ff33'}}>Technical Performance</h2>
+            <p className="text-[#7a7a7a]">Provider metrics and system reliability • Last 30 days</p>
+          </div>
+          <FilterControls
+            showProvider
+            provider={provider}
+            onProviderChange={setProvider}
+          />
         </div>
-        <FilterControls
-          showProvider
-          provider={provider}
-          onProviderChange={setProvider}
-        />
       </div>
 
       {/* KPIs */}
@@ -88,123 +90,132 @@ export function TechnicalPerformance() {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Latency Trend */}
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6 lg:col-span-2">
-          <h3 className="text-lg font-semibold text-white mb-4">Latency Trend (30 Days)</h3>
+        <div className="terminal-panel p-6 lg:col-span-2">
+          <h3 className="terminal-panel__title mb-4">Latency Trend (30 Days)</h3>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={latencyTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,255,51,0.15)" />
               <XAxis 
                 dataKey="date" 
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12 }}
               />
               <YAxis 
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12 }}
               />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(0,0,0,0.8)', 
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
+                  backgroundColor: '#0a0a0a',
+                  border: '1px solid #33ff33',
+                  borderRadius: '0px',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
                 }}
+                labelStyle={{ color: '#c0c0c0' }}
               />
               <Legend />
-              <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} name="Avg Latency (ms)" />
-              <Line type="monotone" dataKey="p95" stroke="#f59e0b" strokeWidth={2} name="P95 Latency (ms)" />
+              <Line type="monotone" dataKey="avg" stroke="#33ff33" strokeWidth={2} name="Avg Latency (ms)" />
+              <Line type="monotone" dataKey="p95" stroke="#ffff00" strokeWidth={2} name="P95 Latency (ms)" />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
         {/* Provider Comparison - Success Rate */}
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Provider Success Rates</h3>
+        <div className="terminal-panel p-6">
+          <h3 className="terminal-panel__title mb-4">Provider Success Rates</h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={providers.slice(0, 10)} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-              <XAxis type="number" stroke="rgba(255,255,255,0.5)" tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#33ff33" />
+              <XAxis type="number" stroke="#33ff33" tick={{ fill: '#7a7a7a', fontSize: 12 }} />
               <YAxis 
                 dataKey="provider" 
                 type="category" 
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12 }}
                 width={100}
               />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(0,0,0,0.8)', 
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
+                  backgroundColor: '#0a0a0a',
+                  border: '1px solid #33ff33',
+                  borderRadius: '0px',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
                 }}
+                labelStyle={{ color: '#c0c0c0' }}
               />
-              <Bar dataKey="success_rate_pct" fill="#10b981" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="success_rate_pct" fill="#00ff00" radius={[0, 0, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         {/* Provider Comparison - Latency */}
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Provider Latencies</h3>
+        <div className="terminal-panel p-6">
+          <h3 className="terminal-panel__title mb-4">Provider Latencies</h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={providers.slice(0, 10)} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-              <XAxis type="number" stroke="rgba(255,255,255,0.5)" tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#33ff33" />
+              <XAxis type="number" stroke="#33ff33" tick={{ fill: '#7a7a7a', fontSize: 12 }} />
               <YAxis 
                 dataKey="provider" 
                 type="category" 
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12 }}
                 width={100}
               />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(0,0,0,0.8)', 
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
+                  backgroundColor: '#0a0a0a',
+                  border: '1px solid #33ff33',
+                  borderRadius: '0px',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
                 }}
+                labelStyle={{ color: '#c0c0c0' }}
               />
-              <Bar dataKey="avg_success_latency_ms" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="avg_success_latency_ms" fill="#33ff33" radius={[0, 0, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       {/* Provider Performance Table */}
-      <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Provider Performance Details</h3>
+      <div className="terminal-panel p-6">
+        <h3 className="terminal-panel__title mb-4">Provider Performance Details</h3>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="terminal-table">
             <thead>
-              <tr className="border-b border-white/10">
-                <th className="text-left text-sm font-medium text-white/60 pb-3">Provider</th>
-                <th className="text-left text-sm font-medium text-white/60 pb-3">Service</th>
-                <th className="text-right text-sm font-medium text-white/60 pb-3">Requests</th>
-                <th className="text-right text-sm font-medium text-white/60 pb-3">Success Rate</th>
-                <th className="text-right text-sm font-medium text-white/60 pb-3">Avg Latency</th>
-                <th className="text-right text-sm font-medium text-white/60 pb-3">Total Cost</th>
-                <th className="text-right text-sm font-medium text-white/60 pb-3">Cost/Req</th>
+              <tr>
+                <th className="text-left">Provider</th>
+                <th className="text-left">Service</th>
+                <th className="text-right terminal-panel__title pb-3">Requests</th>
+                <th className="text-right terminal-panel__title pb-3">Success Rate</th>
+                <th className="text-right terminal-panel__title pb-3">Avg Latency</th>
+                <th className="text-right terminal-panel__title pb-3">Total Cost</th>
+                <th className="text-right terminal-panel__title pb-3">Cost/Req</th>
               </tr>
             </thead>
             <tbody>
               {providers.map((provider, idx) => (
-                <tr key={`${provider.provider}-${provider.service_type}-${idx}`} className="border-b border-white/5">
-                  <td className="py-3 text-sm text-white font-medium">{provider.provider}</td>
-                  <td className="py-3 text-sm text-white/80">{provider.service_type}</td>
-                  <td className="py-3 text-sm text-white text-right">{(provider.total_requests || 0).toLocaleString()}</td>
+                <tr key={`${provider.provider}-${provider.service_type}-${idx}`}>
+                  <td className="py-3 text-sm font-medium terminal-text">{provider.provider}</td>
+                  <td className="py-3 text-sm terminal-text-muted">{provider.service_type}</td>
+                  <td className="py-3 text-sm terminal-text text-right">{(provider.total_requests || 0).toLocaleString()}</td>
                   <td className="py-3 text-right">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      (provider.success_rate_pct || 0) > 99 ? 'bg-emerald-500/10 text-emerald-400' :
-                      (provider.success_rate_pct || 0) > 95 ? 'bg-blue-500/10 text-blue-400' :
-                      'bg-red-500/10 text-red-400'
+                    <span className={`terminal-badge ${
+                      (provider.success_rate_pct || 0) > 99 ? 'terminal-badge--active' :
+                      (provider.success_rate_pct || 0) > 95 ? '' :
+                      'terminal-badge--alert'
                     }`}>
                       {(provider.success_rate_pct || 0).toFixed(2)}%
                     </span>
                   </td>
-                  <td className="py-3 text-sm text-white text-right">
+                  <td className="py-3 text-sm terminal-text text-right">
                     {provider.avg_success_latency_ms?.toFixed(0) || 0}ms
                   </td>
-                  <td className="py-3 text-sm text-white text-right">${(provider.total_cost || 0).toFixed(2)}</td>
-                  <td className="py-3 text-sm text-white/80 text-right">${(provider.avg_cost_per_request || 0).toFixed(4)}</td>
+                  <td className="py-3 text-sm terminal-text text-right">${(provider.total_cost || 0).toFixed(2)}</td>
+                  <td className="py-3 text-sm terminal-text-muted text-right">${(provider.avg_cost_per_request || 0).toFixed(4)}</td>
                 </tr>
               ))}
             </tbody>
@@ -214,26 +225,26 @@ export function TechnicalPerformance() {
 
       {/* Performance Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-          <h4 className="text-sm font-medium text-white/60 mb-3">Best Success Rate</h4>
-          <p className="text-3xl font-bold text-emerald-400 mb-1">
+        <div className="terminal-card p-6">
+          <h4 className="terminal-panel__title mb-3">Best Success Rate</h4>
+          <p className="text-3xl font-bold terminal-metric--success mb-1">
             {providers.length > 0 ? Math.max(...providers.map(p => p.success_rate_pct || 0)).toFixed(2) : '0.00'}%
           </p>
-          <p className="text-xs text-white/40">Top performing provider</p>
+          <p className="text-xs terminal-text-muted">Top performing provider</p>
         </div>
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-          <h4 className="text-sm font-medium text-white/60 mb-3">Fastest Provider</h4>
-          <p className="text-3xl font-bold text-blue-400 mb-1">
+        <div className="terminal-card p-6">
+          <h4 className="terminal-panel__title mb-3">Fastest Provider</h4>
+          <p className="text-3xl font-bold terminal-metric mb-1">
             {Math.min(...providers.map(p => p.avg_success_latency_ms || Infinity)).toFixed(0)}ms
           </p>
-          <p className="text-xs text-white/40">Lowest average latency</p>
+          <p className="text-xs terminal-text-muted">Lowest average latency</p>
         </div>
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-          <h4 className="text-sm font-medium text-white/60 mb-3">Most Cost Efficient</h4>
-          <p className="text-3xl font-bold text-purple-400 mb-1">
+        <div className="terminal-card p-6">
+          <h4 className="terminal-panel__title mb-3">Most Cost Efficient</h4>
+          <p className="text-3xl font-bold terminal-metric mb-1">
             ${providers.length > 0 ? Math.min(...providers.map(p => p.avg_cost_per_request || Infinity)).toFixed(4) : '0.0000'}
           </p>
-          <p className="text-xs text-white/40">Lowest cost per request</p>
+          <p className="text-xs terminal-text-muted">Lowest cost per request</p>
         </div>
       </div>
     </div>

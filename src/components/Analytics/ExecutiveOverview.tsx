@@ -14,10 +14,10 @@ export function ExecutiveOverview() {
   if (summaryLoading || metricsLoading || scoreLoading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="glass-card p-8">
-          <div className="flex items-center gap-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-white/20 border-t-white/80" />
-            <span className="text-white/70">Loading analytics...</span>
+        <div className="terminal-panel p-8">
+          <div className="terminal-loader">
+            <div className="terminal-loader__spinner">|</div>
+            <span>Loading analytics...</span>
           </div>
         </div>
       </div>
@@ -35,9 +35,9 @@ export function ExecutiveOverview() {
   return (
     <div className="space-y-6">
       {/* Header with Filters */}
-      <div className="glass-card p-6">
-        <h2 className="text-3xl font-bold gradient-text-violet mb-2">Executive Overview</h2>
-        <p className="text-white/60">High-level performance metrics and insights • Real-time updates</p>
+      <div className="terminal-panel p-6">
+        <h2 className="text-3xl font-bold terminal-text-glow terminal-uppercase mb-2" style={{color: '#33ff33'}}>Executive Overview</h2>
+        <p className="text-[#7a7a7a]">High-level performance metrics and insights • Real-time updates</p>
       </div>
       <FilterControls
         dateRange={dateRange}
@@ -93,128 +93,134 @@ export function ExecutiveOverview() {
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Daily Active Users Trend */}
-        <div className="glass-card-elevated p-6 hover-lift">
-          <h3 className="text-lg font-semibold text-white mb-4">Daily Active Users (30 Days)</h3>
+        <div className="terminal-panel p-6">
+          <h3 className="terminal-panel__title mb-4">Daily Active Users (30 Days)</h3>
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="#33ff33" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#33ff33" stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,255,51,0.15)" />
               <XAxis 
                 dataKey="date" 
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12, fontFamily: 'monospace' }}
               />
               <YAxis 
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12, fontFamily: 'monospace' }}
               />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(0,0,0,0.8)', 
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
-                  backdropFilter: 'blur(12px)'
+                  backgroundColor: 'rgba(11,13,19,0.95)', 
+                  border: '1px solid #33ff33',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
                 }}
-                labelStyle={{ color: '#fff' }}
+                labelStyle={{ color: '#33ff33' }}
               />
               <Area 
                 type="monotone" 
                 dataKey="users" 
-                stroke="#3b82f6" 
+                stroke="#33ff33" 
                 strokeWidth={2}
                 fillOpacity={1} 
-                fill="url(#colorUsers)" 
+                fill="url(#colorUsers)"
+                filter="drop-shadow(0 0 8px rgba(51,255,51,0.4))" 
               />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
         {/* Cost Trend */}
-        <div className="glass-card-elevated p-6 hover-lift">
-          <h3 className="text-lg font-semibold text-white mb-4">Daily Cost (30 Days)</h3>
+        <div className="terminal-panel p-6">
+          <h3 className="terminal-panel__title mb-4">Daily Cost (30 Days)</h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,255,51,0.15)" />
               <XAxis 
                 dataKey="date" 
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12, fontFamily: 'monospace' }}
               />
               <YAxis 
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12, fontFamily: 'monospace' }}
               />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(0,0,0,0.8)', 
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
-                  backdropFilter: 'blur(12px)'
+                  backgroundColor: 'rgba(11,13,19,0.95)', 
+                  border: '1px solid #33ff33',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
                 }}
-                labelStyle={{ color: '#fff' }}
+                labelStyle={{ color: '#33ff33' }}
               />
-              <Bar dataKey="cost" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="cost" fill="#33ff33" radius={[4, 4, 0, 0]} style={{filter: 'drop-shadow(0 0 8px rgba(51,255,51,0.4))'}} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         {/* Success Rate Trend */}
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6 lg:col-span-2">
-          <h3 className="text-lg font-semibold text-white mb-4">Success Rate & Request Volume</h3>
+        <div className="terminal-panel p-6 lg:col-span-2">
+          <h3 className="terminal-panel__title mb-4">Success Rate & Request Volume</h3>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,255,51,0.15)" />
               <XAxis 
                 dataKey="date" 
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12, fontFamily: 'monospace' }}
               />
               <YAxis 
                 yAxisId="left"
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12, fontFamily: 'monospace' }}
               />
               <YAxis 
                 yAxisId="right"
                 orientation="right"
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12, fontFamily: 'monospace' }}
               />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(0,0,0,0.8)', 
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
-                  backdropFilter: 'blur(12px)'
+                  backgroundColor: 'rgba(11,13,19,0.95)', 
+                  border: '1px solid #33ff33',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
                 }}
-                labelStyle={{ color: '#fff' }}
+                labelStyle={{ color: '#33ff33' }}
               />
               <Legend 
-                wrapperStyle={{ color: '#fff' }}
+                wrapperStyle={{ color: '#33ff33', fontFamily: 'monospace' }}
                 iconType="circle"
               />
               <Line 
                 yAxisId="left"
                 type="monotone" 
                 dataKey="successRate" 
-                stroke="#10b981" 
+                stroke="#33ff33" 
                 strokeWidth={2}
-                dot={{ fill: '#10b981', r: 4 }}
+                dot={{ fill: '#33ff33', r: 4 }}
                 name="Success Rate (%)"
+                filter="drop-shadow(0 0 4px rgba(51,255,51,0.4))"
               />
               <Line 
                 yAxisId="right"
                 type="monotone" 
                 dataKey="requests" 
-                stroke="#06b6d4" 
+                stroke="#00ff00" 
                 strokeWidth={2}
-                dot={{ fill: '#06b6d4', r: 4 }}
+                dot={{ fill: '#00ff00', r: 4 }}
                 name="Total Requests"
+                filter="drop-shadow(0 0 4px rgba(0,255,0,0.4))"
               />
             </LineChart>
           </ResponsiveContainer>
@@ -222,24 +228,24 @@ export function ExecutiveOverview() {
       </div>
 
       {/* Quick Stats */}
-      <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Today's Overview</h3>
+      <div className="terminal-panel p-6">
+        <h3 className="terminal-panel__title mb-4">Today's Overview</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <div>
-            <p className="text-sm text-white/60 mb-1">Total Requests</p>
-            <p className="text-2xl font-bold text-white">{summary?.total_requests_today?.toLocaleString() ?? 0}</p>
+          <div className="relative z-10">
+            <p className="terminal-panel__title mb-1">Total Requests</p>
+            <p className="text-2xl font-bold text-[#33ff33] terminal-text-glow">{summary?.total_requests_today?.toLocaleString() ?? 0}</p>
           </div>
-          <div>
-            <p className="text-sm text-white/60 mb-1">Avg Latency</p>
-            <p className="text-2xl font-bold text-white">{summary?.avg_latency_ms || 0}ms</p>
+          <div className="relative z-10">
+            <p className="terminal-panel__title mb-1">Avg Latency</p>
+            <p className="text-2xl font-bold text-[#33ff33] terminal-text-glow">{summary?.avg_latency_ms || 0}ms</p>
           </div>
-          <div>
-            <p className="text-sm text-white/60 mb-1">Success Rate</p>
-            <p className="text-2xl font-bold text-white">{summary?.success_rate ?? 0}%</p>
+          <div className="relative z-10">
+            <p className="terminal-panel__title mb-1">Success Rate</p>
+            <p className="text-2xl font-bold text-[#33ff33] terminal-text-glow">{summary?.success_rate ?? 0}%</p>
           </div>
-          <div>
-            <p className="text-sm text-white/60 mb-1">Total Users</p>
-            <p className="text-2xl font-bold text-white">{summary?.total_users ?? 0}</p>
+          <div className="relative z-10">
+            <p className="terminal-panel__title mb-1">Total Users</p>
+            <p className="text-2xl font-bold text-[#33ff33] terminal-text-glow">{summary?.total_users ?? 0}</p>
           </div>
         </div>
       </div>

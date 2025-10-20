@@ -136,33 +136,31 @@ export function SLODashboard() {
   const getStatusColor = (status: SLO['status']) => {
     switch (status) {
       case 'healthy':
-        return 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
+        return 'terminal-badge terminal-badge--active';
       case 'at_risk':
-        return 'text-amber-400 border-amber-500/30 bg-amber-500/10';
+        return 'terminal-badge terminal-badge--warning';
       case 'breached':
-        return 'text-red-400 border-red-500/30 bg-red-500/10';
+        return 'terminal-badge terminal-badge--alert';
     }
   };
 
   const getStatusIcon = (status: SLO['status']) => {
     switch (status) {
       case 'healthy':
-        return <CheckCircle2 className="w-5 h-5 text-emerald-400" />;
+        return <CheckCircle2 className="w-5 h-5 text-[#00ff00]" />;
       case 'at_risk':
-        return <AlertTriangle className="w-5 h-5 text-amber-400" />;
+        return <AlertTriangle className="w-5 h-5 text-[#ffff00]" />;
       case 'breached':
-        return <AlertTriangle className="w-5 h-5 text-red-400" />;
+        return <AlertTriangle className="w-5 h-5 text-[#ff3333]" />;
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="glass-card p-8">
-          <div className="flex items-center gap-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-white/20 border-t-white/80" />
-            <span className="text-white/70">Loading SLO data...</span>
-          </div>
+      <div className="terminal-panel p-8">
+        <div className="terminal-loader">
+          <div className="terminal-loader__spinner">|</div>
+          <span>Loading SLO data...</span>
         </div>
       </div>
     );
@@ -184,12 +182,12 @@ export function SLODashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="glass-card p-6">
+      <div className="terminal-panel p-6">
         <div className="flex items-center gap-3 mb-2">
-          <Target className="w-8 h-8 text-blue-400" />
+          <Target className="w-8 h-8 text-[#33ff33]" />
           <div>
-            <h2 className="text-3xl font-bold text-white">SLO Dashboard</h2>
-            <p className="text-white/60">Service Level Objectives & Error Budgets</p>
+            <h2 className="terminal-panel__title text-2xl">SLO Dashboard</h2>
+            <p className="terminal-text-muted text-sm">Service Level Objectives & Error Budgets</p>
           </div>
         </div>
       </div>
@@ -233,41 +231,41 @@ export function SLODashboard() {
             key={slo.id}
             onClick={() => setSelectedSLO(slo.id)}
             className={`
-              glass-card-elevated p-6 cursor-pointer transition-all hover:scale-[1.02]
-              ${selectedSLO === slo.id ? 'ring-2 ring-blue-500/50' : ''}
+              terminal-panel p-6 cursor-pointer transition-all
+              ${selectedSLO === slo.id ? 'border-[#33ff33]' : ''}
             `}
           >
             <div className="flex items-start justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-white mb-1">{slo.name}</h3>
-                <p className="text-sm text-white/60">{slo.description}</p>
+                <h3 className="text-lg font-semibold terminal-metric mb-1">{slo.name}</h3>
+                <p className="text-sm terminal-text-muted">{slo.description}</p>
               </div>
               {getStatusIcon(slo.status)}
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <p className="text-xs text-white/50 mb-1">Current</p>
-                <p className="text-2xl font-bold text-white">{slo.current.toFixed(2)}%</p>
+                <p className="text-xs terminal-text-muted mb-1">Current</p>
+                <p className="text-2xl font-bold terminal-metric">{slo.current.toFixed(2)}%</p>
               </div>
               <div>
-                <p className="text-xs text-white/50 mb-1">Target</p>
-                <p className="text-2xl font-bold text-white/80">{slo.target.toFixed(1)}%</p>
+                <p className="text-xs terminal-text-muted mb-1">Target</p>
+                <p className="text-2xl font-bold terminal-metric">{slo.target.toFixed(1)}%</p>
               </div>
             </div>
 
             {/* Error Budget Progress Bar */}
             <div className="mb-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-white/60">Error Budget</span>
-                <span className="text-xs font-medium text-white">{slo.error_budget.toFixed(1)}%</span>
+                <span className="text-xs terminal-text-muted">Error Budget</span>
+                <span className="text-xs font-medium">{slo.error_budget.toFixed(1)}%</span>
               </div>
-              <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-2 bg-[#111111] overflow-hidden">
                 <div
                   className={`h-full transition-all ${
-                    slo.error_budget > 50 ? 'bg-emerald-400' :
-                    slo.error_budget > 20 ? 'bg-amber-400' :
-                    'bg-red-400'
+                    slo.error_budget > 50 ? 'bg-[#00ff00]' :
+                    slo.error_budget > 20 ? 'bg-[#ffff00]' :
+                    'bg-[#ff3333]'
                   }`}
                   style={{ width: `${slo.error_budget}%` }}
                 />
@@ -275,15 +273,15 @@ export function SLODashboard() {
             </div>
 
             <div className="flex items-center justify-between">
-              <div className={`px-3 py-1 rounded-lg text-xs font-medium border ${getStatusColor(slo.status)}`}>
+              <div className={`text-xs font-medium ${getStatusColor(slo.status)}`}>
                 {slo.status.toUpperCase()}
               </div>
               <div className="text-right">
-                <p className="text-xs text-white/50">Burn Rate</p>
+                <p className="text-xs terminal-text-muted">Burn Rate</p>
                 <p className={`text-sm font-medium ${
-                  slo.burn_rate < 1 ? 'text-emerald-400' :
-                  slo.burn_rate < 3 ? 'text-amber-400' :
-                  'text-red-400'
+                  slo.burn_rate < 1 ? 'text-[#00ff00]' :
+                  slo.burn_rate < 3 ? 'text-[#ffff00]' :
+                  'text-[#ff3333]'
                 }`}>
                   {slo.burn_rate.toFixed(1)}%/day
                 </p>
@@ -295,58 +293,60 @@ export function SLODashboard() {
 
       {/* Detailed Chart for Selected SLO */}
       {selectedSLOData && (
-        <div className="glass-card-elevated p-6">
+        <div className="terminal-panel p-6">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-xl font-semibold text-white">{selectedSLOData.name}</h3>
-              <p className="text-sm text-white/60">Last 24 hours • Window: {selectedSLOData.window}</p>
+              <h3 className="terminal-panel__title text-xl">{selectedSLOData.name}</h3>
+              <p className="text-sm terminal-text-muted">Last 24 hours • Window: {selectedSLOData.window}</p>
             </div>
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <p className="text-xs text-white/50">Current</p>
-                <p className="text-2xl font-bold text-white">{selectedSLOData.current.toFixed(2)}%</p>
+                <p className="text-xs terminal-text-muted">Current</p>
+                <p className="text-2xl font-bold terminal-metric">{selectedSLOData.current.toFixed(2)}%</p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-white/50">Target</p>
-                <p className="text-2xl font-bold text-white/80">{selectedSLOData.target.toFixed(1)}%</p>
+                <p className="text-xs terminal-text-muted">Target</p>
+                <p className="text-2xl font-bold terminal-metric">{selectedSLOData.target.toFixed(1)}%</p>
               </div>
             </div>
           </div>
 
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,255,51,0.15)" />
               <XAxis
                 dataKey="time"
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12 }}
               />
               <YAxis
-                stroke="rgba(255,255,255,0.5)"
-                tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }}
+                stroke="#33ff33"
+                tick={{ fill: '#7a7a7a', fontSize: 12 }}
                 domain={[selectedSLOData.target - 5, 100]}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'rgba(0,0,0,0.8)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
+                  backgroundColor: '#0a0a0a',
+                  border: '1px solid #33ff33',
+                  borderRadius: '0px',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
                 }}
-                labelStyle={{ color: '#fff' }}
+                labelStyle={{ color: '#c0c0c0' }}
               />
               <Legend />
               <ReferenceLine
                 y={selectedSLOData.target}
-                stroke="#f59e0b"
+                stroke="#ffff00"
                 strokeDasharray="3 3"
-                label={{ value: 'Target', fill: '#f59e0b', fontSize: 12 }}
+                label={{ value: 'Target', fill: '#ffff00', fontSize: 12 }}
               />
               <Line
                 type="monotone"
                 dataKey="value"
-                stroke="#3b82f6"
+                stroke="#33ff33"
                 strokeWidth={2}
-                dot={{ fill: '#3b82f6', r: 3 }}
+                dot={{ fill: '#33ff33', r: 3 }}
                 name="Actual"
               />
             </LineChart>
@@ -354,31 +354,33 @@ export function SLODashboard() {
 
           {/* Error Budget Chart */}
           <div className="mt-6">
-            <h4 className="text-sm font-medium text-white/80 mb-3">Error Budget Consumption</h4>
+            <h4 className="terminal-panel__title text-sm mb-3">Error Budget Consumption</h4>
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,255,51,0.15)" />
                 <XAxis
                   dataKey="time"
-                  stroke="rgba(255,255,255,0.5)"
-                  tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 10 }}
+                  stroke="#33ff33"
+                  tick={{ fill: '#7a7a7a', fontSize: 10 }}
                 />
                 <YAxis
-                  stroke="rgba(255,255,255,0.5)"
-                  tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 10 }}
+                  stroke="#33ff33"
+                  tick={{ fill: '#7a7a7a', fontSize: 10 }}
                   domain={[0, 100]}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: 'rgba(0,0,0,0.8)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '8px',
+                    backgroundColor: '#0a0a0a',
+                    border: '1px solid #33ff33',
+                    borderRadius: '0px',
+                    fontFamily: 'monospace',
+                    fontSize: '12px'
                   }}
                 />
                 <Line
                   type="monotone"
                   dataKey="errorBudget"
-                  stroke="#10b981"
+                  stroke="#00ff00"
                   strokeWidth={2}
                   dot={false}
                   name="Budget Remaining %"
@@ -390,32 +392,32 @@ export function SLODashboard() {
       )}
 
       {/* Recommendations */}
-      <div className="glass-card p-6">
+      <div className="terminal-panel p-6">
         <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="w-5 h-5 text-violet-400" />
-          <h3 className="text-lg font-semibold text-white">Recommendations</h3>
+          <TrendingUp className="w-5 h-5 text-[#33ff33]" />
+          <h3 className="terminal-panel__title text-lg">Recommendations</h3>
         </div>
         <div className="space-y-3">
           {slos.filter(s => s.status === 'at_risk').map(slo => (
-            <div key={slo.id} className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
-              <p className="text-sm font-medium text-amber-400 mb-1">{slo.name}</p>
-              <p className="text-xs text-white/70">
+            <div key={slo.id} className="bg-[#111111] border border-[#ffff00] p-4">
+              <p className="text-sm font-medium text-[#ffff00] mb-1">{slo.name}</p>
+              <p className="text-xs terminal-text-muted">
                 Error budget at {slo.error_budget.toFixed(1)}%. Consider: reducing traffic, improving caching, or adjusting SLO target.
               </p>
             </div>
           ))}
           {slos.filter(s => s.status === 'breached').map(slo => (
-            <div key={slo.id} className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-              <p className="text-sm font-medium text-red-400 mb-1">⚠️ {slo.name} - BREACHED</p>
-              <p className="text-xs text-white/70">
+            <div key={slo.id} className="bg-[#111111] border border-[#ff3333] p-4">
+              <p className="text-sm font-medium text-[#ff3333] mb-1">⚠️ {slo.name} - BREACHED</p>
+              <p className="text-xs terminal-text-muted">
                 Immediate action required. Error budget exhausted. Review incidents and implement fixes.
               </p>
             </div>
           ))}
           {slos.every(s => s.status === 'healthy') && (
-            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
-              <p className="text-sm font-medium text-emerald-400">✓ All SLOs Healthy</p>
-              <p className="text-xs text-white/70">
+            <div className="bg-[#111111] border border-[#00ff00] p-4">
+              <p className="text-sm font-medium text-[#00ff00]">✓ All SLOs Healthy</p>
+              <p className="text-xs terminal-text-muted">
                 All service level objectives are meeting targets. Continue monitoring burn rates.
               </p>
             </div>

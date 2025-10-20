@@ -62,78 +62,78 @@ export function CapacityForecasting() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="glass-card p-6">
+      <div className="terminal-panel p-6">
         <div className="flex items-center gap-3 mb-6">
-          <Activity className="w-6 h-6 text-violet-400" />
+          <Activity className="w-6 h-6 text-[#33ff33]" />
           <div>
-            <h2 className="text-2xl font-bold text-white">Capacity & Forecasting</h2>
-            <p className="text-sm text-white/60 mt-1">Usage predictions and budget tracking</p>
+            <h2 className="text-3xl font-bold terminal-text-glow terminal-uppercase mb-2" style={{color: '#33ff33'}}>Capacity & Forecasting</h2>
+            <p className="text-[#7a7a7a]">Usage predictions and budget tracking</p>
           </div>
         </div>
 
         {/* Budget Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Current Spend */}
-          <div className="glass-card-elevated p-4">
+          <div className="terminal-card p-4">
             <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="w-4 h-4 text-blue-400" />
-              <span className="text-xs text-white/60">Month to Date</span>
+              <DollarSign className="w-4 h-4 text-[#3b82f6]" />
+              <span className="text-xs terminal-text-muted">Month to Date</span>
             </div>
-            <div className="text-2xl font-bold text-white">
+            <div className="text-2xl font-bold terminal-text">
               ${currentMonthSpend.toFixed(2)}
             </div>
-            <div className="text-xs text-white/50 mt-1">
+            <div className="text-xs terminal-text-muted mt-1">
               {metrics.length} days tracked
             </div>
           </div>
 
           {/* Projected Spend */}
-          <div className="glass-card-elevated p-4">
+          <div className="terminal-card p-4">
             <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="w-4 h-4 text-violet-400" />
-              <span className="text-xs text-white/60">Projected Total</span>
+              <TrendingUp className="w-4 h-4 text-[#8b5cf6]" />
+              <span className="text-xs terminal-text-muted">Projected Total</span>
             </div>
-            <div className="text-2xl font-bold text-white">
+            <div className="text-2xl font-bold terminal-text">
               ${projectedMonthSpend.toFixed(2)}
             </div>
-            <div className="text-xs text-white/50 mt-1">
+            <div className="text-xs terminal-text-muted mt-1">
               Based on current trend
             </div>
           </div>
 
           {/* Budget Remaining */}
-          <div className="glass-card-elevated p-4">
+          <div className="terminal-card p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Activity className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs text-white/60">Budget Remaining</span>
+              <Activity className="w-4 h-4 text-[#10b981]" />
+              <span className="text-xs terminal-text-muted">Budget Remaining</span>
             </div>
-            <div className={`text-2xl font-bold ${budgetRemaining < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+            <div className={`text-2xl font-bold ${budgetRemaining < 0 ? 'text-[#ff3333]' : 'text-[#00ff00]'}`}>
               ${Math.abs(budgetRemaining).toFixed(2)}
             </div>
-            <div className="text-xs text-white/50 mt-1">
+            <div className="text-xs terminal-text-muted mt-1">
               of ${monthlyBudget.toFixed(2)} budget
             </div>
           </div>
 
           {/* Budget Usage */}
-          <div className="glass-card-elevated p-4">
+          <div className="terminal-card p-4">
             <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className={`w-4 h-4 ${budgetUsagePercent > 80 ? 'text-red-400' : 'text-amber-400'}`} />
-              <span className="text-xs text-white/60">Budget Usage</span>
+              <AlertTriangle className={`w-4 h-4 ${budgetUsagePercent > 80 ? 'text-[#ff3333]' : 'text-[#ffff00]'}`} />
+              <span className="text-xs terminal-text-muted">Budget Usage</span>
             </div>
             <div className={`text-2xl font-bold ${
-              budgetUsagePercent > 100 ? 'text-red-400' : 
-              budgetUsagePercent > 80 ? 'text-amber-400' : 
-              'text-emerald-400'
+              budgetUsagePercent > 100 ? 'text-[#ff3333]' : 
+              budgetUsagePercent > 80 ? 'text-[#ffff00]' : 
+              'text-[#00ff00]'
             }`}>
               {budgetUsagePercent.toFixed(1)}%
             </div>
-            <div className="mt-2 h-1 bg-white/10 rounded-full overflow-hidden">
+            <div className="mt-2 h-1 bg-[#111111] rounded-full overflow-hidden border border-[#33ff33]/20">
               <div 
                 className={`h-full transition-all ${
-                  budgetUsagePercent > 100 ? 'bg-red-400' :
-                  budgetUsagePercent > 80 ? 'bg-amber-400' :
-                  'bg-emerald-400'
+                  budgetUsagePercent > 100 ? 'bg-[#ff3333]' :
+                  budgetUsagePercent > 80 ? 'bg-[#ffff00]' :
+                  'bg-[#00ff00]'
                 }`}
                 style={{ width: `${Math.min(budgetUsagePercent, 100)}%` }}
               />
@@ -143,23 +143,19 @@ export function CapacityForecasting() {
 
         {/* Budget Alert */}
         {budgetUsagePercent > 80 && (
-          <div className={`
-            mt-4 p-4 rounded-lg border
-            ${budgetUsagePercent > 100 
-              ? 'bg-red-500/10 border-red-500/30' 
-              : 'bg-amber-500/10 border-amber-500/30'
-            }
-          `}>
+          <div className={`mt-4 terminal-card p-4 border ${
+            budgetUsagePercent > 100 ? 'border-[#ff3333]' : 'border-[#ffff00]'
+          }`}>
             <div className="flex items-start gap-3">
-              <AlertTriangle className={`w-5 h-5 flex-shrink-0 ${budgetUsagePercent > 100 ? 'text-red-400' : 'text-amber-400'}`} />
+              <AlertTriangle className={`w-5 h-5 flex-shrink-0 ${budgetUsagePercent > 100 ? 'text-[#ff3333]' : 'text-[#ffff00]'}`} />
               <div className="flex-1">
-                <h4 className={`text-sm font-semibold ${budgetUsagePercent > 100 ? 'text-red-400' : 'text-amber-400'}`}>
+                <h4 className={`text-sm font-semibold ${budgetUsagePercent > 100 ? 'text-[#ff3333]' : 'text-[#ffff00]'}`}>
                   {budgetUsagePercent > 100 ? 'Budget Exceeded' : 'Budget Warning'}
                 </h4>
-                <p className="text-xs text-white/70 mt-1">
+                <p className="text-xs terminal-text-muted mt-1">
                   {budgetUsagePercent > 100 
                     ? `You've exceeded your monthly budget by $${(currentMonthSpend - monthlyBudget).toFixed(2)}.`
-                    : `You're approaching your monthly budget limit. ${100 - budgetUsagePercent.toFixed(1)}% remaining.`
+                    : `You're approaching your monthly budget limit. ${(100 - budgetUsagePercent).toFixed(1)}% remaining.`
                   }
                 </p>
               </div>
@@ -169,45 +165,27 @@ export function CapacityForecasting() {
       </div>
 
       {/* Forecast Chart */}
-      <div className="glass-card p-6">
+      <div className="terminal-panel p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">Cost Forecast</h3>
+          <h3 className="terminal-panel__title">Cost Forecast</h3>
           
           {/* Forecast Range Selector */}
           <div className="flex gap-2">
             <button
               onClick={() => setForecastDays(7)}
-              className={`
-                px-3 py-1 rounded-lg text-xs font-medium transition-all
-                ${forecastDays === 7 
-                  ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' 
-                  : 'glass-button text-white/60'
-                }
-              `}
+              className={`terminal-filter__chip ${forecastDays === 7 ? 'terminal-filter__chip--active' : ''}`}
             >
               7 days
             </button>
             <button
               onClick={() => setForecastDays(14)}
-              className={`
-                px-3 py-1 rounded-lg text-xs font-medium transition-all
-                ${forecastDays === 14 
-                  ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' 
-                  : 'glass-button text-white/60'
-                }
-              `}
+              className={`terminal-filter__chip ${forecastDays === 14 ? 'terminal-filter__chip--active' : ''}`}
             >
               14 days
             </button>
             <button
               onClick={() => setForecastDays(30)}
-              className={`
-                px-3 py-1 rounded-lg text-xs font-medium transition-all
-                ${forecastDays === 30 
-                  ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' 
-                  : 'glass-button text-white/60'
-                }
-              `}
+              className={`terminal-filter__chip ${forecastDays === 30 ? 'terminal-filter__chip--active' : ''}`}
             >
               30 days
             </button>
@@ -226,24 +204,26 @@ export function CapacityForecasting() {
                 <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,255,51,0.15)" />
             <XAxis 
               dataKey="date" 
-              stroke="rgba(255,255,255,0.5)"
-              style={{ fontSize: '12px' }}
+              stroke="#33ff33"
+              tick={{ fill: '#7a7a7a', fontSize: 12, fontFamily: 'monospace' }}
             />
             <YAxis 
-              stroke="rgba(255,255,255,0.5)"
-              style={{ fontSize: '12px' }}
+              stroke="#33ff33"
+              tick={{ fill: '#7a7a7a', fontSize: 12, fontFamily: 'monospace' }}
               tickFormatter={(value) => `$${value.toFixed(0)}`}
             />
             <Tooltip 
               contentStyle={{ 
-                backgroundColor: 'rgba(10, 10, 10, 0.95)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '8px'
+                backgroundColor: 'rgba(11,13,19,0.95)',
+                border: '1px solid #33ff33',
+                borderRadius: '4px',
+                fontFamily: 'monospace',
+                fontSize: '12px'
               }}
-              labelStyle={{ color: 'rgba(255,255,255,0.9)' }}
+              labelStyle={{ color: '#33ff33' }}
               formatter={(value: any) => [`$${Number(value).toFixed(2)}`, '']} // eslint-disable-line @typescript-eslint/no-explicit-any
             />
             
@@ -284,17 +264,17 @@ export function CapacityForecasting() {
           </AreaChart>
         </ResponsiveContainer>
 
-        <div className="mt-4 flex items-center gap-4 text-xs text-white/60">
+        <div className="mt-4 flex items-center gap-4 text-xs terminal-text-muted">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-violet-500"></div>
+            <div className="w-3 h-3 rounded-full bg-[#8b5cf6]"></div>
             <span>Actual Spend</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+            <div className="w-3 h-3 rounded-full bg-[#3b82f6]"></div>
             <span>Forecasted Spend</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-2 bg-blue-500/20"></div>
+            <div className="w-8 h-2 bg-[#3b82f6]/20"></div>
             <span>Confidence Interval</span>
           </div>
         </div>

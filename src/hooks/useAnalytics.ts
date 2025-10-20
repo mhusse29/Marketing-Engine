@@ -402,7 +402,7 @@ export interface ExecutiveSummary {
   active_users_today: number;
   total_requests_today: number;
   success_rate: number;
-  total_cost_today: number;
+  total_cost_today: number | string; // Can be numeric or string from API
   avg_latency_ms: number;
   health_score: number;
 }

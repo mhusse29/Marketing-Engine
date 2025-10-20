@@ -14,22 +14,15 @@ export function RealtimeOperations() {
   if (healthLoading || usageLoading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-8">
-          <div className="flex items-center gap-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-white/20 border-t-white/80" />
-            <span className="text-white/70">Loading real-time data...</span>
+        <div className="terminal-panel p-8">
+          <div className="terminal-loader">
+            <div className="terminal-loader__spinner">|</div>
+            <span>Loading real-time data...</span>
           </div>
         </div>
       </div>
     );
   }
-
-  const getStatusColor = (status: string) => {
-    // Fix: Check for both 'error' and 'failed' statuses
-    return status === 'success' ? 'text-emerald-400' : 
-           (status === 'error' || status === 'failed') ? 'text-red-400' : 
-           'text-amber-400';
-  };
 
   // Fix HIGH: Actually filter the data based on selected filters
   const filteredApiUsage = apiUsage.filter(request => {
@@ -97,37 +90,37 @@ export function RealtimeOperations() {
       </div>
 
       {/* Live API Requests Stream */}
-      <div className="glass-card-elevated p-6">
+      <div className="terminal-panel p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">Recent Requests</h3>
-          <span className="text-sm text-white/50">{filteredApiUsage.length} of {apiUsage.length} requests</span>
+          <h3 className="terminal-panel__title">Recent Requests</h3>
+          <span className="text-sm terminal-text-muted">{filteredApiUsage.length} of {apiUsage.length} requests</span>
         </div>
         
-        <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+        <div className="terminal-stream terminal-scroll">
           {filteredApiUsage.map((request, idx) => (
             <div
               key={request.id}
-              className="backdrop-blur-sm bg-white/[0.02] border border-white/5 rounded-lg p-4 hover:bg-white/[0.04] transition-all animate-fade-in"
+              className={`terminal-stream__item ${request.status === 'success' ? 'terminal-stream__item--success' : (request.status === 'error' || request.status === 'failed') ? 'terminal-stream__item--error' : ''}`}
               style={{ animationDelay: `${idx * 20}ms` }}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4 flex-1">
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-lg ${
-                    request.status === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 
-                    (request.status === 'error' || request.status === 'failed') ? 'bg-red-500/10 text-red-400' :
-                    'bg-amber-500/10 text-amber-400'
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-lg border ${
+                    request.status === 'success' ? 'bg-[#33ff33]/10 text-[#33ff33] border-[#33ff33]/30' : 
+                    (request.status === 'error' || request.status === 'failed') ? 'bg-[#ff3333]/10 text-[#ff3333] border-[#ff3333]/30' :
+                    'bg-[#ffff33]/10 text-[#ffff33] border-[#ffff33]/30'
                   }`}>
                     {request.status === 'success' ? '✓' : request.status === 'failed' || request.status === 'error' ? '✗' : '⚠'}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-white text-sm">{request.service_type}</span>
-                      <span className="text-xs text-white/40">•</span>
-                      <span className="text-xs text-white/60">{request.provider}</span>
-                      <span className="text-xs text-white/40">•</span>
-                      <span className="text-xs text-white/60 truncate">{request.model}</span>
+                      <span className="font-medium terminal-text text-sm terminal-uppercase">{request.service_type}</span>
+                      <span className="text-xs terminal-text-muted">•</span>
+                      <span className="text-xs text-[#33ff33]">{request.provider}</span>
+                      <span className="text-xs terminal-text-muted">•</span>
+                      <span className="text-xs terminal-text-muted truncate">{request.model}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-white/40">
+                    <div className="flex items-center gap-2 text-xs terminal-text-muted">
                       <span>{request.created_at ? new Date(request.created_at).toLocaleTimeString() : 'N/A'}</span>
                       <span>•</span>
                       <span>{request.latency_ms}ms</span>
@@ -136,9 +129,9 @@ export function RealtimeOperations() {
                     </div>
                   </div>
                 </div>
-                <div className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(request.status)}`}>
+                <span className={`terminal-badge ${request.status === 'success' ? 'terminal-badge--active' : (request.status === 'error' || request.status === 'failed') ? 'terminal-badge--alert' : 'terminal-badge--warning'}`}>
                   {request.status}
-                </div>
+                </span>
               </div>
             </div>
           ))}
@@ -147,20 +140,26 @@ export function RealtimeOperations() {
 
       {/* Current Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-          <h4 className="text-sm font-medium text-white/60 mb-3">Request Rate</h4>
-          <p className="text-3xl font-bold text-white mb-1">{((healthScore?.total_requests || 0) / 60).toFixed(1)}</p>
-          <p className="text-xs text-white/40">requests per minute</p>
+        <div className="terminal-card">
+          <div className="relative z-10">
+            <h4 className="terminal-panel__title mb-3">Request Rate</h4>
+            <p className="text-3xl font-bold terminal-metric">{((healthScore?.total_requests || 0) / 60).toFixed(1)}</p>
+            <p className="text-xs terminal-text-muted">requests per minute</p>
+          </div>
         </div>
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-          <h4 className="text-sm font-medium text-white/60 mb-3">Error Rate</h4>
-          <p className="text-3xl font-bold text-white mb-1">{(100 - Number(healthScore?.uptime_pct || 100)).toFixed(2)}%</p>
-          <p className="text-xs text-white/40">Failed requests</p>
+        <div className="terminal-card">
+          <div className="relative z-10">
+            <h4 className="terminal-panel__title mb-3">Error Rate</h4>
+            <p className="text-3xl font-bold terminal-metric terminal-metric--alert">{(100 - Number(healthScore?.uptime_pct || 100)).toFixed(2)}%</p>
+            <p className="text-xs terminal-text-muted">Failed requests</p>
+          </div>
         </div>
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-6">
-          <h4 className="text-sm font-medium text-white/60 mb-3">Active Users</h4>
-          <p className="text-3xl font-bold text-white mb-1">{new Set(apiUsage.map(r => r.user_id)).size}</p>
-          <p className="text-xs text-white/40">In last hour</p>
+        <div className="terminal-card">
+          <div className="relative z-10">
+            <h4 className="terminal-panel__title mb-3">Active Users</h4>
+            <p className="text-3xl font-bold terminal-metric terminal-metric--success">{new Set(apiUsage.map(r => r.user_id)).size}</p>
+            <p className="text-xs terminal-text-muted">In last hour</p>
+          </div>
         </div>
       </div>
     </div>

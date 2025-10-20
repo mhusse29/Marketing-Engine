@@ -36,8 +36,13 @@ export function DeploymentHistory() {
       }, () => fetchDeployments())
       .subscribe();
 
+    // Listen for manual refresh events
+    const handleRefresh = () => fetchDeployments();
+    window.addEventListener('refreshAnalytics', handleRefresh);
+
     return () => {
       supabase.removeChannel(subscription);
+      window.removeEventListener('refreshAnalytics', handleRefresh);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
@@ -68,59 +73,41 @@ export function DeploymentHistory() {
 
   if (loading) {
     return (
-      <div className="glass-card p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-white/10 rounded w-1/3"></div>
-          <div className="h-20 bg-white/5 rounded"></div>
+      <div className="terminal-panel p-8">
+        <div className="terminal-loader">
+          <div className="terminal-loader__spinner">|</div>
+          <span>Loading deployments...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="glass-card p-6">
+    <div className="terminal-panel p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <Package className="w-5 h-5 text-violet-400" />
-          <h3 className="text-lg font-semibold text-white">Deployment History</h3>
+          <Package className="w-5 h-5 text-[#33ff33]" />
+          <h3 className="terminal-panel__title text-lg">Deployment History</h3>
         </div>
         
         {/* Filter */}
         <div className="flex gap-2">
           <button
             onClick={() => setFilter('all')}
-            className={`
-              px-3 py-1 rounded-lg text-xs font-medium transition-all
-              ${filter === 'all' 
-                ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' 
-                : 'glass-button text-white/60'
-              }
-            `}
+            className={`terminal-filter__chip ${filter === 'all' ? 'terminal-filter__chip--active' : ''}`}
           >
             All
           </button>
           <button
             onClick={() => setFilter('production')}
-            className={`
-              px-3 py-1 rounded-lg text-xs font-medium transition-all
-              ${filter === 'production' 
-                ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' 
-                : 'glass-button text-white/60'
-              }
-            `}
+            className={`terminal-filter__chip ${filter === 'production' ? 'terminal-filter__chip--active' : ''}`}
           >
             Production
           </button>
           <button
             onClick={() => setFilter('staging')}
-            className={`
-              px-3 py-1 rounded-lg text-xs font-medium transition-all
-              ${filter === 'staging' 
-                ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' 
-                : 'glass-button text-white/60'
-              }
-            `}
+            className={`terminal-filter__chip ${filter === 'staging' ? 'terminal-filter__chip--active' : ''}`}
           >
             Staging
           </button>
@@ -133,7 +120,7 @@ export function DeploymentHistory() {
           <div
             key={deployment.id}
             className={`
-              p-3 rounded-lg border transition-all hover:border-white/20
+              terminal-card p-3 transition-all
               ${getDeploymentStyle(deployment.status)}
             `}
           >
@@ -166,7 +153,7 @@ export function DeploymentHistory() {
                     )}
                   </div>
                   
-                  <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
+                  <div className="flex items-center gap-3 mt-1 text-xs terminal-text-muted">
                     <span>{new Date(deployment.deployed_at).toLocaleString()}</span>
                     <span>•</span>
                     <span>{deployment.deployed_by}</span>
@@ -182,7 +169,7 @@ export function DeploymentHistory() {
                   </div>
 
                   {deployment.commit_sha && (
-                    <div className="mt-1 font-mono text-xs text-white/40">
+                    <div className="mt-1 font-mono text-xs terminal-text-muted">
                       {deployment.commit_sha.substring(0, 7)}
                     </div>
                   )}
@@ -202,7 +189,7 @@ export function DeploymentHistory() {
       </div>
 
       {deployments.length === 0 && (
-        <div className="text-center py-8 text-white/50 text-sm">
+        <div className="text-center py-8 terminal-text-muted text-sm">
           No deployments found
         </div>
       )}
@@ -212,49 +199,49 @@ export function DeploymentHistory() {
 
 function getDeploymentStyle(status: string): string {
   switch (status) {
-    case 'succeeded': return 'bg-emerald-500/5 border-emerald-500/20';
-    case 'failed': return 'bg-red-500/5 border-red-500/30';
-    case 'rolled_back': return 'bg-orange-500/5 border-orange-500/30';
-    case 'deploying': return 'bg-blue-500/5 border-blue-500/20';
-    default: return 'bg-white/5 border-white/10';
+    case 'success': return 'border-[#00ff00]';
+    case 'failed': return 'border-[#ff3333]';
+    case 'rolled_back': return 'border-[#ffff00]';
+    case 'deploying': return 'border-[#33ff33]';
+    default: return '';
   }
 }
 
 function getStatusIcon(status: string) {
   switch (status) {
-    case 'succeeded': return <CheckCircle2 className="w-5 h-5 text-emerald-400" />;
-    case 'failed': return <XCircle className="w-5 h-5 text-red-400" />;
-    case 'deploying': return <Clock className="w-5 h-5 text-blue-400 animate-spin" />;
-    case 'rolled_back': return <AlertTriangle className="w-5 h-5 text-orange-400" />;
-    default: return <Package className="w-5 h-5 text-white/40" />;
+    case 'success': return <CheckCircle2 className="w-5 h-5 text-[#00ff00]" />;
+    case 'failed': return <XCircle className="w-5 h-5 text-[#ff3333]" />;
+    case 'deploying': return <Clock className="w-5 h-5 text-[#33ff33] animate-spin" />;
+    case 'rolled_back': return <AlertTriangle className="w-5 h-5 text-[#ffff00]" />;
+    default: return <Package className="w-5 h-5 terminal-text-muted" />;
   }
 }
 
 function getStatusIconBg(status: string): string {
   switch (status) {
-    case 'succeeded': return 'bg-emerald-500/10';
-    case 'failed': return 'bg-red-500/10';
-    case 'deploying': return 'bg-blue-500/10';
-    case 'rolled_back': return 'bg-orange-500/10';
-    default: return 'bg-white/5';
+    case 'success': return 'bg-[#111111] border border-[#00ff00]';
+    case 'failed': return 'bg-[#111111] border border-[#ff3333]';
+    case 'deploying': return 'bg-[#111111] border border-[#33ff33]';
+    case 'rolled_back': return 'bg-[#111111] border border-[#ffff00]';
+    default: return 'bg-[#111111]';
   }
 }
 
 function getStatusBadge(status: string): string {
   switch (status) {
-    case 'succeeded': return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-    case 'failed': return 'bg-red-500/20 text-red-400 border border-red-500/30';
-    case 'deploying': return 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
-    case 'rolled_back': return 'bg-orange-500/20 text-orange-400 border border-orange-500/30';
-    default: return 'bg-white/10 text-white/70';
+    case 'success': return 'terminal-badge terminal-badge--active';
+    case 'failed': return 'terminal-badge terminal-badge--alert';
+    case 'deploying': return 'bg-[#111111] border border-[#33ff33] text-[#33ff33]';
+    case 'rolled_back': return 'terminal-badge terminal-badge--warning';
+    default: return 'terminal-badge';
   }
 }
 
 function getEnvironmentBadge(env: string): string {
   switch (env) {
-    case 'production': return 'bg-red-500/20 text-red-400 border border-red-500/30';
-    case 'staging': return 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
-    case 'dev': return 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
-    default: return 'bg-white/10 text-white/70';
+    case 'production': return 'bg-[#111111] border border-[#ff3333] text-[#ff3333]';
+    case 'staging': return 'terminal-badge terminal-badge--warning';
+    case 'dev': return 'bg-[#111111] border border-[#33ff33] text-[#33ff33]';
+    default: return 'terminal-badge';
   }
 }

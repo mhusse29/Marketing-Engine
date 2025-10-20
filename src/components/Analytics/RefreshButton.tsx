@@ -47,7 +47,7 @@ export function RefreshButton() {
       <button
         onClick={handleRefresh}
         disabled={isRefreshing}
-        className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-white text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
+        className="terminal-button terminal-button--primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         title="Refresh dashboard data"
       >
         <RefreshCw 
@@ -59,10 +59,10 @@ export function RefreshButton() {
       {/* Feedback message */}
       {message && (
         <div 
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium backdrop-blur-sm transition-all ${
+          className={`terminal-badge flex items-center gap-2 ${
             isError 
-              ? 'bg-red-500/20 border border-red-500/30 text-red-300' 
-              : 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-300'
+              ? 'terminal-badge--alert' 
+              : 'terminal-badge--active'
           }`}
         >
           {isError ? (
