@@ -3,15 +3,14 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import StandaloneAnalyticsDashboard from './pages/StandaloneAnalyticsDashboard';
 import './index.css';
-import './styles/theme-command-center.css?v=2';
-import './styles/premium-anim.css?v=2';
+import './styles/theme-command-center.css';
+import './styles/premium-anim.css';
+import './styles/theme-hackathon.css';
 
-// Use basename only in production (GitHub Pages), not in local dev
-const basename = import.meta.env.MODE === 'production' ? '/Marketing-Engine' : '';
-
+// Analytics dashboard is deployed to root, no basename needed
 ReactDOM.createRoot(document.getElementById('analytics-root')!).render(
   <React.StrictMode>
-    <BrowserRouter basename={basename}>
+    <BrowserRouter>
       <StandaloneAnalyticsDashboard />
     </BrowserRouter>
   </React.StrictMode>
