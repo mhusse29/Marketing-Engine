@@ -1,15 +1,4 @@
-[build]
-  command = "npm install && npm run analytics:build"
-  publish = "dist"
-  
-[build.environment]
-  NODE_VERSION = "20"
-  NPM_FLAGS = "--legacy-peer-deps"
-
 [[redirects]]
   from = "/*"
   to = "/analytics.html"
   status = 200
-
-[functions]
-  directory = "netlify/functions"
