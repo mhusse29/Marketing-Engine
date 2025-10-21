@@ -1,0 +1,53 @@
+{
+  "version": 2,
+  "buildCommand": "npm run analytics:build",
+  "devCommand": "npm run analytics:dev",
+  "installCommand": "npm install",
+  "framework": null,
+  "outputDirectory": "dist",
+  "public": false,
+  "regions": ["iad1"],
+  "env": {
+    "SUPABASE_URL": "@supabase_url",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase_service_role_key",
+    "ANALYTICS_GATEWAY_KEY": "@analytics_gateway_key",
+    "NODE_ENV": "production",
+    "ANALYTICS_PUBLIC_ACCESS": "false"
+  },
+  "build": {
+    "env": {
+      "VITE_SUPABASE_URL": "@vite_supabase_url",
+      "VITE_SUPABASE_ANON_KEY": "@vite_supabase_anon_key",
+      "VITE_ANALYTICS_GATEWAY_URL": ""
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Credentials",
+          "value": "true"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "X-Requested-With, Content-Type, Accept, Authorization, X-Analytics-Key"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
