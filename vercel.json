@@ -1,8 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "npx vite build --config vite.analytics.config.ts",
-  "devCommand": "npx vite --config vite.analytics.config.ts",
-  "installCommand": "npm install",
+  "buildCommand": "npm run analytics:build:vercel",
+  "devCommand": "npm run analytics:dev",
   "framework": null,
   "outputDirectory": "dist",
   "public": false,

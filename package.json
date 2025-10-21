@@ -12,10 +12,9 @@
     "web:dev": "vite",
     "web:build": "tsc -b && vite build",
     "web:preview": "vite preview",
-    "admin:dev": "vite --config vite.admin.config.ts",
-    "admin:build": "tsc -b && vite build --config vite.admin.config.ts",
     "analytics:dev": "vite --config vite.analytics.config.ts",
     "analytics:build": "tsc -b && vite build --config vite.analytics.config.ts",
+    "analytics:build:vercel": "vite build --config vite.analytics.config.ts",
     "test": "node --test tests",
     "verify": "npm run lint -- --max-warnings=0 && npm test",
     "monitor:health": "node scripts/monitor/health-check.mjs"
