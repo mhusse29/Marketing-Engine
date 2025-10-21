@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "vite build --config vite.analytics.config.ts",
-  "devCommand": "vite --config vite.analytics.config.ts",
+  "buildCommand": "npx vite build --config vite.analytics.config.ts",
+  "devCommand": "npx vite --config vite.analytics.config.ts",
   "installCommand": "npm install",
   "framework": null,
   "outputDirectory": "dist",
