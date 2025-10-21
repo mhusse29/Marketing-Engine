@@ -14,7 +14,7 @@
     "web:preview": "vite preview",
     "analytics:dev": "vite --config vite.analytics.config.ts",
     "analytics:build": "tsc -b && vite build --config vite.analytics.config.ts",
-    "analytics:build:vercel": "vite build --config vite.analytics.config.ts",
+    "analytics:build:vercel": "vite build --config vite.analytics.config.ts && cp dist/analytics.html dist/index.html",
     "test": "node --test tests",
     "verify": "npm run lint -- --max-warnings=0 && npm test",
     "monitor:health": "node scripts/monitor/health-check.mjs"
