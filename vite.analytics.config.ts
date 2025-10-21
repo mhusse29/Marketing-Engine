@@ -15,7 +15,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
-      // Explicitly define environment variables
+      // Explicitly define ALL environment variables for Netlify
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
       'import.meta.env.VITE_ANALYTICS_GATEWAY_KEY': JSON.stringify(env.VITE_ANALYTICS_GATEWAY_KEY),
       'import.meta.env.VITE_ANALYTICS_GATEWAY_URL': JSON.stringify(env.VITE_ANALYTICS_GATEWAY_URL),
     },
