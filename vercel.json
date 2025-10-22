@@ -13,6 +13,12 @@
       "VITE_ANALYTICS_GATEWAY_URL": "/api"
     }
   },
+  "functions": {
+    "api/**/*.mjs": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 10
+    }
+  },
   "headers": [
     {
       "source": "/api/(.*)",
@@ -37,6 +43,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
