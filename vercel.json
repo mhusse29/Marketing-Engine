@@ -6,6 +6,8 @@
   "outputDirectory": "dist",
   "public": false,
   "regions": ["iad1"],
+  "cleanUrls": true,
+  "trailingSlash": false,
   "build": {
     "env": {
       "VITE_SUPABASE_URL": "https://wkhcakxjhmwapvqjrxld.supabase.co",
@@ -42,10 +44,8 @@
       ]
     }
   ],
-  "rewrites": [
-    {
-      "source": "/:path((?!api).*)*",
-      "destination": "/index.html"
-    }
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/404.html" }
   ]
 }
