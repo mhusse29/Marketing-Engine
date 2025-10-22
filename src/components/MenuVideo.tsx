@@ -1,12 +1,12 @@
-/* eslint-disable */
-import type { ChangeEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
 import { ChevronDown, ChevronUp, ImageIcon, Wand2, Loader2 } from 'lucide-react';
 
 import { cn } from '../lib/format';
 import type {
   SettingsState,
-  VideoPromptConfig  
-} from '../types/videoTypes';
+  VideoAspect,
+  VideoProvider
+} from '../types';
 import { useCardsStore } from '../store/useCardsStore';
 import { HintChip } from './AppMenuBar';
 import { enhanceVideoPrompt } from '../lib/videoPromptBuilder';
@@ -639,7 +639,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaCameraMovement === option.value}
-                          onClick={() => setVideo({ lumaCameraMovement: option.value })}
+                          onClick={() => setVideo({ lumaCameraMovement: option.value as import('../types').LumaCameraMovement })}
                           size="small"
                         />
                       ))}
@@ -654,7 +654,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaCameraAngle === option.value}
-                          onClick={() => setVideo({ lumaCameraAngle: option.value })}
+                          onClick={() => setVideo({ lumaCameraAngle: option.value as import('../types').LumaCameraAngle })}
                           size="small"
                         />
                       ))}
@@ -669,7 +669,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaCameraDistance === option.value}
-                          onClick={() => setVideo({ lumaCameraDistance: option.value })}
+                          onClick={() => setVideo({ lumaCameraDistance: option.value as import('../types').LumaCameraDistance })}
                           size="small"
                         />
                       ))}
@@ -687,7 +687,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaStyle === option.value}
-                          onClick={() => setVideo({ lumaStyle: option.value })}
+                          onClick={() => setVideo({ lumaStyle: option.value as import('../types').LumaStyle })}
                           size="small"
                         />
                       ))}
@@ -702,7 +702,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaLighting === option.value}
-                          onClick={() => setVideo({ lumaLighting: option.value })}
+                          onClick={() => setVideo({ lumaLighting: option.value as import('../types').LumaLighting })}
                           size="small"
                         />
                       ))}
@@ -717,7 +717,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaMood === option.value}
-                          onClick={() => setVideo({ lumaMood: option.value })}
+                          onClick={() => setVideo({ lumaMood: option.value as import('../types').LumaMood })}
                           size="small"
                         />
                       ))}
@@ -735,7 +735,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaMotionIntensity === option.value}
-                          onClick={() => setVideo({ lumaMotionIntensity: option.value })}
+                          onClick={() => setVideo({ lumaMotionIntensity: option.value as import('../types').LumaMotionIntensity })}
                           size="small"
                         />
                       ))}
@@ -750,7 +750,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaMotionSpeed === option.value}
-                          onClick={() => setVideo({ lumaMotionSpeed: option.value })}
+                          onClick={() => setVideo({ lumaMotionSpeed: option.value as import('../types').LumaMotionSpeed })}
                           size="small"
                         />
                       ))}
@@ -765,7 +765,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaSubjectMovement === option.value}
-                          onClick={() => setVideo({ lumaSubjectMovement: option.value })}
+                          onClick={() => setVideo({ lumaSubjectMovement: option.value as import('../types').LumaSubjectMovement })}
                           size="small"
                         />
                       ))}
@@ -783,7 +783,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaQuality === option.value}
-                          onClick={() => setVideo({ lumaQuality: option.value })}
+                          onClick={() => setVideo({ lumaQuality: option.value as import('../types').LumaQuality })}
                           size="small"
                         />
                       ))}
@@ -798,7 +798,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaColorGrading === option.value}
-                          onClick={() => setVideo({ lumaColorGrading: option.value })}
+                          onClick={() => setVideo({ lumaColorGrading: option.value as import('../types').LumaColorGrading })}
                           size="small"
                         />
                       ))}
@@ -813,7 +813,7 @@ export function MenuVideo({
                           label={option.label}
                           hint={option.hint}
                           active={qp.lumaFilmLook === option.value}
-                          onClick={() => setVideo({ lumaFilmLook: option.value })}
+                          onClick={() => setVideo({ lumaFilmLook: option.value as import('../types').LumaFilmLook })}
                           size="small"
                         />
                       ))}

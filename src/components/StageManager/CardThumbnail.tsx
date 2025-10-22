@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { KeyboardEvent, MouseEvent, useMemo } from 'react';
+import { useMemo, type KeyboardEvent, type MouseEvent } from 'react';
 import { cn } from '../../lib/format';
 import { MiniContentPreview } from './MiniContentPreview';
 import { MiniPicturePreview } from './MiniPicturePreview';

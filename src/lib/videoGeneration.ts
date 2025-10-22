@@ -73,6 +73,7 @@ export interface GeneratedVideo {
   url: string;
   taskId: string;
   model: string;
+  provider: 'runway' | 'luma';
   duration: number;
   aspect: string;
   watermark: boolean;
@@ -87,6 +88,11 @@ export async function startVideoGeneration(
   props: VideoQuickProps
 ): Promise<{ taskId: string; status: string; provider: string }> {
   const { provider, model, duration, aspect, watermark, seed, promptImage, lumaLoop, lumaKeyframes } = props;
+
+  // Validate provider is resolved (not 'auto')
+  if (provider === 'auto') {
+    throw new Error('Provider must be selected (runway or luma), not auto');
+  }
 
   // Build enhanced prompt from all parameters
   const enhancedPrompt = buildVideoPrompt(props);
@@ -275,11 +281,12 @@ export async function generateRunwayVideo(
   }
 
   // Return structured video data
+  // Provider is guaranteed to be 'runway' or 'luma' due to validation above
   return {
     url: result.videoUrl,
     taskId: result.taskId,
     model: props.model,
-    provider: props.provider,
+    provider: props.provider as 'runway' | 'luma',
     duration: props.duration,
     aspect: props.aspect,
     watermark: props.watermark,

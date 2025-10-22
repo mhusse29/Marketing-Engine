@@ -34,12 +34,12 @@ export interface AppTopBarProps {
   isGenerating?: boolean;
   settings?: SettingsState;
   onSettingsChange?: (settings: SettingsState) => void;
+  onOpenPanel?: (tab: Tab) => void;
+  onSetHovering?: (hovering: boolean) => void;
 }
 
 export function AppTopBar({
-  active, // eslint-disable-line @typescript-eslint/no-unused-vars
   onChange,
-  onNewCampaign, // eslint-disable-line @typescript-eslint/no-unused-vars
   onSave,
   onOpenSettings,
   onHelp,
@@ -49,6 +49,8 @@ export function AppTopBar({
   picturesValidated = false,
   videoValidated = false,
   isGenerating = false,
+  onOpenPanel,
+  onSetHovering,
 }: AppTopBarProps) {
   const { user, profile } = useAuth()
   const [showFeedback, setShowFeedback] = useState(false)

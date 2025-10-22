@@ -7,13 +7,59 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
+      alert_history: {
+        Row: {
+          alert_rule_id: string | null
+          alert_type: string
+          created_at: string | null
+          data: Json | null
+          id: string
+          is_read: boolean | null
+          is_resolved: boolean | null
+          message: string
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          alert_rule_id?: string | null
+          alert_type: string
+          created_at?: string | null
+          data?: Json | null
+          id?: string
+          is_read?: boolean | null
+          is_resolved?: boolean | null
+          message: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          alert_rule_id?: string | null
+          alert_type?: string
+          created_at?: string | null
+          data?: Json | null
+          id?: string
+          is_read?: boolean | null
+          is_resolved?: boolean | null
+          message?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       activity_logs: {
         Row: {
           action: string
@@ -44,177 +90,69 @@ export type Database = {
         }
         Relationships: []
       }
-      api_rate_limits: {
-        Row: {
-          blocked_reason: string | null
-          blocked_until: string | null
-          created_at: string | null
-          current_requests: number | null
-          id: string
-          is_blocked: boolean | null
-          max_requests: number
-          service_type: string
-          updated_at: string | null
-          user_id: string
-          window_end: string
-          window_start: string | null
-          window_type: string
-        }
-        Insert: {
-          blocked_reason?: string | null
-          blocked_until?: string | null
-          created_at?: string | null
-          current_requests?: number | null
-          id?: string
-          is_blocked?: boolean | null
-          max_requests: number
-          service_type: string
-          updated_at?: string | null
-          user_id: string
-          window_end: string
-          window_start?: string | null
-          window_type: string
-        }
-        Update: {
-          blocked_reason?: string | null
-          blocked_until?: string | null
-          created_at?: string | null
-          current_requests?: number | null
-          id?: string
-          is_blocked?: boolean | null
-          max_requests?: number
-          service_type?: string
-          updated_at?: string | null
-          user_id?: string
-          window_end?: string
-          window_start?: string | null
-          window_type?: string
-        }
-        Relationships: []
-      }
       api_usage: {
         Row: {
-          campaign_id: string | null
+          cost: number | null
           created_at: string | null
-          endpoint: string
+          error_code: string | null
           error_message: string | null
-          generation_cost: number | null
           id: string
-          images_generated: number | null
-          input_cost: number | null
+          image_dimensions: string | null
+          images_count: number | null
           input_tokens: number | null
-          ip_address: unknown | null
           latency_ms: number | null
-          model: string
-          output_cost: number | null
+          model: string | null
           output_tokens: number | null
           provider: string
           request_data: Json | null
-          request_id: string | null
           response_data: Json | null
           service_type: string
           status: string
-          total_cost: number
           total_tokens: number | null
-          user_agent: string | null
           user_id: string
-          video_seconds: number | null
+          video_duration_seconds: number | null
         }
         Insert: {
-          campaign_id?: string | null
+          cost?: number | null
           created_at?: string | null
-          endpoint: string
+          error_code?: string | null
           error_message?: string | null
-          generation_cost?: number | null
           id?: string
-          images_generated?: number | null
-          input_cost?: number | null
+          image_dimensions?: string | null
+          images_count?: number | null
           input_tokens?: number | null
-          ip_address?: unknown | null
           latency_ms?: number | null
-          model: string
-          output_cost?: number | null
+          model?: string | null
           output_tokens?: number | null
           provider: string
           request_data?: Json | null
-          request_id?: string | null
           response_data?: Json | null
           service_type: string
           status: string
-          total_cost: number
           total_tokens?: number | null
-          user_agent?: string | null
           user_id: string
-          video_seconds?: number | null
+          video_duration_seconds?: number | null
         }
         Update: {
-          campaign_id?: string | null
+          cost?: number | null
           created_at?: string | null
-          endpoint?: string
+          error_code?: string | null
           error_message?: string | null
-          generation_cost?: number | null
           id?: string
-          images_generated?: number | null
-          input_cost?: number | null
+          image_dimensions?: string | null
+          images_count?: number | null
           input_tokens?: number | null
-          ip_address?: unknown | null
           latency_ms?: number | null
-          model?: string
-          output_cost?: number | null
+          model?: string | null
           output_tokens?: number | null
           provider?: string
           request_data?: Json | null
-          request_id?: string | null
           response_data?: Json | null
           service_type?: string
           status?: string
-          total_cost?: number
           total_tokens?: number | null
-          user_agent?: string | null
           user_id?: string
-          video_seconds?: number | null
-        }
-        Relationships: []
-      }
-      campaigns: {
-        Row: {
-          created_at: string | null
-          description: string | null
-          id: string
-          name: string
-          settings: Json | null
-          status: string | null
-          tags: string[] | null
-          total_cost: number | null
-          total_generations: number | null
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          description?: string | null
-          id?: string
-          name: string
-          settings?: Json | null
-          status?: string | null
-          tags?: string[] | null
-          total_cost?: number | null
-          total_generations?: number | null
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string | null
-          description?: string | null
-          id?: string
-          name?: string
-          settings?: Json | null
-          status?: string | null
-          tags?: string[] | null
-          total_cost?: number | null
-          total_generations?: number | null
-          updated_at?: string | null
-          user_id?: string
+          video_duration_seconds?: number | null
         }
         Relationships: []
       }
@@ -245,204 +183,108 @@ export type Database = {
         }
         Relationships: []
       }
-      usage_aggregations: {
+      campaign_outcomes: {
         Row: {
-          avg_latency_ms: number | null
-          chat_cost: number | null
-          chat_messages: number | null
-          content_cost: number | null
-          content_generations: number | null
+          campaign_id: string
+          content_id: string
+          conversion_value: number | null
           created_at: string | null
-          failed_requests: number | null
           id: string
-          image_cost: number | null
-          images_generated: number | null
-          p95_latency_ms: number | null
-          period_end: string
-          period_start: string
-          period_type: string
-          successful_requests: number | null
-          tools_cost: number | null
-          total_cost: number | null
-          total_input_tokens: number | null
-          total_output_tokens: number | null
-          total_requests: number | null
-          user_id: string
-          video_cost: number | null
-          video_seconds: number | null
+          outcome_data: Json | null
+          outcome_type: string
+          revenue_generated: number | null
         }
         Insert: {
-          avg_latency_ms?: number | null
-          chat_cost?: number | null
-          chat_messages?: number | null
-          content_cost?: number | null
-          content_generations?: number | null
+          campaign_id: string
+          content_id: string
+          conversion_value?: number | null
           created_at?: string | null
-          failed_requests?: number | null
           id?: string
-          image_cost?: number | null
-          images_generated?: number | null
-          p95_latency_ms?: number | null
-          period_end: string
-          period_start: string
-          period_type: string
-          successful_requests?: number | null
-          tools_cost?: number | null
-          total_cost?: number | null
-          total_input_tokens?: number | null
-          total_output_tokens?: number | null
-          total_requests?: number | null
-          user_id: string
-          video_cost?: number | null
-          video_seconds?: number | null
+          outcome_data?: Json | null
+          outcome_type: string
+          revenue_generated?: number | null
         }
         Update: {
-          avg_latency_ms?: number | null
-          chat_cost?: number | null
-          chat_messages?: number | null
-          content_cost?: number | null
-          content_generations?: number | null
+          campaign_id?: string
+          content_id?: string
+          conversion_value?: number | null
           created_at?: string | null
-          failed_requests?: number | null
           id?: string
-          image_cost?: number | null
-          images_generated?: number | null
-          p95_latency_ms?: number | null
-          period_end?: string
-          period_start?: string
-          period_type?: string
-          successful_requests?: number | null
-          tools_cost?: number | null
-          total_cost?: number | null
-          total_input_tokens?: number | null
-          total_output_tokens?: number | null
-          total_requests?: number | null
-          user_id?: string
-          video_cost?: number | null
-          video_seconds?: number | null
+          outcome_data?: Json | null
+          outcome_type?: string
+          revenue_generated?: number | null
         }
         Relationships: []
       }
-      usage_alerts: {
+      quality_metrics: {
         Row: {
-          alert_threshold: number
-          alert_type: string
+          api_usage_id: string
           created_at: string | null
+          edit_percentage: number | null
           id: string
-          is_active: boolean | null
-          notification_sent: boolean | null
-          service_type: string | null
-          threshold_type: string
-          triggered_at: string | null
-          user_id: string
+          quality_score: number | null
+          regeneration_count: number | null
+          user_feedback: string | null
+          user_rating: number | null
+          was_edited: boolean | null
+          was_used: boolean | null
         }
         Insert: {
-          alert_threshold: number
-          alert_type: string
+          api_usage_id: string
           created_at?: string | null
+          edit_percentage?: number | null
           id?: string
-          is_active?: boolean | null
-          notification_sent?: boolean | null
-          service_type?: string | null
-          threshold_type: string
-          triggered_at?: string | null
-          user_id: string
+          quality_score?: number | null
+          regeneration_count?: number | null
+          user_feedback?: string | null
+          user_rating?: number | null
+          was_edited?: boolean | null
+          was_used?: boolean | null
         }
         Update: {
-          alert_threshold?: number
-          alert_type?: string
+          api_usage_id?: string
           created_at?: string | null
+          edit_percentage?: number | null
           id?: string
-          is_active?: boolean | null
-          notification_sent?: boolean | null
-          service_type?: string | null
-          threshold_type?: string
-          triggered_at?: string | null
-          user_id?: string
+          quality_score?: number | null
+          regeneration_count?: number | null
+          user_feedback?: string | null
+          user_rating?: number | null
+          was_edited?: boolean | null
+          was_used?: boolean | null
         }
         Relationships: []
       }
       user_subscriptions: {
         Row: {
           auto_renew: boolean | null
-          billing_period_end: string | null
-          billing_period_start: string | null
-          chat_messages_limit: number | null
-          chat_messages_used: number | null
-          content_generations_limit: number | null
-          content_generations_used: number | null
           created_at: string | null
-          current_month_cost: number | null
           id: string
-          image_generations_limit: number | null
-          image_generations_used: number | null
-          is_active: boolean | null
-          last_reset_at: string | null
-          lifetime_cost: number | null
-          monthly_cost_limit: number | null
+          monthly_price: number
           plan_name: string
-          plan_type: string
-          stripe_customer_id: string | null
-          stripe_subscription_id: string | null
+          status: string | null
           updated_at: string | null
-          usage_alerts_enabled: boolean | null
           user_id: string
-          video_generations_limit: number | null
-          video_generations_used: number | null
         }
         Insert: {
           auto_renew?: boolean | null
-          billing_period_end?: string | null
-          billing_period_start?: string | null
-          chat_messages_limit?: number | null
-          chat_messages_used?: number | null
-          content_generations_limit?: number | null
-          content_generations_used?: number | null
           created_at?: string | null
-          current_month_cost?: number | null
           id?: string
-          image_generations_limit?: number | null
-          image_generations_used?: number | null
-          is_active?: boolean | null
-          last_reset_at?: string | null
-          lifetime_cost?: number | null
-          monthly_cost_limit?: number | null
-          plan_name?: string
-          plan_type?: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
+          monthly_price: number
+          plan_name: string
+          status?: string | null
           updated_at?: string | null
-          usage_alerts_enabled?: boolean | null
           user_id: string
-          video_generations_limit?: number | null
-          video_generations_used?: number | null
         }
         Update: {
           auto_renew?: boolean | null
-          billing_period_end?: string | null
-          billing_period_start?: string | null
-          chat_messages_limit?: number | null
-          chat_messages_used?: number | null
-          content_generations_limit?: number | null
-          content_generations_used?: number | null
           created_at?: string | null
-          current_month_cost?: number | null
           id?: string
-          image_generations_limit?: number | null
-          image_generations_used?: number | null
-          is_active?: boolean | null
-          last_reset_at?: string | null
-          lifetime_cost?: number | null
-          monthly_cost_limit?: number | null
+          monthly_price?: number
           plan_name?: string
-          plan_type?: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
+          status?: string | null
           updated_at?: string | null
-          usage_alerts_enabled?: boolean | null
           user_id?: string
-          video_generations_limit?: number | null
-          video_generations_used?: number | null
         }
         Relationships: []
       }
@@ -450,18 +292,38 @@ export type Database = {
     Views: {
       mv_daily_metrics: {
         Row: {
+          avg_cost: number | null
           avg_latency_ms: number | null
-          daily_active_users: number | null
           date: string | null
           failed_requests: number | null
-          p95_latency_ms: number | null
-          success_rate_pct: number | null
+          success_rate: number | null
           successful_requests: number | null
           total_cost: number | null
           total_images: number | null
           total_requests: number | null
           total_tokens: number | null
           total_video_seconds: number | null
+        }
+        Relationships: []
+      }
+      mv_model_usage: {
+        Row: {
+          avg_cost_per_call: number | null
+          avg_latency_ms: number | null
+          failed_calls: number | null
+          images_generated: number | null
+          input_tokens: number | null
+          last_used: string | null
+          model: string | null
+          output_tokens: number | null
+          provider: string | null
+          service_type: string | null
+          success_rate: number | null
+          successful_calls: number | null
+          total_calls: number | null
+          total_cost: number | null
+          total_tokens: number | null
+          video_seconds: number | null
         }
         Relationships: []
       }
@@ -507,9 +369,20 @@ export type Database = {
       }
     }
     Functions: {
-      check_usage_limit: {
-        Args: { p_service_type: string; p_user_id: string }
-        Returns: boolean
+      find_cacheable_prompts: {
+        Args: {
+          p_days_back?: number
+          p_min_frequency?: number
+          p_service_type: string
+          p_user_id: string
+        }
+        Returns: {
+          occurrence_count: number
+          potential_savings: number
+          prompt_pattern: string
+          sample_prompt: string
+          total_cost: number
+        }[]
       }
       get_churn_risk_users: {
         Args: { min_score?: number }
@@ -520,72 +393,31 @@ export type Database = {
           plan_type: string
           total_spent: number
           user_id: string
-          risk_category: string
         }[]
-      }
-      get_health_score: {
-        Args: { interval_duration?: string }
-        Returns: {
-          avg_latency_ms: number
-          failed_requests: number
-          health_score: number
-          p95_latency_ms: number
-          successful_requests: number
-          total_requests: number
-          uptime_pct: number
-        }[]
-      }
-      increment_subscription_usage: {
-        Args: { p_cost: number; p_service_type: string; p_user_id: string }
-        Returns: undefined
       }
       refresh_analytics_views: {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
-      reset_monthly_usage: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
     }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    Enums: {}
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    CompositeTypes: {}
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+type DefaultSchema = Database['public']
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+export type Tables<TableName extends keyof DefaultSchema['Tables'] | keyof DefaultSchema['Views']> =
+  TableName extends keyof DefaultSchema['Tables']
+    ? DefaultSchema['Tables'][TableName]['Row']
+    : TableName extends keyof DefaultSchema['Views']
+    ? DefaultSchema['Views'][TableName]['Row']
+    : never
 
-export type Tables<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R
-    }
-    ? R
-    : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
-      }
-      ? R
-      : never
-    : never
+export type TablesInsert<TableName extends keyof DefaultSchema['Tables']> =
+  DefaultSchema['Tables'][TableName]['Insert']
+
+export type TablesUpdate<TableName extends keyof DefaultSchema['Tables']> =
+  DefaultSchema['Tables'][TableName]['Update']

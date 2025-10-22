@@ -16,8 +16,9 @@ const components: Components = {
       <table {...props} />
     </div>
   ),
-  code({ inline, className, children, ...props }) {
+  code({ node, className, children, ...props }) {
     const language = className ? className.replace('language-', '') : undefined
+    const inline = node?.position?.start.line === node?.position?.end.line
     if (inline) {
       return (
         <code className="badu-inline-code" {...props}>

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import type { Json } from './database.types';
 
 export type ActivityAction =
   | 'user_signed_in'
@@ -28,7 +29,7 @@ export async function logActivity({ action, details }: LogActivityParams) {
     await supabase.from('activity_logs').insert({
       user_id: user.id,
       action,
-      details,
+      details: details as unknown as Json,
       ip_address: null, // Could be enhanced to capture actual IP
       user_agent: navigator.userAgent,
     });

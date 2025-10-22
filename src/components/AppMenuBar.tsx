@@ -4,7 +4,6 @@ import { ChevronRight, HelpCircle, LogOut, Wand2, Paperclip, FileText, X, Loader
 import { AnimatePresence, motion } from 'framer-motion';
 
 import { cn } from '../lib/format';
-import { MenuVideo } from './MenuVideo';
 import type {
   CardKey,
   Language,
@@ -189,7 +188,7 @@ const PICTURE_NEGATIVE_HINTS: Record<(typeof PICTURE_NEGATIVE_OPTIONS)[number], 
 // Video constants - all moved to MenuVideo.tsx
 const BRAND_LOCK_HINT = 'Locks palettes to your brand colours for consistency.';
 
-export function AppMenuBar({ settings, onSettingsChange, onGenerate, isGenerating = false }: AppMenuBarProps) {
+export function AppMenuBar({ settings, onGenerate, isGenerating = false }: AppMenuBarProps) {
   // const order = useCardsStore((state) => state.order); // Removed - using GradientMenu instead
   const enabled = useCardsStore((state) => state.enabled);
 
@@ -238,24 +237,11 @@ export function AppMenuBar({ settings, onSettingsChange, onGenerate, isGeneratin
                   const card = item as CardKey;
                   useCardsStore.getState().select(card);
                 }}
-                activeItem={useCardsStore((state) => state.selected) || undefined}
                 validatedItems={[
                   ...(contentValidated ? ['content'] : []),
                   ...(picturesValidated ? ['pictures'] : []),
                   ...(videoValidated ? ['video'] : [])
                 ]}
-                renderContent={(item) => {
-                  if (item === 'content') {
-                    return <MenuContent settings={settings} onSettingsChange={onSettingsChange} />;
-                  }
-                  if (item === 'pictures') {
-                    return <MenuPictures settings={settings} onSettingsChange={onSettingsChange} />;
-                  }
-                  if (item === 'video') {
-                    return <MenuVideo settings={settings} onSettingsChange={onSettingsChange} />;
-                  }
-                  return null;
-                }}
               />
             </div>
 

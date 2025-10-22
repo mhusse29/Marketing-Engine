@@ -5,9 +5,31 @@
  * at different touchpoints in the Marketing Engine app.
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useFeedback, useQuickFeedback } from '@/hooks/useFeedback';
-import FeedbackModal from '@/components/FeedbackModal';
+
+// Placeholder FeedbackModal component
+interface FeedbackModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit?: (rating: number, label: string) => Promise<void>;
+  touchpointType: string;
+  contextData?: Record<string, unknown>;
+}
+
+const FeedbackModal = ({ isOpen, onClose, touchpointType }: FeedbackModalProps) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <h3 className="text-lg font-bold mb-4">Feedback ({touchpointType})</h3>
+        <button onClick={onClose} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded">
+          Close
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // ============================================================================
 // EXAMPLE 1: Card Generation Feedback

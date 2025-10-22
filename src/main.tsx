@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css';
 import './styles/theme-command-center.css';
 import './styles/premium-anim.css'
+import './styles/theme-hackathon.css'
 import Router from './Router.tsx'
 import { TooltipProvider } from './components/ui/tooltip'
 import { ThemeProvider } from 'next-themes'

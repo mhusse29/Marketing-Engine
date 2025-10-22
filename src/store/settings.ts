@@ -17,6 +17,9 @@ import type {
   VideoQuickProps,
   VideoHook,
   VideoAspect,
+  VideoProvider,
+  VideoModel,
+  LumaModel,
   AiAttachment,
 } from '../types';
 import { MAX_PICTURE_PROMPT_LENGTH } from './picturesPrompts';

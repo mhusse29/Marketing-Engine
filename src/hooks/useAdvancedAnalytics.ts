@@ -22,7 +22,7 @@ export function useBudgetLimits() {
   useEffect(() => {
     const fetchBudgets = async () => {
       const { data, error } = await supabase
-        .from('budget_limits')
+        .from('budget_limits' as any) // Future table - eslint-disable-line @typescript-eslint/no-explicit-any
         .select('*')
         .eq('is_active', true)
         .order('created_at', { ascending: false });
@@ -112,7 +112,7 @@ export function useOptimizationSuggestions() {
   useEffect(() => {
     const fetchSuggestions = async () => {
       const { data, error } = await supabase
-        .from('cost_optimization_suggestions')
+        .from('cost_optimization_suggestions' as any) // Future table - eslint-disable-line @typescript-eslint/no-explicit-any
         .select('*')
         .eq('status', 'active')
         .gte('expires_at', new Date().toISOString())
@@ -129,7 +129,7 @@ export function useOptimizationSuggestions() {
 
   const acceptSuggestion = async (id: string) => {
     await supabase
-      .from('cost_optimization_suggestions')
+      .from('cost_optimization_suggestions' as any) // Future table - eslint-disable-line @typescript-eslint/no-explicit-any
       .update({ status: 'accepted', implemented_at: new Date().toISOString() })
       .eq('id', id);
 
@@ -138,7 +138,7 @@ export function useOptimizationSuggestions() {
 
   const rejectSuggestion = async (id: string) => {
     await supabase
-      .from('cost_optimization_suggestions')
+      .from('cost_optimization_suggestions' as any) // Future table - eslint-disable-line @typescript-eslint/no-explicit-any
       .update({ status: 'rejected' })
       .eq('id', id);
 
@@ -159,7 +159,7 @@ export function useCacheOpportunities() {
   useEffect(() => {
     const fetchOpportunities = async () => {
       const { data, error } = await supabase
-        .from('cache_analysis')
+        .from('cache_analysis' as any) // Future table - eslint-disable-line @typescript-eslint/no-explicit-any
         .select('*')
         .eq('should_cache', true)
         .order('cache_priority', { ascending: false })
@@ -167,7 +167,7 @@ export function useCacheOpportunities() {
 
       if (!error && data) {
         setOpportunities(data);
-        setTotalSavings(data.reduce((sum, o) => sum + (o.potential_savings || 0), 0));
+        setTotalSavings((data as any[]).reduce((sum, o) => sum + (o.potential_savings || 0), 0));
       }
       setLoading(false);
     };
@@ -188,7 +188,7 @@ export function useProviderQuality() {
   useEffect(() => {
     const fetchQuality = async () => {
       const { data, error } = await supabase
-        .from('provider_quality_scores')
+        .from('provider_quality_scores' as any) // Future table - eslint-disable-line @typescript-eslint/no-explicit-any
         .select('*')
         .order('quality_per_dollar', { ascending: false });
 
@@ -218,7 +218,7 @@ export function useForecasts(days = 30) {
   useEffect(() => {
     const fetchForecasts = async () => {
       const { data, error } = await supabase
-        .from('usage_forecasts')
+        .from('usage_forecasts' as any) // Future table - eslint-disable-line @typescript-eslint/no-explicit-any
         .select('*')
         .eq('forecast_type', 'cost')
         .gte('forecast_date', new Date().toISOString().split('T')[0])
@@ -247,7 +247,7 @@ export function useABTests() {
   useEffect(() => {
     const fetchTests = async () => {
       const { data, error } = await supabase
-        .from('ab_tests')
+        .from('ab_tests' as any) // Future table - eslint-disable-line @typescript-eslint/no-explicit-any
         .select('*')
         .in('status', ['active', 'completed'])
         .order('created_at', { ascending: false });

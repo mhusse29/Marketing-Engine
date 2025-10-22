@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { RefObject, useEffect } from "react";
+import { useEffect, type RefObject } from "react";
 
 export const useClickOutside = (ref: RefObject<any>, callback: () => void) => {
   useEffect(() => {

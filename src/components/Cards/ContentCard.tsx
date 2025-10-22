@@ -127,7 +127,7 @@ export default function ContentCard({
     (typeof meta?.runId === 'string' ? meta.runId : undefined) ||
     metaId ||
     (typeof runId === 'string' ? runId : undefined)
-  const { progress, key: runKey } = useBusyProgress(runStatus, resolvedRunId)
+  const { key: runKey } = useBusyProgress(runStatus, resolvedRunId)
   const cardStatus: CardStatus = runStatus === 'idle' ? 'ready' : (runStatus as CardStatus)
 
   if (isDev && (variants.length > 0 || status === 'ready')) {
@@ -287,7 +287,6 @@ export default function ContentCard({
         <ContentVariantCard
           key={runKey}
           status={cardStatus}
-          progress={progress}
           variant={currentVariant}
           onRegenerate={handleRegenerate}
           onSave={hasReadyContent ? handleSave : undefined}

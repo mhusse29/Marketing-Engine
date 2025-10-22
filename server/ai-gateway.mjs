@@ -2965,8 +2965,8 @@ app.post('/v1/chat/enhanced', async (req, res) => {
     const hasImages = attachments.some(att => att.type?.startsWith('image/'));
     
     // 1. RAG: Search knowledge base for relevant context (100% accurate from source code)
-    // When images attached, limit KB search to avoid irrelevant sources
-    const searchLimit = hasImages ? 2 : 5; // Less context when analyzing images
+    // Reduced from 5 to 3 chunks for faster responses (still provides enough context)
+    const searchLimit = hasImages ? 2 : 3; // Less context when analyzing images
     const searchResults = searchCompleteKnowledge(message, searchLimit);
     const contextChunks = buildCompleteContext(searchResults);
     const sources = searchResults.map(r => r.source);
@@ -2975,235 +2975,20 @@ app.post('/v1/chat/enhanced', async (req, res) => {
     const schemaType = detectSchemaType(message, hasImages);
     const schemaInfo = getSchemaInstruction(schemaType);
     
-    // 3. Build system prompt with RAG context and schema enforcement
+    // 3. Build simplified system prompt for faster responses
     const systemPrompt = [
-      'You are BADU, the official SINAIQ Marketing Engine copilot with vision capabilities.',
+      'You are BADU, the SINAIQ Marketing Engine assistant.',
       '',
-      '⚠️ YOUR CAPABILITIES:',
-      '✅ YES - I CAN analyze images (photos, screenshots, artwork, etc.)',
-      '✅ YES - I CAN create detailed prompts from images',
-      '✅ YES - I CAN recommend models based on image analysis',
-      '✅ YES - I CAN see attachments when provided',
-      '❌ NO - I CANNOT analyze video files (only images)',
-      '❌ NO - I CANNOT analyze audio files',
+      'Answer using ONLY the provided documentation. Be concise.',
       '',
-      'Core Rules:',
-      '1. Answer ONLY from the provided documentation context',
-      '2. ⚠️ WHEN USER ASKS FOR A PROMPT: Always include the full detailed prompt text (300-500 words) in the "Complete Prompt" setting. NEVER skip it.',
-      '   - For images: Include full detailed visual description',
-      '   - For content: Include full marketing copy example (headline, body, CTA)',
-      '   - DO NOT just describe what should be in a prompt - GIVE THE ACTUAL PROMPT',
-      '3. MAINTAIN CONTEXT: If you recommended a model (e.g., FLUX Pro) and user asks about "the model" or "settings", they mean THAT model',
-      '4. When asked about settings/parameters, provide ACTUAL UI SETTINGS from documentation, not generic descriptions:',
-      '   ❌ WRONG: "Style: Photorealistic", "Lighting: Dramatic"',
-      '   ✅ RIGHT: "Style Presets: Product, Photographic, Cinematic, etc.", "Aspect Ratio: 1:1, 16:9, 9:16, etc."',
-      '5. For image analysis, describe style, composition, lighting, colors, mood, and technical details',
-      '6. When creating prompts from images, be extremely detailed and specific (300-500 words minimum)',
-      '7. For Luma Ray-2 video, list ALL 15+ parameters: duration, resolution, loop, camera (movement/angle/distance), style, lighting, mood, motion (intensity/speed), subject movement, quality, color grading, film look, technical settings',
-      '8. For Content Panel, list ALL 11 settings: Brief, Persona (5 options), Tone (6 options), CTA (7 options), Language (EN/AR/FR), Copy Length (3 options), Platforms (6 channels), Keywords (optional), Hashtags (optional), Avoid (optional), Attachments (max 3 files, 5MB each)',
-      '9. Only include "next_steps" if user needs to take action in the app. Omit for purely informational questions.',
-      '10. Never invent URLs, prices, or feature claims',
-      '11. Use clean, professional formatting',
-      '',
-      '⚠️ CRITICAL CONTEXT RULE:',
-      'If conversation history shows you recommended Model X, and user asks "give me settings for the model",',
-      'they mean Model X, NOT a different model. Always check conversation history for context.',
-      '',
-      '# DOCUMENTATION CONTEXT',
+      '# DOCUMENTATION',
       contextChunks,
       '',
-      '# SMART CONTEXT UNDERSTANDING',
-      hasImages ? [
-        '⚡ CRITICAL: When images are attached, BE SMART ABOUT USER INTENT:',
-        '',
-        '1. If user says "give me a prompt" → ⚠️ MUST INCLUDE THE FULL DETAILED PROMPT TEXT',
-        '   ⚠️ CRITICAL: NEVER skip the prompt - it is MANDATORY',
-        '   • Primary content: ONE detailed, comprehensive prompt (300-500 words) in "Complete Prompt" setting',
-        '   • Analyze the image DEEPLY: subject, pose, accessories, lighting, materials, textures, colors, mood',
-        '   • Write a FULL prompt that captures EVERY visual detail you see',
-        '   • The prompt MUST be 300-500 words long with ALL visual details',
-        '   • Make it copyable as ONE complete block',
-        '   • Secondary: Brief model recommendation',
-        '   • Then: basic_settings (provider-specific settings)',
-        '   • Then: advanced_settings (Advanced section settings)',
-        '   • DO NOT create multiple copy buttons for every setting',
-        '   • DO NOT give generic titles - give the ACTUAL DETAILED PROMPT',
-        '',
-        '2. Structure for prompt + settings requests:',
-        '   • "title": Brief title',
-        '   • "message": Short intro',
-        '   • "panel": "pictures" (if relevant)',
-        '   • "settings": [ // ONLY for prompt itself',
-        '       {',
-        '         "name": "Complete Prompt",',
-        '         "value": "[FULL 300-500 WORD DETAILED PROMPT HERE]",',
-        '         "explanation": "Copy this entire prompt"',
-        '       },',
-        '       {',
-        '         "name": "Recommended Model",',
-        '         "value": "Stability SD 3.5",',
-        '         "explanation": "Brief reason why"',
-        '       }',
-        '     ]',
-        '   • "basic_settings": [ // Provider-specific settings',
-        '       { "name": "Model", "value": "large", "explanation": "..." },',
-        '       { "name": "CFG Scale", "value": "10", "explanation": "..." },',
-        '       { "name": "Steps", "value": "40", "explanation": "..." },',
-        '       { "name": "Style Preset", "value": "line-art", "explanation": "..." },',
-        '       { "name": "Aspect Ratio", "value": "1:1", "explanation": "..." }',
-        '     ]',
-        '   • "advanced_settings": [ // Shared Advanced section',
-        '       { "name": "Brand Colors", "value": "Flexible", "explanation": "..." },',
-        '       { "name": "Backdrop", "value": "Clean", "explanation": "..." },',
-        '       { "name": "Lighting", "value": "Soft", "explanation": "..." },',
-        '       { "name": "Quality", "value": "High detail", "explanation": "..." },',
-        '       { "name": "Avoid", "value": "None", "explanation": "..." }',
-        '     ]',
-        '',
-        '3. AVOID:',
-        '   • ❌ Multiple copy buttons (one for model, one for style, one for aspect ratio)',
-        '   • ❌ Generic short descriptions: "A black panther with diamond necklace"',
-        '   • ❌ Listing settings as separate copyable items',
-        '   • ❌ Irrelevant sources (only include sources related to the query)',
-        '',
-        '4. DO:',
-        '   • ✅ ONE comprehensive detailed prompt (300-500 words)',
-        '   • ✅ Describe EVERYTHING you see: pose, expression, accessories, materials, lighting, shadows, reflections, textures, colors, mood, atmosphere',
-        '   • ✅ Use professional terminology',
-        '   • ✅ Include quality markers',
-        '   • ✅ Make it ready to copy and paste directly',
-        '',
-        '5. FOLLOW-UP QUESTIONS - CRITICAL CONTEXT RULE:',
-        '   • If you recommended "FLUX Pro" and user asks "give me settings for the model" → They mean FLUX Pro',
-        '   • If you recommended "Ideogram" and user asks "what about advanced settings" → They mean Ideogram',
-        '   • "the model" ALWAYS refers to the model YOU recommended in the conversation',
-        '   • Check conversation history BEFORE answering settings questions',
-        '   • DO NOT switch to a different model (e.g., don\'t give Stability settings if you recommended FLUX Pro)',
-        '   • Be consistent with your previous recommendations',
-        '',
-        '6. WHEN PROVIDING SETTINGS - MUST LIST ALL AVAILABLE OPTIONS:',
-        '   ⚠️ CRITICAL: When user asks for "advanced settings" or "all settings", list EVERY option available',
-        '   • DO NOT be selective - show ALL options from documentation',
-        '   • DO NOT use "etc." - list complete options',
-        '   ',
-        '   PICTURES PANEL ADVANCED SETTINGS (applies to ALL providers):',
-        '     - Brand Colors: Locked, Flexible',
-        '     - Backdrop: Clean, Gradient, Real-world',
-        '     - Lighting: Soft, Hard, Neon',
-        '     - Quality: High detail, Sharp, Minimal noise',
-        '     - Avoid: None, Logos, Busy background, Extra hands, Glare',
-        '   ',
-        '   FLUX Pro - BASIC SETTINGS:',
-        '     - Mode: standard, ultra',
-        '     - Aspect Ratio: 1:1, 16:9, 2:3, 3:2, 7:9, 9:7 (all 6 options)',
-        '     - Guidance: 1.5-5 (slider, only in standard mode)',
-        '     - Steps: 20-50 (slider, only in standard mode)',
-        '     - Prompt Upsampling: Off/On',
-        '     - RAW Mode: Off/On',
-        '     - Output Format: jpeg, png, webp',
-        '   ',
-        '   Stability SD 3.5 - BASIC SETTINGS:',
-        '     - Model: large, large-turbo, medium (all 3 options)',
-        '     - CFG Scale: 1-20 (full range slider)',
-        '     - Steps: 20-60 (full range slider)',
-        '     - Style Preset: None, 3d-model, analog-film, anime, cinematic, comic-book, digital-art, enhance, fantasy-art, isometric, line-art, low-poly, modeling-compound, neon-punk, origami, photographic, pixel-art, tile-texture (ALL 18 options)',
-        '     - Negative Prompt: Up to 500 characters (optional textarea)',
-        '     - Aspect Ratio: 1:1, 2:3, 3:2, 16:9 (all 4 options)',
-        '   ',
-        '   Ideogram - BASIC SETTINGS:',
-        '     - Model: v2, v1, turbo',
-        '     - Magic Prompt: Off/On',
-        '     - Style Type: AUTO, GENERAL, REALISTIC, DESIGN, RENDER_3D, ANIME (all 6 options)',
-        '     - Negative Prompt: textarea (optional)',
-        '     - Aspect Ratio: 1:1, 16:9, 2:3, 3:2, 7:9, 9:7 (all options)',
-        '   ',
-        '   DALL-E 3 - BASIC SETTINGS:',
-        '     - Size: 1024x1024, 1024x1792, 1792x1024 (all 3 options)',
-        '     - Quality: standard, hd (both options)',
-        '     - Style: vivid, natural (both options)',
-        '   ',
-        '   ⚠️ When user asks for "advanced settings", include BOTH:',
-        '   1. The Advanced section (Brand Colors, Backdrop, Lighting, Quality, Avoid)',
-        '   2. The provider-specific settings (Model, CFG, Steps, etc.)',
-        '',
-        '# IMAGE ANALYSIS GUIDELINES',
-        'When analyzing images, describe:',
-        '- Subject: What/who is in the image (detailed description)',
-        '- Composition: Camera angle, shot type, framing',
-        '- Lighting: Type, direction, quality, shadows',
-        '- Colors: Palette, dominant colors, saturation, temperature',
-        '- Mood: Emotion, atmosphere, feeling',
-        '- Style: Photorealistic, artistic, editorial, etc.',
-        '- Background: What\'s behind, how it\'s treated',
-        '- Technical: Focus, depth of field, quality markers',
-        '',
-        '⚠️ CRITICAL: MODEL RECOMMENDATION BASED ON IMAGE ANALYSIS',
-        'Before recommending a model, ANALYZE THE IMAGE to determine the best fit:',
-        '',
-        '1. If image contains TEXT, TYPOGRAPHY, LOGOS, LETTERS:',
-        '   → Recommend Ideogram',
-        '   → Reason: Specialized for text rendering and typography',
-        '',
-        '2. If image is PHOTOREALISTIC (products, portraits, realistic scenes):',
-        '   → Recommend FLUX Pro',
-        '   → Reason: Best for photorealistic detail and textures',
-        '',
-        '3. If image is ARTISTIC, STYLIZED, ILLUSTRATED, PAINTED:',
-        '   → Recommend Stability SD 3.5',
-        '   → Reason: Offers 18 style presets for artistic control',
-        '',
-        '4. If image is CREATIVE, CONCEPTUAL, IMAGINATIVE:',
-        '   → Recommend DALL-E 3',
-        '   → Reason: Best for creative interpretation',
-        '',
-        'DO NOT default to FLUX Pro without analyzing the image!',
-        '',
-        'When creating prompts from images:',
-        '- Be EXTREMELY specific about every visual detail you see',
-        '- Use professional photography terminology',
-        '- Include all color descriptions (be specific: "midnight black", "rose gold", "deep emerald")',
-        '- Mention lighting setup and direction',
-        '- Describe composition precisely',
-        '- Include texture details (fur, fabric, metal, etc.)',
-        '- Add quality markers (8K, professional, photorealistic, etc.)',
-        '- Mention any accessories, props, or details',
-        '- Describe the overall mood and atmosphere',
-        '- For products/objects: material, finish, reflections',
-        '- For people: age, expression, styling, clothing',
-        '',
-      ].join('\n') : '',
-      '# IMPORTANT FOR VIDEO QUERIES',
-      'If the query is about Luma Ray-2 or video settings, you MUST include ALL these parameters:',
-      '- Duration: 5s or 9s',
-      '- Resolution: 720p or 1080p',
-      '- Loop: Off or Seamless',
-      '- Camera Movement: Static, Pan Left, Pan Right, Zoom In, Zoom Out, Orbit Right',
-      '- Camera Angle: Low, Eye Level, High, Bird\'s Eye',
-      '- Camera Distance: Close-up, Medium, Wide, Extreme Wide',
-      '- Style: Cinematic, Photorealistic, Artistic, Animated, Vintage',
-      '- Lighting: Natural, Dramatic, Soft, Hard, Golden Hour, Blue Hour',
-      '- Mood: Energetic, Calm, Mysterious, Joyful, Serious, Epic',
-      '- Motion Intensity: Minimal, Moderate, High, Extreme',
-      '- Motion Speed: Slow Motion, Normal, Fast Motion',
-      '- Subject Movement: Static, Subtle, Active, Dynamic',
-      '- Quality: Standard, High, Premium',
-      '- Color Grading: Natural, Warm, Cool, Dramatic, Desaturated',
-      '- Film Look: Digital, 35mm, 16mm, Vintage',
-      '- Technical: Seed (optional), Guidance Scale (1-20), Negative Prompt (optional)',
+      hasImages ? 'Images: analyze thoroughly.' : '',
       '',
-      '# RESPONSE FORMAT',
       schemaInfo.instruction,
       '',
-      '# SCHEMA',
-      schemaInfo.schema,
-      '',
-      '# EXAMPLE',
-      JSON.stringify(schemaInfo.example, null, 2),
-      '',
-      'Now answer the user\'s question using ONLY the documentation above.',
-      'If images are attached, analyze them in detail.',
-      'If asked about settings, provide COMPLETE list of all parameters.',
-      'Return ONLY valid JSON matching the schema. No markdown, no extra text.',
+      'Return valid JSON matching schema.',
     ].join('\n');
     
     // 4. Build messages array with vision support + maintain context
@@ -3277,13 +3062,26 @@ app.post('/v1/chat/enhanced', async (req, res) => {
     }
     
     // 5. Call LLM with low temperature for consistency
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+    // TEMPORARY: Use gpt-4o for all Badu requests (gpt-5-chat-latest may be slow/preview)
+    // TODO: Switch back to OPENAI_CHAT_MODEL when gpt-5-chat-latest is faster
+    const modelToUse = 'gpt-4o';
+    
+    const completionParams = {
+      model: modelToUse,
       messages,
       temperature: 0.2, // Low temp for factual, consistent responses
-      max_tokens: 1500,
       response_format: { type: 'json_object' },
-    });
+    };
+    
+    // GPT-5 uses max_completion_tokens, GPT-4 uses max_tokens
+    // Reduced from 1500 to 800 for faster responses
+    if (modelToUse.startsWith('gpt-5')) {
+      completionParams.max_completion_tokens = 800;
+    } else {
+      completionParams.max_tokens = 800;
+    }
+    
+    const completion = await openai.chat.completions.create(completionParams);
     
     let responseText = completion.choices?.[0]?.message?.content || '';
     
@@ -3323,17 +3121,25 @@ app.post('/v1/chat/enhanced', async (req, res) => {
       ].join('\n');
       
       try {
-        const repairCompletion = await openai.chat.completions.create({
-          model: 'gpt-4o',
+        const repairParams = {
+          model: modelToUse,
           messages: [
             ...messages,
             { role: 'assistant', content: responseText },
             { role: 'user', content: repairPrompt },
           ],
           temperature: 0.1,
-          max_tokens: 1500,
           response_format: { type: 'json_object' },
-        });
+        };
+        
+        // GPT-5 uses max_completion_tokens, GPT-4 uses max_tokens
+        if (modelToUse.startsWith('gpt-5')) {
+          repairParams.max_completion_tokens = 1500;
+        } else {
+          repairParams.max_tokens = 1500;
+        }
+        
+        const repairCompletion = await openai.chat.completions.create(repairParams);
         
         const repairedText = repairCompletion.choices?.[0]?.message?.content || '';
         const repairedResponse = safeParseOrRepair(repairedText);

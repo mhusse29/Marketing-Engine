@@ -1,5 +1,3 @@
-import React from 'react';
-
 // Shared grid constants for perfect seam alignment
 const GRID_PX = 96;
 const LINE_PX = 1;

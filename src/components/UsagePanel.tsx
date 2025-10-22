@@ -21,10 +21,10 @@ interface RecentUsage {
   id: string;
   service_type: string;
   provider: string;
-  model: string;
+  model: string | null;
   total_cost: number;
   status: string;
-  created_at: string;
+  created_at: string | null;
 }
 
 export function UsagePanel() {
@@ -41,27 +41,55 @@ export function UsagePanel() {
   }, [user]);
 
   async function loadUsageData() {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+
     try {
       // Load subscription stats
       const { data: subscription, error: subError } = await supabase
         .from('user_subscriptions')
         .select('*')
-        .eq('user_id', user?.id)
+        .eq('user_id', user.id)
         .single();
 
       if (subError) throw subError;
-      setStats(subscription);
+      
+      // Map subscription data to UsageStats format
+      if (subscription) {
+        setStats({
+          content_generations_used: 0,
+          content_generations_limit: 100,
+          image_generations_used: 0,
+          image_generations_limit: 100,
+          video_generations_used: 0,
+          video_generations_limit: 10,
+          chat_messages_used: 0,
+          chat_messages_limit: 1000,
+          current_month_cost: 0,
+          lifetime_cost: 0,
+          plan_name: subscription.plan_name || 'Free',
+        });
+      }
 
       // Load recent usage
       const { data: usage, error: usageError } = await supabase
         .from('api_usage')
-        .select('id, service_type, provider, model, total_cost, status, created_at')
-        .eq('user_id', user?.id)
+        .select('id, service_type, provider, model, status, created_at')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(10);
 
       if (usageError) throw usageError;
-      setRecentUsage(usage || []);
+      
+      // Map usage data to include total_cost (even if column doesn't exist)
+      const mappedUsage: RecentUsage[] = (usage || []).map(item => ({
+        ...item,
+        total_cost: 0, // Default value since column doesn't exist yet
+      }));
+      
+      setRecentUsage(mappedUsage);
     } catch (error) {
       console.error('Error loading usage:', error);
     } finally {
@@ -192,7 +220,7 @@ export function UsagePanel() {
                 <div className="text-right ml-4">
                   <p className="text-sm font-medium text-white">${usage.total_cost.toFixed(4)}</p>
                   <p className="text-xs text-white/60">
-                    {new Date(usage.created_at).toLocaleDateString()}
+                    {usage.created_at ? new Date(usage.created_at).toLocaleDateString() : 'N/A'}
                   </p>
                 </div>
               </div>

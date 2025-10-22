@@ -92,6 +92,10 @@ const callBaduAPIEnhanced = async (
       attachments: msg.attachments, // Include attachments in history
     }));
 
+    // Add timeout to prevent infinite loading
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+    
     const response = await fetch(`${getApiBase()}/v1/chat/enhanced`, {
       method: 'POST',
       headers: {
@@ -102,7 +106,10 @@ const callBaduAPIEnhanced = async (
         history: history.slice(-10), // Last 10 messages for context
         attachments, // Send current message attachments
       }),
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);

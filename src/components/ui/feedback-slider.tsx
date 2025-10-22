@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, type Transition, type TargetAndTransition } from "framer-motion";
 
 const animationStates = [
   {
@@ -59,21 +59,22 @@ const animationStates = [
   },
 ];
 
-const HandDrawnSmileIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <motion.svg
+const HandDrawnSmileIcon = ({ animate, transition }: { animate?: TargetAndTransition; transition?: Transition }) => (
+  <svg
     width="100%"
     height="100%"
     viewBox="0 0 100 60"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
-    {...props}
   >
     <motion.path
       d="M10 30 Q50 70 90 30"
       strokeWidth="12"
       strokeLinecap="round"
+      animate={animate}
+      transition={transition}
     />
-  </motion.svg>
+  </svg>
 );
 
 export interface FeedbackSliderProps
@@ -105,13 +106,17 @@ const FeedbackSlider = React.forwardRef<HTMLDivElement, FeedbackSliderProps>(
       }
     };
 
+    // Filter out conflicting props that conflict with framer-motion
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { onDrag, onDragStart, onDragEnd, onAnimationStart, ...safeProps } = props;
+
     return (
       <motion.div
         ref={ref}
         className={`relative flex w-full items-center justify-center overflow-hidden ${className}`}
         animate={{ backgroundColor: currentAnim.bgColor }}
         transition={transition}
-        {...props}
+        {...safeProps}
       >
         <div className="flex h-full w-[400px] flex-col items-center justify-center p-4">
           <motion.h3
