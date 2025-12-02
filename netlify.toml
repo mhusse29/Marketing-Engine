@@ -2,3 +2,10 @@
   from = "/*"
   to = "/analytics.html"
   status = 200
+
+# BADU Preference Learning - Runs hourly
+[[functions]]
+  path = "netlify/functions/learn-preferences"
+  
+[functions."learn-preferences"]
+  schedule = "@hourly"

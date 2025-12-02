@@ -1,6 +1,7 @@
 import { before, after, test } from 'node:test';
 import assert from 'node:assert';
 
+process.env.NODE_ENV = 'production';
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://supabase.local';
 process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'service-role-key';
 process.env.ANALYTICS_ALLOWED_ORIGINS = 'http://localhost:5173';

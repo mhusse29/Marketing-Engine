@@ -5,8 +5,16 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
 }
 
+// Allow bypassing authentication in development mode
+const DEV_BYPASS_AUTH = import.meta.env.DEV && import.meta.env.VITE_BYPASS_AUTH === 'true';
+
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { user, loading } = useAuth();
+
+  // In development mode with bypass enabled, skip auth check
+  if (DEV_BYPASS_AUTH) {
+    return <>{children}</>;
+  }
 
   if (loading) {
     return (

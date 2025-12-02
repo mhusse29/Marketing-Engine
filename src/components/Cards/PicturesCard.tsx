@@ -4,17 +4,18 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Download, Maximize2, X } from 'lucide-react';
 
 import { cn } from '../../lib/format';
-import type { GeneratedPictures, PictureAsset, PictureRemixOptions } from '../../types';
-import type { StageManagerEntryInput } from '@/components/StageManager/types';
+import type { GeneratedPictures, PictureAsset } from '../../types';
 import type { GridStepState } from '../../state/ui';
 import CardShell from '../Outputs/CardShell';
-import { MinimizeButton } from '../StageManager/MinimizeButton';
+import { useEdgeBlendSettings } from '../../contexts/EdgeBlendSettingsContext';
 
 const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
   flux: 'FLUX Pro 1.1',
   stability: 'Stable Diffusion 3.5',
   openai: 'DALL·E 3',
   ideogram: 'Ideogram v1',
+  gemini: 'Nano Banana',
+  runway: 'Runway Gen-4',
 };
 
 async function downloadAsset(asset: PictureAsset) {
@@ -135,25 +136,23 @@ async function downloadAsset(asset: PictureAsset) {
   }
 }
 
-type PicturesCardProps = {
+interface PicturesCardProps {
   pictures: GeneratedPictures[];
   currentVersion: number;
-  brandLocked: boolean;
-  onSave: () => void;
-  onRegenerate: (options?: PictureRemixOptions) => Promise<void> | void;
-  onReplaceImages?: () => void;
   status: GridStepState;
-  onMinimize?: (entry: StageManagerEntryInput) => void;
+  onHide?: () => void;
 };
 
 export function PicturesCard({
   pictures,
   currentVersion,
   status,
-  onMinimize,
+  onHide,
 }: PicturesCardProps) {
   const [selectedAssetIndex, setSelectedAssetIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [imageLoadError, setImageLoadError] = useState(false);
+  const { settings } = useEdgeBlendSettings();
 
   const versionPictures = pictures[currentVersion];
   const isBusy = status === 'queued' || status === 'thinking' || status === 'rendering';
@@ -174,6 +173,7 @@ export function PicturesCard({
 
   useEffect(() => {
     setSelectedAssetIndex(0);
+    setImageLoadError(false); // Reset error state when version changes
   }, [currentVersion]);
 
   const selectedAsset =
@@ -181,25 +181,6 @@ export function PicturesCard({
       ? versionPictures.assets[selectedAssetIndex]
       : undefined;
 
-  const handleMinimize = () => {
-    if (!onMinimize) return;
-    if (!versionPictures) return;
-
-    const previewUrl =
-      selectedAsset?.url ||
-      (versionPictures.mode === 'image' && 'assets' in versionPictures && versionPictures.assets[0]?.url) ||
-      '';
-
-    onMinimize({
-      cardType: 'pictures',
-      data: {
-        pictures: {
-          url: previewUrl,
-          provider: versionPictures.provider,
-        },
-      },
-    });
-  };
 
   // Fullscreen Popup Component
   const fullscreenPortal = isFullscreen && selectedAsset ? createPortal(
@@ -254,7 +235,6 @@ export function PicturesCard({
   return (
     <>
       <CardShell sheen={false} className="relative isolate overflow-hidden p-0">
-        {onMinimize && <MinimizeButton onMinimize={handleMinimize} />}
         
         <div className="relative z-10">
           {/* Image Display with Overlays */}
@@ -265,14 +245,104 @@ export function PicturesCard({
                 <button
                   type="button"
                   onClick={() => setIsFullscreen(true)}
-                  className="w-full"
+                  className="w-full relative"
                 >
-                  <img
-                    src={selectedAsset.url}
-                    alt="Generated image"
-                    className="h-auto w-full object-contain"
-                    style={{ maxHeight: '80vh' }}
-                  />
+                  {/* Gradient edge masks for smooth blending into frosted glass - Live from controller */}
+                  <div 
+                    className="absolute inset-0 pointer-events-none overflow-hidden"
+                    style={{ zIndex: settings.overlayZIndex }}
+                  >
+                    {/* Top fade */}
+                    {settings.topEnabled && (
+                      <div 
+                        className="absolute top-0 left-0 right-0 pointer-events-none"
+                        style={{
+                          height: `${settings.topHeight}px`,
+                          background: `linear-gradient(to bottom, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.topStartOpacity}) 0%, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.topMidOpacity}) ${settings.topMidStop}%, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.topEndOpacity}) ${settings.topEndStop}%, transparent 100%)`,
+                          backdropFilter: settings.backdropBlurEnabled ? `blur(${settings.backdropBlur}px)` : undefined,
+                          WebkitBackdropFilter: settings.backdropBlurEnabled ? `blur(${settings.backdropBlur}px)` : undefined,
+                        }}
+                      />
+                    )}
+                    
+                    {/* Bottom fade */}
+                    {settings.bottomEnabled && (
+                      <div 
+                        className="absolute bottom-0 left-0 right-0 pointer-events-none"
+                        style={{
+                          height: `${settings.bottomHeight}px`,
+                          background: `linear-gradient(to top, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.bottomStartOpacity}) 0%, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.bottomMidOpacity}) ${settings.bottomMidStop}%, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.bottomEndOpacity}) ${settings.bottomEndStop}%, transparent 100%)`,
+                          backdropFilter: settings.backdropBlurEnabled ? `blur(${settings.backdropBlur}px)` : undefined,
+                          WebkitBackdropFilter: settings.backdropBlurEnabled ? `blur(${settings.backdropBlur}px)` : undefined,
+                        }}
+                      />
+                    )}
+                    
+                    {/* Left fade */}
+                    {settings.leftEnabled && (
+                      <div 
+                        className="absolute top-0 bottom-0 left-0 pointer-events-none"
+                        style={{
+                          width: `${settings.leftWidth}px`,
+                          background: `linear-gradient(to right, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.leftStartOpacity}) 0%, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.leftMidOpacity}) ${settings.leftMidStop}%, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.leftEndOpacity}) ${settings.leftEndStop}%, transparent 100%)`,
+                          backdropFilter: settings.backdropBlurEnabled ? `blur(${settings.backdropBlur}px)` : undefined,
+                          WebkitBackdropFilter: settings.backdropBlurEnabled ? `blur(${settings.backdropBlur}px)` : undefined,
+                        }}
+                      />
+                    )}
+                    
+                    {/* Right fade */}
+                    {settings.rightEnabled && (
+                      <div 
+                        className="absolute top-0 bottom-0 right-0 pointer-events-none"
+                        style={{
+                          width: `${settings.rightWidth}px`,
+                          background: `linear-gradient(to left, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.rightStartOpacity}) 0%, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.rightMidOpacity}) ${settings.rightMidStop}%, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.rightEndOpacity}) ${settings.rightEndStop}%, transparent 100%)`,
+                          backdropFilter: settings.backdropBlurEnabled ? `blur(${settings.backdropBlur}px)` : undefined,
+                          WebkitBackdropFilter: settings.backdropBlurEnabled ? `blur(${settings.backdropBlur}px)` : undefined,
+                        }}
+                      />
+                    )}
+                    
+                    {/* Radial overlay */}
+                    {settings.radialEnabled && (
+                      <div 
+                        className="absolute inset-0 pointer-events-none"
+                        style={{
+                          background: `radial-gradient(ellipse ${settings.radialSize}% ${settings.radialSize}% at center, transparent 50%, rgba(${settings.edgeColorR}, ${settings.edgeColorG}, ${settings.edgeColorB}, ${settings.radialEdgeOpacity}) 100%)`,
+                          mixBlendMode: settings.radialBlendMode,
+                        }}
+                      />
+                    )}
+                  </div>
+                  
+                  {imageLoadError ? (
+                    <div className="flex flex-col items-center justify-center p-12 text-center">
+                      <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-6 max-w-md">
+                        <div className="text-4xl mb-3">⚠️</div>
+                        <div className="text-sm font-semibold text-amber-100 mb-2">Image URL Expired</div>
+                        <div className="text-xs text-amber-200/80">
+                          This image was generated with a temporary URL that has expired.
+                          Generate new images to get fresh results.
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <img
+                      src={selectedAsset.url}
+                      alt="Generated image"
+                      className="h-auto w-full object-contain relative"
+                      style={{ 
+                        maxHeight: '80vh',
+                        zIndex: settings.imageZIndex
+                      }}
+                      onError={(e) => {
+                        // Suppress future load attempts for this URL
+                        e.currentTarget.style.display = 'none';
+                        setImageLoadError(true);
+                      }}
+                    />
+                  )}
                 </button>
 
                 {/* Bottom Overlay Bar */}
@@ -347,9 +417,20 @@ export function PicturesCard({
                     >
                       <Download className="h-4 w-4" />
                     </button>
-
-                    {onMinimize && (
-                      <MinimizeButton onMinimize={handleMinimize} />
+                    {onHide && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onHide();
+                        }}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/40 hover:bg-red-500/40 text-white/70 backdrop-blur-sm transition-colors hover:text-red-300"
+                        aria-label="Hide from main screen"
+                        title="Hide from main screen"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     )}
                   </div>
                 </div>

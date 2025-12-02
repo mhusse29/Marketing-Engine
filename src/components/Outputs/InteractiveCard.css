@@ -154,6 +154,12 @@
   border-radius: var(--card-border-radius);
 }
 
+/* Remove box shadows when dragging */
+.draggable-card[data-dragging="true"] .glass-card,
+.draggable-card[data-dragging="true"] .interactive-card-content > * {
+  box-shadow: none !important;
+}
+
 /* Smooth transitions */
 .interactive-card-wrapper *,
 .interactive-card-inner * {

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, LayoutGroup } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { DndContext, type DragEndEvent, type DragStartEvent, DragOverlay, closestCenter, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
+import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
 import { useAuth } from './contexts/AuthContext';
 import SettingsPage from './pages/SettingsPage';
 import { logActivity } from './lib/activityLogger';
@@ -16,17 +18,10 @@ import { MenuContent, MenuPictures } from './components/AppMenuBar';
 import { MenuVideo } from './components/MenuVideo';
 import { BaduAssistantEnhanced as BaduAssistant } from './components/BaduAssistantEnhanced';
 import SmartOutputGrid from './components/Outputs/SmartOutputGrid';
+import DraggableCard from './components/Outputs/DraggableCard';
 import { SmartGenerationLoader } from './components/SmartGenerationLoader';
-import { StageManager } from './components/StageManager/StageManager';
 import FeedbackSlider from './components/ui/feedback-slider';
 import { feedbackManager, type FeedbackTouchpoint } from './lib/feedbackManager';
-import {
-  createStageManagerEntry,
-  defaultStageManager3DSettings,
-  defaultStageManagerTraySettings,
-  type StageManagerEntry,
-  type StageManagerEntryInput,
-} from './components/StageManager/types';
 // import { InteractiveCardController } from './components/Debug/InteractiveCardController';
 
 import {
@@ -38,8 +33,22 @@ import {
   generatePictures,
   generateVideo,
 } from './store/ai';
+import {
+  generationProgressActions,
+  type GenerationPhase,
+  type ProgressSource,
+} from './store/generationProgress';
+import { useCardLayoutStore, cardLayoutActions } from './store/useCardLayoutStore';
+import { useGenerationProgressStore } from './store/generationProgress';
 import { getActivePicturesPrompt, MIN_PICTURE_PROMPT_LENGTH } from './store/picturesPrompts';
 import { useCardsStore } from './store/useCardsStore';
+import { useGeneratedCardsStore, useLoadGeneratedCards } from './store/useGeneratedCardsStore';
+import {
+  hydrateMediaPlan,
+  useMediaPlanState,
+} from './store/useMediaPlanStore';
+import PersistentCardsDisplay from './components/PersistentCardsDisplay';
+import { uploadGeneratedImages, uploadGeneratedVideos, getCurrentUserId } from './lib/imageStorage';
 import type {
   SettingsState,
   AiUIState,
@@ -48,12 +57,14 @@ import type {
   Platform,
   ContentVariantResult,
   ContentGenerationMeta,
-  PictureRemixOptions,
-  PicturesQuickProps,
+  GeneratedPictures,
+  GeneratedVideo,
+  MediaPlanState,
 } from './types';
 import type { GridStepState } from './state/ui';
 import { useContentAI, type ContentAttachmentPayload } from './useContentAI';
 import { revokeAttachmentUrl, withAttachmentData, clearAttachmentCache } from './lib/attachments';
+import { supabase } from './lib/supabase';
 
 const clampVersionIndex = (index: number, total: number) => {
   if (total <= 0) {
@@ -117,34 +128,76 @@ const attachmentsEqual = (a: AiAttachment[] = [], b: AiAttachment[] = []): boole
   });
 };
 
+const mediaPlansEqual = (a: MediaPlanState, b: MediaPlanState): boolean =>
+  a.budget === b.budget &&
+  a.market === b.market &&
+  a.goal === b.goal &&
+  a.currency === b.currency &&
+  a.niche === b.niche &&
+  a.leadToSalePct === b.leadToSalePct &&
+  a.revenuePerSale === b.revenuePerSale &&
+  a.manageFx === b.manageFx &&
+  a.channelMode === b.channelMode &&
+  a.manualCplEnabled === b.manualCplEnabled &&
+  JSON.stringify(a.channels) === JSON.stringify(b.channels) &&
+  JSON.stringify(a.channelSplits) === JSON.stringify(b.channelSplits) &&
+  JSON.stringify(a.manualCplValues) === JSON.stringify(b.manualCplValues) &&
+  JSON.stringify(a.summary ?? null) === JSON.stringify(b.summary ?? null) &&
+  JSON.stringify(a.allocations ?? []) === JSON.stringify(b.allocations ?? []) &&
+  a.scenario === b.scenario &&
+  a.notes === b.notes &&
+  a.lastSyncedAt === b.lastSyncedAt &&
+  a.plannerValidatedAt === b.plannerValidatedAt &&
+  a.channelsValidatedAt === b.channelsValidatedAt &&
+  a.advancedValidatedAt === b.advancedValidatedAt;
+
 function App() {
   const initialSettings = useMemo(() => loadSettings(), []);
-  const [settings, setSettingsState] = useState<SettingsState>(initialSettings);
+  const [settingsState, setSettingsState] = useState<SettingsState>(initialSettings);
+  const mediaPlanState = useMediaPlanState((state) => state.mediaPlan);
+  const settings = useMemo(
+    () => ({
+      ...settingsState,
+      mediaPlan: mediaPlanState,
+    }),
+    [settingsState, mediaPlanState]
+  );
   const [aiState, setAiState] = useState<AiUIState>(() => ({
     ...defaultAiState,
     brief: initialSettings.quickProps.content.brief,
     uploads: cloneAttachments(initialSettings.quickProps.content.attachments ?? []),
   }));
   const [currentVersions, setCurrentVersions] = useState({ content: 0, pictures: 0, video: 0 });
+  // Track if generation has been triggered in this session (to hide cards on initial load)
+  const [hasGeneratedInSession, setHasGeneratedInSession] = useState(false);
   const generationAbortRef = useRef<AbortController | null>(null);
+  const recordPhase = useCallback(
+    (
+      card: CardKey,
+      phase: GenerationPhase,
+      meta?: { message?: string; source?: ProgressSource; runId?: string }
+    ) => {
+      generationProgressActions.updatePhase(card, phase, meta);
+    },
+    []
+  );
 
-  // Stage Manager: minimized entries and visibility
-  const [stageEntries, setStageEntries] = useState<StageManagerEntry[]>([]);
   const [hiddenCardTypes, setHiddenCardTypes] = useState<Set<CardKey>>(() => new Set());
 
-  // Stage Manager positioning and tray styling
-  const threeDSettings = useMemo(
-    () => ({
-      ...defaultStageManager3DSettings,
-    }),
-    []
-  );
-  const traySettings = useMemo(
-    () => ({
-      ...defaultStageManagerTraySettings,
-    }),
-    []
-  );
+  // Multi-generation persistence
+  const { addGeneration, setCurrentBatchId } = useGeneratedCardsStore();
+  useLoadGeneratedCards(); // Load saved cards on mount
+  const currentBatchIdRef = useRef<string | null>(null);
+  
+  // Track which generations we've already saved to prevent duplicates
+  const savedGenerationsRef = useRef<Set<string>>(new Set());
+
+  const { open: panelOpen, toggle: togglePanel, close: closePanel, openPanel, setHovering } = useTopBarPanels();
+
+
+  useEffect(() => {
+    hydrateMediaPlan(initialSettings.mediaPlan);
+  }, [initialSettings]);
 
   const {
     status: contentStatus,
@@ -158,8 +211,12 @@ function App() {
   const [contentMeta, setContentMeta] = useState<ContentGenerationMeta | null>(null);
   const contentStatusRef = useRef(contentStatus);
   const contentErrorRef = useRef<string | undefined>(undefined);
-  const picturesStatusRef = useRef(aiState.stepStatus.pictures ?? 'idle');
-  const videoStatusRef = useRef(aiState.stepStatus.video ?? 'idle');
+  const pendingPersistRef = useRef(false);
+  const lastProgressRef = useRef<Record<CardKey, { runId: string | null; phase: GenerationPhase; message: string | null }>>({
+    content: { runId: null, phase: 'idle', message: null },
+    pictures: { runId: null, phase: 'idle', message: null },
+    video: { runId: null, phase: 'idle', message: null },
+  });
 
   // DEBUG: Log contentVariants after update
   useEffect(() => {
@@ -170,13 +227,33 @@ function App() {
       setContentVariants(contentResult.variants ?? []);
       setContentMeta(contentResult.meta ?? null);
       console.log('App.tsx - contentVariants updated:', contentResult.variants);
+      
+      // Persist to database ONLY ONCE per generation
+      if (currentBatchIdRef.current && contentResult.variants && contentResult.variants.length > 0) {
+        // Create unique key for this generation
+        const generationKey = `content-${contentRunId || Date.now()}`;
+        
+        // Only save if we haven't saved this generation before
+        if (!savedGenerationsRef.current.has(generationKey)) {
+          console.log('💾 Saving content generation:', generationKey);
+          savedGenerationsRef.current.add(generationKey);
+          
+          addGeneration('content', { variants: contentResult.variants, meta: contentResult.meta }, settings).catch(err => {
+            console.error('Failed to persist content generation:', err);
+            // Remove from saved set on error so it can be retried
+            savedGenerationsRef.current.delete(generationKey);
+          });
+        } else {
+          console.log('⏭️ Skipping duplicate save for:', generationKey);
+        }
+      }
     } else if (contentStatus === 'queued') {
       setContentVariants([]);
       setContentMeta(null);
     } else if (contentStatus === 'error') {
       setContentMeta(null);
     }
-  }, [contentStatus, contentResult]);
+  }, [contentStatus, contentResult, addGeneration, settings, contentRunId]);
 
   const cardsEnabled = useCardsStore((state) => state.enabled);
   const cardsOrder = useCardsStore((state) => state.order);
@@ -184,7 +261,20 @@ function App() {
   const setCardEnabled = useCardsStore((state) => state.setEnabled);
   const selectCard = useCardsStore((state) => state.select);
   const toggleHiddenCard = useCardsStore((state) => state.toggleHidden);
-  const { open: panelOpen, toggle: togglePanel, close: closePanel, openPanel, setHovering } = useTopBarPanels();
+  const setCustomOrder = useCardsStore((state) => state.setCustomOrder);
+  const cardsPinned = useCardsStore((state) => state.pinned);
+  const toggleCardPinned = useCardsStore((state) => state.togglePinned);
+  const cardOffsets = useCardLayoutStore((state) => state.offsets);
+
+  useEffect(() => {
+    const pendingTab = sessionStorage.getItem('me:return-tab');
+    if (pendingTab && (pendingTab === 'content' || pendingTab === 'pictures' || pendingTab === 'video')) {
+      sessionStorage.removeItem('me:return-tab');
+      const tab = pendingTab as CardKey;
+      selectCard(tab);
+      openPanel(tab);
+    }
+  }, [openPanel, selectCard]);
 
   const syncAiStateWithSettings = useCallback((nextSettings: SettingsState) => {
     const nextBrief = nextSettings.quickProps.content.brief;
@@ -208,12 +298,33 @@ function App() {
   const setSettings = useCallback(
     (updater: SettingsState | ((prev: SettingsState) => SettingsState)) => {
       setSettingsState((prev) => {
-        const next = typeof updater === 'function' ? (updater as (prev: SettingsState) => SettingsState)(prev) : updater;
-        syncAiStateWithSettings(next);
-        return next;
+        const next = typeof updater === 'function'
+          ? (updater as (prev: SettingsState) => SettingsState)({
+              ...prev,
+              mediaPlan: mediaPlanState,
+            })
+          : updater;
+
+        const { mediaPlan: nextMediaPlan, ...rest } = next;
+
+        if (nextMediaPlan && !mediaPlansEqual(nextMediaPlan, mediaPlanState)) {
+          hydrateMediaPlan(nextMediaPlan);
+        }
+
+        const nextSettingsState: SettingsState = {
+          ...rest,
+          mediaPlan: prev.mediaPlan,
+        };
+
+        syncAiStateWithSettings({
+          ...nextSettingsState,
+          mediaPlan: mediaPlanState,
+        });
+
+        return nextSettingsState;
       });
     },
-    [syncAiStateWithSettings]
+    [mediaPlanState, syncAiStateWithSettings, hydrateMediaPlan]
   );
 
   useEffect(() => {
@@ -261,55 +372,8 @@ function App() {
   }, [cardsOrder, cardsEnabled, selectedCard, selectCard, toggleHiddenCard]);
 
   useEffect(() => {
-    const previous = contentStatusRef.current;
-    contentStatusRef.current = contentStatus;
-    if (contentStatus === 'ready' && previous && previous !== 'ready') {
-      setHiddenCardTypes((prev) => {
-        if (!prev.has('content')) {
-          return prev;
-        }
-        const next = new Set(prev);
-        next.delete('content');
-        return next;
-      });
-    }
-  }, [contentStatus]);
-
-  useEffect(() => {
     contentErrorRef.current = contentError;
   }, [contentError]);
-
-  useEffect(() => {
-    const nextStatus = aiState.stepStatus.pictures ?? (aiState.outputs.pictures ? 'ready' : 'idle');
-    const previous = picturesStatusRef.current;
-    picturesStatusRef.current = nextStatus;
-    if (nextStatus === 'ready' && previous !== 'ready') {
-      setHiddenCardTypes((prev) => {
-        if (!prev.has('pictures')) {
-          return prev;
-        }
-        const next = new Set(prev);
-        next.delete('pictures');
-        return next;
-      });
-    }
-  }, [aiState.outputs.pictures, aiState.stepStatus.pictures]);
-
-  useEffect(() => {
-    const nextStatus = aiState.stepStatus.video ?? (aiState.outputs.video ? 'ready' : 'idle');
-    const previous = videoStatusRef.current;
-    videoStatusRef.current = nextStatus;
-    if (nextStatus === 'ready' && previous !== 'ready') {
-      setHiddenCardTypes((prev) => {
-        if (!prev.has('video')) {
-          return prev;
-        }
-        const next = new Set(prev);
-        next.delete('video');
-        return next;
-      });
-    }
-  }, [aiState.outputs.video, aiState.stepStatus.video]);
 
   useEffect(() => {
     if (contentStatus === 'ready' && contentResult) {
@@ -545,7 +609,25 @@ function App() {
   }, []);
 
   const handleGenerate = async (requestBrief: string, requestAttachments: AiAttachment[]) => {
+    // If already generating, stop it
+    if (aiState.generating && generationAbortRef.current) {
+      generationAbortRef.current.abort();
+      generationAbortRef.current = null;
+      return;
+    }
+
+    // Mark that generation has been triggered in this session
+    setHasGeneratedInSession(true);
+    
+    // Generate unique batch ID for this generation session
+    const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    currentBatchIdRef.current = batchId;
+    setCurrentBatchId(batchId);
+
     const steps = cardsOrder.filter((card) => cardsEnabled[card]);
+
+    generationProgressActions.setActiveCards(steps, { startedAt: Date.now() });
+
 
     generationAbortRef.current?.abort();
     const controller = new AbortController();
@@ -558,10 +640,6 @@ function App() {
 
     // Check if Content generation is needed and has valid brief
     const isContentEnabled = settings.cards.content;
-    if (isContentEnabled && !contentBrief) {
-      console.warn('Cannot generate content without a brief.');
-      // Don't return - other panels might still be able to generate
-    }
 
     const { enriched: enrichedAttachments, payload: attachmentPayload } = await prepareContentAttachments(
       Array.isArray(requestAttachments) ? requestAttachments : undefined
@@ -569,10 +647,10 @@ function App() {
 
     const attachmentSnapshot = cloneAttachments(enrichedAttachments);
     const pictureAttachmentSnapshot: AiAttachment[] = await preparePictureAttachments();
-    const pictureUploads = pictureAttachmentSnapshot
-      .filter((item) => item.kind === 'image')
-      .map((item) => item.dataUrl ?? item.url)
-      .filter((url) => typeof url === 'string' && url.length > 0);
+    // Use promptImages from pictures quickProps (uploaded reference images)
+    // These are base64 data URLs stored when user uploads images in the Pictures panel
+    const promptImages = settings.quickProps.pictures.promptImages || [];
+    const pictureUploads = promptImages.filter((url) => typeof url === 'string' && url.length > 0);
     const picturePromptSeed = getActivePicturesPrompt(settings.quickProps.pictures);
     const trimmedPicturePrompt = picturePromptSeed.trim();
     const pictureProviderKey = settings.quickProps.pictures.imageProvider;
@@ -591,27 +669,58 @@ function App() {
     const canGenerateVideo = settings.cards.video && isVideoValidated;
     
     if (!canGenerateContent && !canGeneratePictures && !canGenerateVideo) {
-      console.warn('No valid panels to generate. Please validate at least one panel.');
+      console.error('❌ No valid panels to generate');
+      if (isContentEnabled && !contentBrief) {
+        console.error('   - Content panel needs a brief');
+      }
+      if (settings.cards.pictures && !isPictureValidated) {
+        console.error('   - Pictures panel needs validation');
+      }
+      if (settings.cards.video && !isVideoValidated) {
+        console.error('   - Video panel needs validation');
+      }
+      generationProgressActions.reset();
+      alert('Please provide content for at least one panel:\n' +
+            (isContentEnabled && !contentBrief ? '• Content needs a brief\n' : '') +
+            (settings.cards.pictures && !isPictureValidated ? '• Pictures needs validation\n' : '') +
+            (settings.cards.video && !isVideoValidated ? '• Video needs validation' : ''));
       return;
     }
 
-    if (settings.cards.content) {
+    pendingPersistRef.current = true;
+
+    // Only clear content data if content is actually being regenerated
+    if (canGenerateContent && steps.includes('content')) {
       setContentVariants([]);
       setContentMeta(null);
     }
 
-    setAiState((prev) => ({
-      ...prev,
-      brief: contentBrief || picturesBrief, // Use Pictures brief as fallback
-      uploads: attachmentSnapshot,
-      generating: true,
-      steps,
-      stepStatus: steps.reduce(
-        (acc, step) => ({ ...acc, [step]: 'queued' as GridStepState }),
-        {} as Partial<AiUIState['stepStatus']>
-      ),
-      outputs: {},
-    }));
+    setAiState((prev) => {
+      // Preserve outputs for cards NOT being regenerated
+      const preservedOutputs: AiUIState['outputs'] = {};
+      
+      // Only clear outputs for cards that are in the current generation steps
+      if (!steps.includes('pictures') && prev.outputs.pictures) {
+        preservedOutputs.pictures = prev.outputs.pictures;
+      }
+      if (!steps.includes('video') && prev.outputs.video) {
+        preservedOutputs.video = prev.outputs.video;
+      }
+      // Note: content outputs are stored separately in contentVariants/contentMeta, not in outputs
+      
+      return {
+        ...prev,
+        brief: contentBrief || picturesBrief, // Use Pictures brief as fallback
+        uploads: attachmentSnapshot,
+        generating: true,
+        steps,
+        stepStatus: steps.reduce(
+          (acc, step) => ({ ...acc, [step]: 'queued' as GridStepState }),
+          {} as Partial<AiUIState['stepStatus']>
+        ),
+        outputs: preservedOutputs,
+      };
+    });
 
     const tasks: Promise<void>[] = [];
 
@@ -638,6 +747,16 @@ function App() {
           }
         })()
       );
+    } else if (settings.cards.content && steps.includes('content')) {
+      console.warn('⚠️ Content card enabled but no brief provided, skipping');
+      setAiState((prev) => ({
+        ...prev,
+        stepStatus: { ...prev.stepStatus, content: 'error' },
+      }));
+      recordPhase('content', 'error', {
+        source: 'content-sse',
+        message: 'Content brief required',
+      });
     }
 
     if (settings.cards.pictures) {
@@ -646,11 +765,19 @@ function App() {
           ...prev,
           stepStatus: { ...prev.stepStatus, pictures: 'error' },
         }));
+        recordPhase('pictures', 'error', {
+          source: 'image-gateway',
+          message: 'Pictures prompt or provider missing',
+        });
       } else if (!isPictureValidated) {
         setAiState((prev) => ({
           ...prev,
           stepStatus: { ...prev.stepStatus, pictures: 'error' },
         }));
+        recordPhase('pictures', 'error', {
+          source: 'image-gateway',
+          message: 'Pictures prompt not validated',
+        });
       } else {
       tasks.push(
         (async () => {
@@ -659,6 +786,10 @@ function App() {
               ...prev,
               stepStatus: { ...prev.stepStatus, pictures: 'thinking' },
             }));
+            recordPhase('pictures', 'thinking', {
+              source: 'image-gateway',
+              message: 'Crafting visual concepts',
+            });
 
             await waitWithAbort(controller.signal, 700);
 
@@ -666,8 +797,17 @@ function App() {
               ...prev,
               stepStatus: { ...prev.stepStatus, pictures: 'rendering' },
             }));
+            recordPhase('pictures', 'rendering', {
+              source: 'image-gateway',
+              message: 'Rendering high-resolution images',
+            });
 
             await waitWithAbort(controller.signal, 900);
+
+            console.log('[Pictures] Generating with uploads:', pictureUploads.length, 'images');
+            if (pictureUploads.length > 0) {
+              console.log('[Pictures] First image preview:', pictureUploads[0].substring(0, 50) + '...');
+            }
 
             const versions = await generatePictures({
               versions: settings.versions ?? 1,
@@ -682,11 +822,63 @@ function App() {
               throw new Error('Picture generation yielded no outputs.');
             }
 
+            // Upload images to PERMANENT Supabase Storage
+            console.log('🚀 Starting PERMANENT image upload to Supabase Storage...');
+            const userId = await getCurrentUserId();
+            const generationKey = `pictures-${Date.now()}`;
+            
+            let versionsWithPermanentUrls = versions;
+            
+            if (!userId) {
+              console.error('❌ CRITICAL: No user ID found - cannot upload images!');
+              console.log('Current auth state:', await supabase.auth.getUser());
+            } else {
+              console.log('✅ User ID found:', userId);
+              console.log('📤 Uploading', versions.length, 'image versions...');
+              
+              try {
+                versionsWithPermanentUrls = await uploadGeneratedImages(versions, userId, generationKey);
+                
+                // Verify upload worked
+                const hasSupabaseUrls = versionsWithPermanentUrls.some((v: any) => 
+                  v?.assets?.some((a: any) => a?.url?.includes('supabase.co'))
+                );
+                
+                if (hasSupabaseUrls) {
+                  console.log('✅ SUCCESS! Images uploaded to PERMANENT Supabase Storage');
+                } else {
+                  console.error('❌ UPLOAD FAILED! Still using temporary URLs');
+                  console.log('URLs:', versionsWithPermanentUrls[0]?.assets?.[0]?.url);
+                }
+              } catch (uploadError) {
+                console.error('❌ UPLOAD ERROR:', uploadError);
+                throw uploadError; // Don't save if upload fails
+              }
+            }
+
             setAiState((prev) => ({
               ...prev,
-              outputs: { ...prev.outputs, pictures: { versions } },
+              outputs: { ...prev.outputs, pictures: { versions: versionsWithPermanentUrls } },
               stepStatus: { ...prev.stepStatus, pictures: 'ready' },
             }));
+            recordPhase('pictures', 'ready', {
+              source: 'image-gateway',
+            });
+            
+            // Persist to database ONLY ONCE with permanent URLs
+            if (currentBatchIdRef.current && versionsWithPermanentUrls.length > 0) {
+              if (!savedGenerationsRef.current.has(generationKey)) {
+                console.log('💾 Saving pictures generation with permanent URLs:', generationKey);
+                savedGenerationsRef.current.add(generationKey);
+                
+                addGeneration('pictures', { versions: versionsWithPermanentUrls }, settings).catch(err => {
+                  console.error('Failed to persist pictures generation:', err);
+                  savedGenerationsRef.current.delete(generationKey);
+                });
+              } else {
+                console.log('⏭️ Skipping duplicate picture save for:', generationKey);
+              }
+            }
           } catch (error) {
             if ((error as Error).name === 'AbortError') {
               return;
@@ -696,6 +888,10 @@ function App() {
               ...prev,
               stepStatus: { ...prev.stepStatus, pictures: 'error' },
             }));
+            recordPhase('pictures', 'error', {
+              source: 'image-gateway',
+              message: error instanceof Error ? error.message : undefined,
+            });
           }
         })()
       );
@@ -708,6 +904,10 @@ function App() {
           ...prev,
           stepStatus: { ...prev.stepStatus, video: 'error' },
         }));
+        recordPhase('video', 'error', {
+          source: 'video-polling',
+          message: 'Video prompt not validated',
+        });
       } else {
         tasks.push(
           (async () => {
@@ -716,6 +916,10 @@ function App() {
                 ...prev,
                 stepStatus: { ...prev.stepStatus, video: 'thinking' },
               }));
+              recordPhase('video', 'thinking', {
+                source: 'video-polling',
+                message: 'Storyboarding scenes',
+              });
 
               // Runway video generation with real API
               const versions = await generateVideo(
@@ -728,11 +932,63 @@ function App() {
                 throw new Error('Video generation yielded no outputs.');
               }
 
+              // Upload videos to PERMANENT Supabase Storage
+              console.log('🚀 Starting PERMANENT video upload to Supabase Storage...');
+              const userId = await getCurrentUserId();
+              const generationKey = `video-${Date.now()}`;
+              
+              let versionsWithPermanentUrls = versions;
+              
+              if (!userId) {
+                console.error('❌ CRITICAL: No user ID found - cannot upload videos!');
+                console.log('Current auth state:', await supabase.auth.getUser());
+              } else {
+                console.log('✅ User ID found:', userId);
+                console.log('📤 Uploading', versions.length, 'video versions...');
+                
+                try {
+                  versionsWithPermanentUrls = await uploadGeneratedVideos(versions, userId, generationKey);
+                  
+                  // Verify upload worked
+                  const hasSupabaseUrls = versionsWithPermanentUrls.some((v: any) => 
+                    v?.url?.includes('supabase.co')
+                  );
+                  
+                  if (hasSupabaseUrls) {
+                    console.log('✅ SUCCESS! Videos uploaded to PERMANENT Supabase Storage');
+                  } else {
+                    console.error('❌ UPLOAD FAILED! Still using temporary URLs');
+                    console.log('URLs:', versionsWithPermanentUrls[0]?.url);
+                  }
+                } catch (uploadError) {
+                  console.error('❌ VIDEO UPLOAD ERROR:', uploadError);
+                  throw uploadError; // Don't save if upload fails
+                }
+              }
+
               setAiState((prev) => ({
                 ...prev,
-                outputs: { ...prev.outputs, video: { versions } },
+                outputs: { ...prev.outputs, video: { versions: versionsWithPermanentUrls } },
                 stepStatus: { ...prev.stepStatus, video: 'ready' },
               }));
+              recordPhase('video', 'ready', {
+                source: 'video-polling',
+              });
+              
+              // Persist to database ONLY ONCE with permanent URLs
+              if (currentBatchIdRef.current && versionsWithPermanentUrls.length > 0) {
+                if (!savedGenerationsRef.current.has(generationKey)) {
+                  console.log('💾 Saving video generation with permanent URLs:', generationKey);
+                  savedGenerationsRef.current.add(generationKey);
+                  
+                  addGeneration('video', { versions: versionsWithPermanentUrls }, settings).catch(err => {
+                    console.error('Failed to persist video generation:', err);
+                    savedGenerationsRef.current.delete(generationKey);
+                  });
+                } else {
+                  console.log('⏭️ Skipping duplicate video save for:', generationKey);
+                }
+              }
             } catch (error) {
               if ((error as Error).name === 'AbortError') {
                 return;
@@ -742,6 +998,10 @@ function App() {
                 ...prev,
                 stepStatus: { ...prev.stepStatus, video: 'error' },
               }));
+              recordPhase('video', 'error', {
+                source: 'video-polling',
+                message: error instanceof Error ? error.message : undefined,
+              });
             }
           })()
         );
@@ -766,6 +1026,7 @@ function App() {
             (acc, step) => ({ ...acc, [step]: 'error' as GridStepState }),
             {} as Partial<AiUIState['stepStatus']>
           ),
+          generating: false, // Make sure to set generating to false on error
         }));
       }
     } finally {
@@ -778,6 +1039,8 @@ function App() {
           steps: [],
           stepStatus: {},
         }));
+        pendingPersistRef.current = false;
+        generationProgressActions.reset();
       } else {
         setAiState((prev) => ({
           ...prev,
@@ -851,10 +1114,7 @@ function App() {
     setContentVariants([]);
     setContentMeta(null);
     setCurrentVersions({ content: 0, pictures: 0, video: 0 });
-    // Clear stage manager entries
-    setStageEntries([]);
     setHiddenCardTypes(new Set());
-    console.log('App.tsx - Cleared stage manager entries');
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -938,169 +1198,8 @@ function App() {
     };
   }, []);
 
-  const handleCardSave = (type: string) => {
-    console.log(`Saving ${type} card`);
-  };
 
-  // Stage Manager: Minimize/Restore handlers
-  const handleMinimizeCard = useCallback((entryInput: StageManagerEntryInput) => {
-    const entry = createStageManagerEntry(entryInput);
-    setStageEntries((prev) => [entry, ...prev]);
-    setHiddenCardTypes((prev) => {
-      if (prev.has(entryInput.cardType)) {
-        return prev;
-      }
-      const next = new Set(prev);
-      next.add(entryInput.cardType);
-      return next;
-    });
-    console.log('App.tsx - Minimized card entry:', entry);
-  }, []);
-
-  const handleRestoreCard = useCallback((entryId: string, cardType: CardKey) => {
-    console.log(`App.tsx - Restoring card entry: ${entryId}`);
-    setStageEntries((prev) => prev.filter((entry) => entry.id !== entryId));
-    setHiddenCardTypes((hidden) => {
-      if (!hidden.has(cardType)) {
-        return hidden;
-      }
-      const next = new Set(hidden);
-      next.delete(cardType);
-      return next;
-    });
-  }, []);
-
-  const handleCardRegenerate = async (type: CardKey, pictureOptions?: PictureRemixOptions) => {
-    if (type === 'content') {
-      const briefText = aiState.brief.trim();
-      if (!briefText) {
-        console.warn('Cannot regenerate content without a brief.');
-        setAiState((prev) => ({
-          ...prev,
-          stepStatus: { ...prev.stepStatus, content: 'error' },
-        }));
-        return;
-      }
-      if (settings.cards.content) {
-        setContentVariants([]);
-        setContentMeta(null);
-        const options = {
-          ...contentOptions,
-          copyLength: contentOptions.copyLength ?? 'Standard',
-        };
-        const { payload: attachmentPayload, enriched } = await prepareContentAttachments();
-        if (!attachmentsEqual(enriched, aiState.uploads)) {
-          setAiState((prev) => ({
-            ...prev,
-            uploads: cloneAttachments(enriched),
-          }));
-        }
-        regenerateContent(briefText, options, settings.versions ?? 2, 'try a new hook and angle', attachmentPayload);
-      }
-      return;
-    }
-
-    setAiState((prev) => ({
-      ...prev,
-      stepStatus: { ...prev.stepStatus, [type]: 'rendering' },
-    }));
-
-    await new Promise((resolve) => window.setTimeout(resolve, 1200));
-
-    if (type === 'pictures') {
-      try {
-        const baseQuickProps = settings.quickProps.pictures;
-        const pictureAttachments: AiAttachment[] = await preparePictureAttachments();
-        const imageUploads = pictureAttachments
-          .filter((item) => item.kind === 'image')
-          .map((item) => item.dataUrl ?? item.url)
-          .filter((url) => typeof url === 'string' && url.length > 0);
-
-        const quickProps: PicturesQuickProps = {
-          ...baseQuickProps,
-        };
-
-        if (pictureOptions?.aspect) {
-          quickProps.aspect = pictureOptions.aspect;
-        }
-        if (pictureOptions?.mode) {
-          quickProps.mode = pictureOptions.mode === 'image' ? 'images' : 'prompt';
-        }
-
-        const versionCount = Math.max(1, pictureOptions?.versionCount ?? settings.versions ?? 1);
-
-        const picturePrompt = getActivePicturesPrompt(quickProps);
-        const briefInput = pictureOptions?.prompt?.trim() || picturePrompt || aiState.brief;
-
-        const versions = await generatePictures({
-          versions: versionCount,
-          brief: briefInput,
-          quickProps,
-          uploads: imageUploads,
-          attachments: pictureAttachments,
-          remixPrompt: pictureOptions?.prompt,
-        });
-
-        if (!versions.length) {
-          throw new Error('Picture regeneration returned no result.');
-        }
-
-        setAiState((prev) => ({
-          ...prev,
-          outputs: { ...prev.outputs, pictures: { versions } },
-          stepStatus: { ...prev.stepStatus, pictures: 'ready' },
-        }));
-        setCurrentVersions((prev) => ({ ...prev, pictures: 0 }));
-      } catch (error) {
-        console.error('Picture regeneration failed', error);
-        setAiState((prev) => ({
-          ...prev,
-          stepStatus: { ...prev.stepStatus, pictures: 'error' },
-        }));
-      }
-      return;
-    }
-
-    setAiState((prev) => {
-      const outputs = { ...prev.outputs };
-
-      if (type === 'video' && outputs.video) {
-        // Video regeneration now requires async Runway API call
-        generateVideo(1, settings.quickProps.video).then(refreshed => {
-          const index = clampVersionIndex(
-            currentVersions.video,
-            outputs.video!.versions.length || 1
-          );
-          const versions = [...outputs.video!.versions];
-          versions[index] = refreshed[0];
-          
-          setAiState((prev) => ({
-            ...prev,
-            outputs: {
-              ...prev.outputs,
-              video: { versions },
-            },
-            stepStatus: { ...prev.stepStatus, video: 'ready' },
-          }));
-        }).catch(error => {
-          console.error('Video regeneration failed:', error);
-          setAiState((prev) => ({
-            ...prev,
-            stepStatus: { ...prev.stepStatus, video: 'error' },
-          }));
-        });
-        return prev; // Return early for async operation
-      }
-
-      return {
-        ...prev,
-        outputs,
-        stepStatus: { ...prev.stepStatus, [type]: 'ready' },
-      };
-    });
-  };
-
-  const getCardStatus = (card: CardKey): GridStepState => {
+  const getCardStatus = useCallback((card: CardKey): GridStepState => {
     if (card === 'content') {
       return mapContentStatusToGrid(contentStatus);
     }
@@ -1118,31 +1217,95 @@ function App() {
       default:
         return 'queued';
     }
-  };
+  }, [aiState.outputs.pictures, aiState.outputs.video, aiState.stepStatus, contentStatus]);
 
-  const picturesVersions = aiState.outputs.pictures?.versions ?? [];
-  const videoVersions = aiState.outputs.video?.versions ?? [];
+  const picturesVersions = useMemo(
+    () => aiState.outputs.pictures?.versions ?? [],
+    [aiState.outputs.pictures]
+  );
+  const videoVersions = useMemo(
+    () => aiState.outputs.video?.versions ?? [],
+    [aiState.outputs.video]
+  );
 
   const picturesIndex = clampVersionIndex(currentVersions.pictures, picturesVersions.length);
   const videoIndex = clampVersionIndex(currentVersions.video, videoVersions.length);
 
-  const cardItems: Array<{ id: string; element: ReactNode }> = [];
+
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const unsubscribe = useGenerationProgressStore.subscribe(
+      (state) => state.cards,
+      async (cards) => {
+        const updates: Array<{ user_id: string; card_type: CardKey; run_id: string | null; phase: GenerationPhase; message: string | null; meta: Record<string, unknown> | null; }> = [];
+
+        (['content', 'pictures', 'video'] as CardKey[]).forEach((cardType) => {
+          const progress = cards[cardType];
+          const phase = progress?.phase ?? 'idle';
+          const runId = progress?.runId ?? null;
+          const message = progress?.message ?? null;
+          const last = lastProgressRef.current[cardType];
+
+          if (!last || last.phase !== phase || last.runId !== runId || last.message !== message) {
+            updates.push({
+              user_id: user.id,
+              card_type: cardType,
+              run_id: runId,
+              phase,
+              message,
+              meta: progress ? { events: progress.events } : null,
+            });
+
+            lastProgressRef.current[cardType] = { phase, runId, message };
+          }
+        });
+
+        if (updates.length === 0) {
+          return;
+        }
+
+        const { error } = await supabase.from('user_card_progress').upsert(
+          updates.map((item) => ({
+            ...item,
+            updated_at: new Date().toISOString(),
+          }))
+        );
+
+        if (error) {
+          console.error('Failed to persist card progress', error);
+        }
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user]);
+
+
   const activeCards = cardsOrder.filter((card) => cardsEnabled[card]);
   const activeTab = (selectedCard ?? activeCards[0] ?? 'content') as CardKey;
-  
-  // Determine which cards are actually being generated
-  if (!aiState.generating) {
-    // Only show Content card if it was actually validated AND has generated content
-    // This prevents empty content card from showing when only Pictures is generated
-  const shouldShowContentCard =
-      cardsEnabled.content && 
-      settings.quickProps.content.validated && 
-      (contentVariants.length > 0 || contentStatus !== 'idle') &&
-      !hiddenCardTypes.has('content');
+
+  const sortedCardItems = useMemo(() => {
+    const cardItems: Array<{ id: string; cardType: CardKey; layoutId: string; element: ReactNode }> = [];
+
+    // Only show content card if it has actual data
+    const hasContentData = contentVariants && contentVariants.length > 0;
+    const shouldShowContentCard =
+      cardsEnabled.content &&
+      !hiddenCardTypes.has('content') &&
+      hasGeneratedInSession &&
+      hasContentData;
 
     if (shouldShowContentCard) {
       cardItems.push({
         id: 'content-card',
+        cardType: 'content',
+        layoutId: 'stage-card-content',
         element: (
           <ContentCard
             status={contentStatus}
@@ -1155,59 +1318,153 @@ function App() {
             versions={settings.versions}
             runId={contentRunId}
             onRegenerate={regenerateContent}
-            onMinimize={handleMinimizeCard}
           />
         ),
       });
     }
 
-    // Only show Pictures card if it was validated AND has generated images
-  const shouldShowPicturesCard = 
+    // Only show pictures card if it has actual data
+    const hasPicturesData = picturesVersions && picturesVersions.length > 0;
+    const shouldShowPicturesCard =
       cardsEnabled.pictures && 
-      settings.quickProps.pictures.validated &&
-      picturesVersions.length > 0 &&
-      !hiddenCardTypes.has('pictures');
+      !hiddenCardTypes.has('pictures') &&
+      hasGeneratedInSession &&
+      hasPicturesData;
 
     if (shouldShowPicturesCard) {
       cardItems.push({
         id: 'pictures-card',
+        cardType: 'pictures',
+        layoutId: 'stage-card-pictures',
         element: (
           <PicturesCard
             pictures={picturesVersions}
             currentVersion={picturesIndex}
-            brandLocked={settings.quickProps.pictures.lockBrandColors ?? true}
-            onSave={() => handleCardSave('pictures')}
-            onRegenerate={(options) => handleCardRegenerate('pictures', options)}
             status={getCardStatus('pictures')}
-            onMinimize={handleMinimizeCard}
           />
         ),
       });
     }
 
-    // Only show Video card if it was validated AND has generated videos
-  const shouldShowVideoCard = 
+    // Only show video card if it has actual data
+    const hasVideoData = videoVersions && videoVersions.length > 0;
+    const shouldShowVideoCard =
       cardsEnabled.video && 
-      settings.quickProps.video.validated &&
-      videoVersions.length > 0 &&
-      !hiddenCardTypes.has('video');
+      !hiddenCardTypes.has('video') &&
+      hasGeneratedInSession &&
+      hasVideoData;
 
     if (shouldShowVideoCard) {
       cardItems.push({
         id: 'video-card',
+        cardType: 'video',
+        layoutId: 'stage-card-video',
         element: (
           <VideoCard
             videos={videoVersions}
-            currentVersion={videoIndex}
-            onSave={() => handleCardSave('video')}
-            onRegenerate={() => handleCardRegenerate('video')}
             status={getCardStatus('video')}
-            onMinimize={handleMinimizeCard}
           />
         ),
       });
     }
-  }
+
+    const orderMap = new Map(cardsOrder.map((card, index) => [card, index]));
+    return [...cardItems].sort((a, b) => {
+      const aPinned = Boolean(cardsPinned[a.cardType]);
+      const bPinned = Boolean(cardsPinned[b.cardType]);
+      if (aPinned !== bPinned) {
+        return aPinned ? -1 : 1;
+      }
+      const aOrder = orderMap.get(a.cardType) ?? 999;
+      const bOrder = orderMap.get(b.cardType) ?? 999;
+      return aOrder - bOrder;
+    });
+  }, [
+    aiState.brief,
+    cardsEnabled,
+    cardsOrder,
+    cardsPinned,
+    contentError,
+    contentMeta,
+    contentOptions,
+    contentRunId,
+    contentStatus,
+    contentVariants,
+    getCardStatus,
+    hasGeneratedInSession,
+    hiddenCardTypes,
+    picturesIndex,
+    picturesVersions,
+    regenerateContent,
+    settings.platforms,
+    settings.versions,
+    toggleCardPinned,
+    videoIndex,
+    videoVersions,
+  ]);
+
+
+  // Track active drag for DragOverlay
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Configure sensors for smooth dragging
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Start dragging after 8px movement
+      },
+    })
+  );
+
+  // Handle drag start
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  }, []);
+
+  // Handle drag end to update card order
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over, delta } = event;
+
+      // Immediately clear activeId to hide DragOverlay
+      setActiveId(null);
+
+      const activeItem = sortedCardItems.find((item) => item.id === active.id);
+      if (!activeItem) {
+        return;
+      }
+
+      if (!over || active.id === over.id) {
+        if (delta && (Math.abs(delta.x) > 1 || Math.abs(delta.y) > 1)) {
+          cardLayoutActions.nudgeOffset(activeItem.cardType, {
+            x: delta.x,
+            y: delta.y,
+          });
+        }
+        return;
+      }
+
+      const oldIndex = sortedCardItems.findIndex((item) => item.id === active.id);
+      const newIndex = sortedCardItems.findIndex((item) => item.id === over.id);
+
+      if (oldIndex === -1 || newIndex === -1) {
+        return;
+      }
+
+      const draggedCardType = sortedCardItems[oldIndex].cardType;
+      const targetCardType = sortedCardItems[newIndex].cardType;
+
+      const newOrder = [...cardsOrder];
+      const draggedIndex = newOrder.indexOf(draggedCardType);
+      const targetIndex = newOrder.indexOf(targetCardType);
+
+      newOrder.splice(draggedIndex, 1);
+      newOrder.splice(targetIndex, 0, draggedCardType);
+
+      setCustomOrder(newOrder);
+    },
+    [sortedCardItems, cardsOrder, setCustomOrder]
+  );
 
   const topBar = (
     <AppTopBar
@@ -1235,6 +1492,10 @@ function App() {
       onOpenSettings={handleOpenSettingsPanel}
       onHelp={handleHelp}
       onSignOut={handleSignOut}
+      onOpenFeedbackSlider={() => {
+        setCurrentFeedbackTouchpoint('feature_discovery');
+        setShowFeedbackModal(true);
+      }}
     />
   );
 
@@ -1274,8 +1535,8 @@ function App() {
           contextData: {
             location: 'feedback-modal',
             touchpoint: currentFeedbackTouchpoint,
-            cardsGenerated: cardItems.length,
-            cardTypes: cardItems.map(item => item.id),
+            cardsGenerated: sortedCardItems.length,
+            cardTypes: sortedCardItems.map(item => item.id),
             generationCount: feedbackManager.getState().generationCount
           },
           pageUrl: window.location.href,
@@ -1315,7 +1576,7 @@ function App() {
   };
 
   const mainContent = (
-    <>
+    <div className="relative w-full h-full flex flex-col">
       <TopBarPanels
         open={panelOpen}
         close={closePanel}
@@ -1326,63 +1587,23 @@ function App() {
         onMouseLeave={() => setHovering(false)}
       />
 
-      {/* Stage Manager - Minimized Cards */}
-      <StageManager
-        entries={stageEntries}
-        onRestoreEntry={handleRestoreCard}
-        threeDSettings={threeDSettings}
-        traySettings={traySettings}
-      />
-
-      {/* Main content area - now empty, cards will appear after generation */}
-
-      <AnimatePresence mode="wait">
-        {cardItems.length > 0 && !aiState.generating && (
-          <motion.section
-            key={`cards-display-${cardItems.length}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{
-              duration: 1.5,
-              ease: "easeInOut",
-              delay: 0.2,
-            }}
-            className="outputs-stage mx-auto w-full max-w-[1600px] px-6 pb-24"
-            aria-label="Generated outputs"
-            style={{
-              paddingTop: cardItems.length === 1 ? '0' : '48px',
-            }}
-          >
-            <SmartOutputGrid 
-              cardCount={cardItems.length}
-              isGenerating={false}
-            >
-              {cardItems.map((item, index) => (
-                <motion.div 
-                  key={item.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{
-                    duration: 1.0,
-                    ease: "easeInOut",
-                    delay: 0.3 + (index * 0.15),
-                  }}
-                >
-                  {item.element}
-                </motion.div>
-              ))}
-            </SmartOutputGrid>
-
-          </motion.section>
-        )}
-      </AnimatePresence>
+      <div className="relative flex-1 w-full overflow-y-auto overflow-x-hidden">
+        {/* Persistent Cards Display - Shows all saved cards from database */}
+        <PersistentCardsDisplay
+          settings={settings}
+          cardsEnabled={cardsEnabled}
+          cardsOrder={cardsOrder}
+          cardsPinned={cardsPinned}
+          hiddenCardTypes={hiddenCardTypes}
+          cardOffsets={cardOffsets as Record<CardKey, { x: number; y: number }>}
+        />
+      </div>
 
       {/* Badu Assistant - Floating Chat */}
       <BaduAssistant />
 
       {/* Smart Generation Loader - Shows real-time progress */}
-      <SmartGenerationLoader aiState={aiState} enabledCards={cardsEnabled} />
+      <SmartGenerationLoader />
 
       {/* Full-Screen Feedback Modal - After Generation */}
       <AnimatePresence>
@@ -1420,7 +1641,8 @@ function App() {
 
       {/* Interactive Card FX Controller - Debug Tool (Removed - settings locked in) */}
       {/* <InteractiveCardController /> */}
-    </>
+      
+    </div>
   );
 
   return (

@@ -1,18 +1,28 @@
-import { useState, useRef, useEffect, useId, type ReactNode } from 'react';
+import { useState, useRef, useEffect, useId, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 type TooltipProps = {
   label: string;
   children: ReactNode;
   delay?: number;
+  hideDelay?: number;
 };
 
-export default function Tooltip({ label, children, delay = 120 }: TooltipProps) {
+export default function Tooltip({ label, children, delay = 400, hideDelay = 100 }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const anchorRef = useRef<HTMLSpanElement>(null);
-  const timeoutRef = useRef<number | undefined>(undefined);
+  const showTimeoutRef = useRef<number | undefined>(undefined);
+  const hideTimeoutRef = useRef<number | undefined>(undefined);
+  const isHoveringRef = useRef(false);
   const tooltipId = useId();
+
+  const updatePosition = useCallback(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    setCoords({ x: rect.left + rect.width / 2, y: rect.top });
+  }, []);
 
   useEffect(() => {
     const anchor = anchorRef.current;
@@ -21,24 +31,35 @@ export default function Tooltip({ label, children, delay = 120 }: TooltipProps) 
     }
 
     const show = () => {
-      const rect = anchor.getBoundingClientRect();
-      setCoords({ x: rect.left + rect.width / 2, y: rect.top });
+      if (!isHoveringRef.current) return;
+      updatePosition();
       setOpen(true);
     };
 
     const hide = () => {
-      window.clearTimeout(timeoutRef.current);
+      window.clearTimeout(showTimeoutRef.current);
+      window.clearTimeout(hideTimeoutRef.current);
       setOpen(false);
     };
 
     const onEnter = () => {
-      window.clearTimeout(timeoutRef.current);
-      timeoutRef.current = window.setTimeout(show, delay);
+      isHoveringRef.current = true;
+      // Cancel any pending hide
+      window.clearTimeout(hideTimeoutRef.current);
+      window.clearTimeout(showTimeoutRef.current);
+      showTimeoutRef.current = window.setTimeout(show, delay);
     };
 
     const onLeave = () => {
-      window.clearTimeout(timeoutRef.current);
-      setOpen(false);
+      isHoveringRef.current = false;
+      // Cancel any pending show
+      window.clearTimeout(showTimeoutRef.current);
+      // Add a small delay before hiding to prevent flicker
+      hideTimeoutRef.current = window.setTimeout(() => {
+        if (!isHoveringRef.current) {
+          setOpen(false);
+        }
+      }, hideDelay);
     };
 
     anchor.addEventListener('mouseenter', onEnter);
@@ -51,8 +72,11 @@ export default function Tooltip({ label, children, delay = 120 }: TooltipProps) 
       anchor.removeEventListener('mouseleave', onLeave);
       anchor.removeEventListener('focusin', onEnter);
       anchor.removeEventListener('focusout', hide);
+      // Clear any pending timeouts on cleanup
+      window.clearTimeout(showTimeoutRef.current);
+      window.clearTimeout(hideTimeoutRef.current);
     };
-  }, [delay]);
+  }, [delay, hideDelay, updatePosition]);
 
   useEffect(() => {
     if (!open) {

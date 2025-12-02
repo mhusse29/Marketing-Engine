@@ -5,14 +5,16 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import { cn } from '../../lib/format';
 import { AnimatedCounter } from '../AnimatedCounter';
 import type { Goal, SettingsState } from '../../types';
-import { pullMediaPlan } from '../../store/settings';
+import {
+  pullPlanSummary,
+  updatePlanField,
+  useMediaPlanState,
+} from '../../store/useMediaPlanStore';
 
 interface MediaPlannerProps {
   settings: SettingsState;
   onSettingsChange: (settings: SettingsState) => void;
 }
-
-type MediaPlanPatch = Partial<SettingsState['mediaPlan']>;
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'AED', 'SAR', 'EGP'] as const;
 const MARKETS = [
@@ -37,57 +39,38 @@ const goalTips: Record<Goal, string> = {
   Sales: 'Drive conversions now.',
 };
 
-export function MediaPlanner({ settings, onSettingsChange }: MediaPlannerProps) {
-  const { mediaPlan } = settings;
+export function MediaPlanner({ settings: _settings, onSettingsChange: _onSettingsChange }: MediaPlannerProps) {
+  void _settings;
+  void _onSettingsChange;
+  const mediaPlan = useMediaPlanState((state) => state.mediaPlan);
+  const isLoadingSummary = useMediaPlanState((state) => state.isLoadingSummary);
+  const storeError = useMediaPlanState((state) => state.error);
   const [open, setOpen] = useState(true);
-  const [pulling, setPulling] = useState(false);
   const autoCollapsed = useRef(false);
   const [useCustomMarket, setUseCustomMarket] = useState(() => {
     const current = mediaPlan.market;
     return Boolean(current && !MARKETS.includes(current));
   });
 
-  const updateMediaPlan = (patch: MediaPlanPatch) => {
-    const coreFields: Array<keyof SettingsState['mediaPlan']> = ['budget', 'market', 'goal', 'currency'];
-    const coreFieldChanged = coreFields.some((field) =>
-      Object.prototype.hasOwnProperty.call(patch, field) && patch[field] !== mediaPlan[field]
-    );
-
-    const nextSummary = Object.prototype.hasOwnProperty.call(patch, 'summary')
-      ? patch.summary ?? null
-      : coreFieldChanged
-        ? null
-        : mediaPlan.summary ?? null;
-
-    onSettingsChange({
-      ...settings,
-      mediaPlan: {
-        ...mediaPlan,
-        ...patch,
-        summary: nextSummary,
-      },
-    });
-  };
-
   const handleBudgetChange = (raw: string) => {
     if (!raw) {
-      updateMediaPlan({ budget: null });
+      updatePlanField('budget', null);
       return;
     }
     const numeric = Number(raw);
-    updateMediaPlan({ budget: Number.isFinite(numeric) ? numeric : null });
+    updatePlanField('budget', Number.isFinite(numeric) ? numeric : null);
   };
 
   const handleMarketChange = (value: string) => {
-    updateMediaPlan({ market: value.trim() ? value : null });
+    updatePlanField('market', value.trim() ? value : null);
   };
 
   const handleCurrencyChange = (value: string) => {
-    updateMediaPlan({ currency: value ? (value as SettingsState['mediaPlan']['currency']) : null });
+    updatePlanField('currency', value ? (value as SettingsState['mediaPlan']['currency']) : null);
   };
 
   const handleGoalSelect = (goal: Goal) => {
-    updateMediaPlan({ goal });
+    updatePlanField('goal', goal);
   };
 
   useEffect(() => {
@@ -104,7 +87,7 @@ export function MediaPlanner({ settings, onSettingsChange }: MediaPlannerProps) 
     if (value === '__custom') {
       setUseCustomMarket(true);
       if (!mediaPlan.market || MARKETS.includes(mediaPlan.market)) {
-        updateMediaPlan({ market: '' });
+        updatePlanField('market', '');
       }
       return;
     }
@@ -112,11 +95,11 @@ export function MediaPlanner({ settings, onSettingsChange }: MediaPlannerProps) 
     setUseCustomMarket(false);
 
     if (!value) {
-      updateMediaPlan({ market: null });
+      updatePlanField('market', null);
       return;
     }
 
-    updateMediaPlan({ market: value });
+    updatePlanField('market', value);
   };
 
   const hasCoreFields = useMemo(
@@ -132,37 +115,25 @@ export function MediaPlanner({ settings, onSettingsChange }: MediaPlannerProps) 
   );
 
   useEffect(() => {
-    if (open && hasCoreFields && !autoCollapsed.current) {
+    if (open && hasCoreFields && mediaPlan.summary && !autoCollapsed.current) {
       setOpen(false);
       autoCollapsed.current = true;
     }
-  }, [hasCoreFields, open]);
+  }, [hasCoreFields, mediaPlan.summary, open]);
 
   const handlePullPlan = async () => {
-    if (!hasCoreFields || pulling) {
+    if (!hasCoreFields || isLoadingSummary) {
       return;
     }
 
-    setPulling(true);
     try {
-      if (!mediaPlan.goal || !mediaPlan.market || !mediaPlan.currency || !mediaPlan.budget) {
-        return;
-      }
-      const summary = await pullMediaPlan({
-        budget: mediaPlan.budget,
-        market: mediaPlan.market,
-        goal: mediaPlan.goal,
-        currency: mediaPlan.currency,
-      });
-      updateMediaPlan({ summary });
+      await pullPlanSummary();
       if (!autoCollapsed.current) {
         setOpen(false);
         autoCollapsed.current = true;
       }
     } catch (error) {
       console.error('Failed to pull media plan', error);
-    } finally {
-      setPulling(false);
     }
   };
 
@@ -336,15 +307,15 @@ export function MediaPlanner({ settings, onSettingsChange }: MediaPlannerProps) 
                     <button
                       type="button"
                       onClick={handlePullPlan}
-                      disabled={!hasCoreFields || pulling}
+                      disabled={!hasCoreFields || isLoadingSummary}
                       className={cn(
                         'inline-flex h-10 items-center rounded-xl px-4 text-sm font-semibold transition-all',
-                        hasCoreFields && !pulling
+                        hasCoreFields && !isLoadingSummary
                           ? 'bg-gradient-to-r from-[#3E8BFF] to-[#6B70FF] text-white shadow-[0_6px_20px_rgba(62,139,255,0.35)] hover:brightness-110'
                           : 'cursor-not-allowed border border-white/10 bg-white/5 text-white/50'
                       )}
                     >
-                      {pulling ? 'Pulling…' : 'Pull plan'}
+                      {isLoadingSummary ? 'Pulling…' : 'Pull plan'}
                     </button>
                   </Tooltip.Trigger>
                   <Tooltip.Content side="top" sideOffset={6} className={tooltipDark}>
@@ -352,6 +323,10 @@ export function MediaPlanner({ settings, onSettingsChange }: MediaPlannerProps) 
                   </Tooltip.Content>
                 </Tooltip.Root>
               </div>
+
+              {storeError && (
+                <p className="text-xs text-red-400/80">{storeError}</p>
+              )}
 
               {summary && kpis && (
                 <motion.div

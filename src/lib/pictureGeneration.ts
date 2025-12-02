@@ -53,6 +53,14 @@ type ImageGatewayRequest = {
   ideogramStyleType?: string;
   ideogramNegativePrompt?: string;
   ideogramSeed?: number;
+  // Gemini specific
+  geminiModel?: string;
+  geminiResolution?: string;
+  geminiThinking?: boolean;
+  geminiGrounding?: boolean;
+  // Runway Gen-4 Image specific
+  runwayImageModel?: string;
+  runwayImageRatio?: string;
 };
 
 type ImageGatewayResponse = {
@@ -215,6 +223,8 @@ function resolveProvider(quickProps: PicturesQuickProps): PictureProvider {
     case 'stability':
     case 'openai':
     case 'ideogram':
+    case 'gemini':
+    case 'runway':
       return quickProps.imageProvider;
     default:
       return 'openai';
@@ -286,6 +296,16 @@ function buildMeta(
       meta.quality = quickProps.ideogramMagicPrompt ? 'on' : 'off';
       meta.outputFormat = 'png';
       break;
+    case 'gemini':
+      meta.model = quickProps.geminiModel;
+      meta.quality = quickProps.geminiResolution;
+      meta.outputFormat = 'png';
+      break;
+    case 'runway':
+      meta.model = quickProps.runwayImageModel;
+      meta.quality = quickProps.runwayImageRatio;
+      meta.outputFormat = 'png';
+      break;
     default:
       break;
   }
@@ -341,6 +361,20 @@ async function requestAssetsForProvider(
       payload.ideogramStyleType = qp.ideogramStyleType;
       payload.ideogramNegativePrompt = qp.ideogramNegativePrompt;
       break;
+    case 'gemini':
+      payload.geminiModel = qp.geminiModel;
+      payload.geminiResolution = qp.geminiResolution;
+      payload.geminiThinking = qp.geminiThinking;
+      payload.geminiGrounding = qp.geminiGrounding;
+      // Gemini supports up to 14 reference images
+      payload.referenceImages = uploads.slice(0, 14);
+      break;
+    case 'runway':
+      payload.runwayImageModel = qp.runwayImageModel;
+      payload.runwayImageRatio = qp.runwayImageRatio;
+      // Runway Gen-4 supports up to 3 reference images with tags
+      payload.referenceImages = uploads.slice(0, 3);
+      break;
   }
 
   return requestUnifiedImages(payload, versionIndex, config.signal);
@@ -378,6 +412,11 @@ const generateImageResults = async (
       meta: {
         ...buildMeta(provider, 'images', promptForVersion, config.quickProps),
         prompt: promptForVersion,
+        // Add reference images to meta for history panel display
+        ...(uploads.length > 0 && { 
+          referenceImages: uploads,
+          referenceImageCount: uploads.length 
+        }),
       },
     });
   }

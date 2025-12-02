@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "./theme.css";
 @import "./styles/glass-anim.css";
+@import "./styles/premium-anim.css";
+@import "./styles/media-plan-lite.css";
 @import "./components/Outputs/InteractiveCard.css";
 
 /* Custom scrollbar for analytics dashboard */

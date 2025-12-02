@@ -1,0 +1,79 @@
+/**
+ * Adaptive Zoom Styles - Automatically adjusts layout based on browser zoom
+ * Works with smartZoomAdapter to create intelligent responsive behavior
+ */
+
+/* Base adaptive properties - these adjust automatically */
+:root {
+  --zoom-level: 1;
+  --adaptive-font-size: 16px;
+  --adaptive-spacing: 1rem;
+}
+
+/* Ensure lamp section adapts smoothly to zoom */
+.lamp-container {
+  will-change: transform;
+  transition: transform 0.3s ease-out;
+}
+
+/* Adaptive text sizing for lamp titles */
+[data-zoom-level="zoomed-in"] .lamp-title {
+  transform: scale(0.9);
+  transform-origin: center;
+}
+
+[data-zoom-level="zoomed-out"] .lamp-title {
+  transform: scale(1.1);
+  transform-origin: center;
+}
+
+/* Maintain visual consistency at different zoom levels */
+[data-zoom-level="zoomed-in"] {
+  --spacing-multiplier: 0.85;
+}
+
+[data-zoom-level="zoomed-out"] {
+  --spacing-multiplier: 1.15;
+}
+
+/* Adaptive lamp glow - maintains visual impact */
+[data-zoom-level="zoomed-in"] .lamp-glow {
+  filter: blur(calc(60px * 0.9));
+}
+
+[data-zoom-level="zoomed-out"] .lamp-glow {
+  filter: blur(calc(60px * 1.1));
+}
+
+/* Video player adaptive sizing */
+[data-zoom-level="zoomed-in"] .hsv-container {
+  max-width: 95vw;
+}
+
+[data-zoom-level="zoomed-out"] .hsv-container {
+  max-width: 90vw;
+}
+
+/* Smooth transitions for zoom adaptations */
+* {
+  transition-property: transform, filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease-out;
+}
+
+/* Prevent layout jumps during zoom */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Maintain readability at all zoom levels */
+body {
+  font-size: var(--adaptive-font-size);
+  line-height: 1.6;
+}
+
+/* Adaptive spacing for sections */
+section, .section {
+  padding-top: calc(var(--adaptive-spacing) * var(--spacing-multiplier, 1));
+  padding-bottom: calc(var(--adaptive-spacing) * var(--spacing-multiplier, 1));
+}

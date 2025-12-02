@@ -7,7 +7,7 @@ import { MediaPlanner } from './MediaPlanner';
 import { Platforms } from './Platforms';
 import { CardsSelector } from './CardsSelector';
 import { OutputVersions } from './OutputVersions';
-import { Feedback } from '../ui/feedback';
+import SavedGenerationsPanel from './SavedGenerationsPanel';
 
 interface SettingsPanelProps {
   settings: SettingsState;
@@ -24,9 +24,16 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
   const validityLabel = basicsReady ? 'Ready' : 'Complete basics';
 
   return (
-    <div className="relative z-[1] rounded-3xl border border-white/10 bg-white/[0.05] p-5 pb-6 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur lg:p-6 lg:pb-7">
-      <div className="mb-3 flex items-center justify-between text-white/90">
-        <h2 className="text-sm font-semibold text-white">Campaign Settings</h2>
+    <div 
+      className="relative z-[1] rounded-3xl border p-5 pb-6 shadow-[0_8px_32px_rgba(0,0,0,0.35)] lg:p-6 lg:pb-7"
+      style={{
+        backgroundColor: `rgba(255, 255, 255, var(--settings-bg-opacity, 0.05))`,
+        backdropFilter: `blur(var(--settings-blur, 8px))`,
+        WebkitBackdropFilter: `blur(var(--settings-blur, 8px))`,
+        borderColor: `rgba(255, 255, 255, var(--settings-border-opacity, 0.10))`,
+      }}
+    >
+      <div className="mb-3 flex items-center justify-end text-white/90">
         <span
           className={cn(
             'rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-medium text-white/70',
@@ -54,23 +61,31 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
       
       <hr className="mt-6 border-white/10" />
       
-      {/* Feedback Widget */}
+      {/* Saved Generations History Section */}
       <motion.div 
         variants={SECTION_VARIANTS} 
         initial="initial" 
         animate="animate" 
-        transition={{ duration: 0.16, delay: 0.16 }}
-        className="mt-4 flex justify-center"
+        transition={{ duration: 0.16, delay: 0.20 }}
+        className="mt-6"
       >
-        <Feedback 
-          label="Share Feedback" 
-          type="inline"
-          touchpointType="window_open"
-          contextData={{
-            panel: 'settings',
-            section: 'campaign-settings'
+        <div 
+          className="rounded-2xl border p-4 shadow-[0_8px_32px_rgba(0,0,0,0.35)]"
+          style={{
+            backgroundColor: `rgba(255, 255, 255, var(--settings-bg-opacity, 0.05))`,
+            backdropFilter: `blur(var(--settings-blur, 8px))`,
+            WebkitBackdropFilter: `blur(var(--settings-blur, 8px))`,
+            borderColor: `rgba(255, 255, 255, var(--settings-border-opacity, 0.10))`,
           }}
-        />
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-base font-semibold text-white flex items-center gap-2">
+              📚 Generation History
+            </h3>
+            <span className="text-xs text-white/50">All your saved content</span>
+          </div>
+          <SavedGenerationsPanel />
+        </div>
       </motion.div>
     </div>
   );

@@ -3,9 +3,14 @@ import { X, Minus, Image as ImageIcon, Paperclip } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/format';
 import { getApiBase } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { StructuredResponse } from './StructuredResponse';
 import { ThinkingSteps } from './ThinkingSteps';
 import { PremiumBaduLauncher } from './PremiumBaduLauncher';
+import { useBaduStream } from '../hooks/useBaduStream';
+import { useBaduPreferences } from '../hooks/useBaduPreferences';
+import { PreferencesCallout } from './AskAI/PreferencesCallout';
+import { StreamingMetadata } from './AskAI/StreamingMetadata';
 import {
   PromptInput,
   PromptInputTextarea,
@@ -92,14 +97,21 @@ const callBaduAPIEnhanced = async (
       attachments: msg.attachments, // Include attachments in history
     }));
 
+    // Get authentication token
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('Not authenticated');
+    }
+
     // Add timeout to prevent infinite loading
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout for enhanced mode
     
     const response = await fetch(`${getApiBase()}/v1/chat/enhanced`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
         message: userMessage,
@@ -112,10 +124,60 @@ const callBaduAPIEnhanced = async (
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      let errorBody: { error?: string; message?: string } | null = null;
+
+      try {
+        errorBody = await response.json();
+      } catch (parseError) {
+        console.warn('[Badu Enhanced] Failed to parse error response', parseError);
+      }
+
+      if (response.status === 401 || errorBody?.error === 'unauthorized') {
+        return {
+          response: {
+            title: 'Sign In Required',
+            message: 'Please sign in again to continue using BADU Enhanced.',
+            type: 'auth_error',
+            next_steps: ['Refresh the page', 'Sign in with your SINAIQ account'],
+          },
+          type: 'error',
+        };
+      }
+
+      if (response.status === 503 && errorBody?.error === 'openai_not_configured') {
+        return {
+          response: {
+            title: 'BADU Enhanced Setup Needed',
+            message: 'The enhanced BADU assistant is not fully configured on this environment yet.',
+            type: 'configuration_error',
+            next_steps: [
+              'Add your OPENAI_API_KEY to server/.env',
+              'Restart the gateway server after updating environment variables',
+              'Use the standard BADU assistant until setup is complete',
+            ],
+          },
+          type: 'error',
+        };
+      }
+
+      throw new Error(errorBody?.message || `API error: ${response.status}`);
     }
 
     const data = await response.json();
+    
+    // Validate response data
+    if (!data || !data.response) {
+      console.warn('[Badu Enhanced] Empty response from API:', data);
+      return {
+        response: {
+          title: 'No Response',
+          message: 'The assistant did not provide a response. Please try again.',
+          type: 'error',
+        },
+        type: 'error',
+      };
+    }
+    
     return {
       response: data.response,
       type: data.type || 'help',
@@ -164,8 +226,62 @@ export function BaduAssistantEnhanced() {
   const [inputValue, setInputValue] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [showPreferenceOverride, setShowPreferenceOverride] = useState(false);
+  const [preferencesOverridden, setPreferencesOverridden] = useState(false);
   const blobUrlsRef = useRef<Set<string>>(new Set()); // Track blob URLs for cleanup (using ref to avoid re-renders)
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // BADU Preferences hook
+  const { preferences, isLoading: prefsLoading } = useBaduPreferences();
+  
+  // Use overridden empty preferences or real preferences
+  const activePreferences = preferencesOverridden ? {} : preferences;
+
+  // BADU Streaming hook
+  const {
+    startStream,
+    stopStream,
+    isStreaming,
+    streamedText,
+    metadata,
+    error: streamError,
+  } = useBaduStream({
+    onMetadata: (meta) => {
+      console.log('[BADU] Stream metadata:', meta);
+    },
+    onComplete: (fullText) => {
+      try {
+        const parsed = JSON.parse(fullText);
+        const assistantMsg: Message = {
+          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          role: 'assistant',
+          content: parsed,
+          responseType: parsed.type || 'help',
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+      } catch (e) {
+        console.error('[BADU] Failed to parse response:', e);
+      }
+      setIsThinking(false);
+    },
+    onError: (error) => {
+      console.error('[BADU] Stream error:', error);
+      const errorMsg: Message = {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        role: 'assistant',
+        content: {
+          title: 'Streaming Error',
+          message: error.message || 'Failed to stream response',
+          type: 'error',
+        },
+        responseType: 'error',
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+      setIsThinking(false);
+    },
+  });
 
   // Resize state
   const [width, setWidth] = useState(400);
@@ -230,10 +346,16 @@ export function BaduAssistantEnhanced() {
     };
   }, [isResizing]);
 
-  // Handle send with enhanced API
+  // Track if we're already processing a request to prevent duplicates from React StrictMode
+  const isProcessingRef = useRef(false);
+
+  // Handle send with SSE streaming
   const handleSend = useCallback(async () => {
     const trimmed = inputValue.trim();
-    if (!trimmed || isThinking) return;
+    if (!trimmed || isThinking || isStreaming || isProcessingRef.current) return;
+    
+    // Set processing flag to prevent duplicate calls
+    isProcessingRef.current = true;
 
     // Convert files to base64 for API and create blob URLs for display
     const attachmentDataPromises = attachments.map(async (file) => {
@@ -267,7 +389,7 @@ export function BaduAssistantEnhanced() {
     }));
 
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
       content: trimmed,
       timestamp: Date.now(),
@@ -280,62 +402,20 @@ export function BaduAssistantEnhanced() {
     setAttachments([]);
 
     try {
-      // Call enhanced API with RAG, structured output, and vision
-      const { response, type } = await callBaduAPIEnhanced(
+      // Start SSE streaming with RAG, structured output, and vision
+      await startStream(
         trimmed,
         [...messages, userMsg],
-        apiAttachments.length > 0 ? apiAttachments : undefined
+        apiAttachments.length > 0 ? apiAttachments : undefined,
+        preferencesOverridden // Skip preferences if overridden
       );
-
-      const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: response,
-        responseType: type,
-        timestamp: Date.now(),
-      };
-
-      setMessages((prev) => [...prev, assistantMsg]);
     } catch (error) {
       console.error('[Badu Enhanced] Error in handleSend:', error);
-
-      // Categorize errors for better user feedback
-      let errorTitle = 'Error';
-      let errorMessage = 'Sorry, I encountered an error. Please try again.';
-      let errorSteps = ['Try rephrasing your question', 'Check your connection'];
-      
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        errorTitle = 'Connection Error';
-        errorMessage = 'Unable to connect to the server. Please check your internet connection.';
-        errorSteps = ['Check your internet connection', 'Try again in a moment'];
-      } else if (error instanceof Error && error.message.includes('timeout')) {
-        errorTitle = 'Request Timeout';
-        errorMessage = 'The request took too long. Please try a simpler question.';
-        errorSteps = ['Try a shorter question', 'Ask about one specific feature'];
-      } else if (error instanceof Error && error.message.includes('abort')) {
-        errorTitle = 'Request Cancelled';
-        errorMessage = 'The request was cancelled. Please try again.';
-        errorSteps = ['Try your request again'];
-      }
-
-      const errorMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: {
-          title: errorTitle,
-          message: errorMessage,
-          type: 'error',
-          next_steps: errorSteps,
-        },
-        responseType: 'error',
-        timestamp: Date.now(),
-      };
-
-      setMessages((prev) => [...prev, errorMsg]);
-    } finally {
       setIsThinking(false);
+    } finally {
+      isProcessingRef.current = false;
     }
-  }, [inputValue, isThinking, messages, attachments]);
+  }, [inputValue, isThinking, isStreaming, messages, attachments, startStream, preferencesOverridden]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -379,7 +459,7 @@ export function BaduAssistantEnhanced() {
     if (errors.length > 0) {
       // Display error to user
       const errorMsg: Message = {
-        id: Date.now().toString(),
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         role: 'assistant',
         content: {
           title: 'Attachment Error',
@@ -454,6 +534,87 @@ export function BaduAssistantEnhanced() {
 
             {/* Messages */}
             <div className="badu-messages-container flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ minHeight: '200px' }}>
+              {/* Preference Override Modal */}
+              {showPreferenceOverride && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                  onClick={() => setShowPreferenceOverride(false)}
+                >
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.9, opacity: 0 }}
+                    className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-purple-500/20"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <h3 className="text-lg font-semibold text-white mb-3">Override Preferences</h3>
+                    <p className="text-sm text-slate-300 mb-4">
+                      BADU will stop using your learned preferences and won't auto-fill settings. You'll need to select everything manually.
+                    </p>
+                    <p className="text-xs text-purple-300/60 mb-4">
+                      💡 This only affects this session. Your preferences will be used again next time you open BADU.
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => {
+                          setPreferencesOverridden(true)
+                          setShowPreferenceOverride(false)
+                        }}
+                        className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium"
+                      >
+                        Override for Session
+                      </button>
+                      <button
+                        onClick={() => setShowPreferenceOverride(false)}
+                        className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+
+              {/* Preferences Callout - Only show if not overridden */}
+              {!preferencesOverridden && !prefsLoading && preferences && Object.keys(preferences).length > 0 && (
+                <PreferencesCallout
+                  preferences={preferences}
+                  onOverride={() => setShowPreferenceOverride(true)}
+                />
+              )}
+              
+              {/* Override Active Banner */}
+              {preferencesOverridden && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-lg border-l-4 border-orange-400/50 bg-orange-900/10 p-3 backdrop-blur-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="text-orange-400 text-sm">⚠️</span>
+                      <span className="text-xs text-orange-200/80">
+                        Preferences overridden - BADU won't auto-fill settings
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setPreferencesOverridden(false)}
+                      className="text-xs text-orange-300 hover:text-orange-100 underline transition-colors"
+                    >
+                      Re-enable
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Streaming Metadata */}
+              {metadata && isStreaming && (
+                <StreamingMetadata metadata={metadata} className="mb-4" />
+              )}
+
               {messages.map((msg) => (
                 <motion.div
                   key={msg.id}
@@ -529,7 +690,8 @@ export function BaduAssistantEnhanced() {
                 </motion.div>
               ))}
 
-              {isThinking && (
+              {/* Thinking Animation - Show when starting or streaming without text yet */}
+              {(isThinking || isStreaming) && !streamedText && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -537,6 +699,24 @@ export function BaduAssistantEnhanced() {
                 >
                   <div className="max-w-[95%]">
                     <ThinkingSteps isThinking={true} />
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Streaming Text */}
+              {isStreaming && streamedText && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex justify-start"
+                >
+                  <div className="max-w-[95%] rounded-lg border border-blue-500/20 bg-gradient-to-br from-slate-900/40 to-slate-800/40 p-4 backdrop-blur-sm">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1">
+                        <p className="text-sm text-white/90 whitespace-pre-wrap">{streamedText}</p>
+                        <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-1" />
+                      </div>
+                    </div>
                   </div>
                 </motion.div>
               )}

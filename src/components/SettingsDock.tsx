@@ -165,12 +165,17 @@ export function SettingsDock({ children }: { children: React.ReactNode }) {
     <div className="fixed inset-0 z-40 pointer-events-none">
       <div
         ref={panelRef}
-        className="pointer-events-auto absolute flex flex-col rounded-3xl border border-white/10 bg-[#0D1420] shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-sm"
+        className="pointer-events-auto absolute flex flex-col rounded-3xl border shadow-[0_18px_48px_rgba(0,0,0,0.45)]"
         style={{
           width: panelWidth,
           left: panelLeft,
           top: panelTop,
           maxHeight: maxPanelHeight,
+          backgroundColor: `rgba(255, 255, 255, var(--settings-bg-opacity, 0.05))`,
+          backdropFilter: `blur(var(--settings-blur, 8px))`,
+          WebkitBackdropFilter: `blur(var(--settings-blur, 8px))`,
+          borderColor: `rgba(255, 255, 255, var(--settings-border-opacity, 0.10))`,
+          boxShadow: `0 18px 48px rgba(0, 0, 0, var(--settings-shadow-opacity, 0.45))`,
         }}
         onPointerDown={startDrag}
         onDoubleClick={resetPanel}

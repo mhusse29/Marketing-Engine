@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import LoadingIndicator from '../LoadingIndicator';
 
 interface Profile {
   id: string;
@@ -27,6 +28,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Allow bypassing authentication in development mode
+  const DEV_BYPASS_AUTH = import.meta.env.DEV && import.meta.env.VITE_BYPASS_AUTH === 'true';
+
   const fetchProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -36,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (error) throw error;
-      setProfile(data);
+      setProfile(data as Profile);
     } catch (error) {
       console.error('Error fetching profile:', error);
       setProfile(null);
@@ -50,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    // Get initial session
+    // Get initial session (even in dev mode to load actual user data)
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -80,6 +84,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
   };
+
+  if (loading && !DEV_BYPASS_AUTH) {
+    return <LoadingIndicator />;
+  }
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, signOut, refreshProfile }}>

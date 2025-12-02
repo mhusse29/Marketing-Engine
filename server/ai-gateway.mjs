@@ -1,18 +1,21 @@
 import 'dotenv/config'
+import { config } from 'dotenv'
+import { resolve } from 'path'
+
+// Load server-specific .env file FIRST before any other modules
+config({ path: resolve(process.cwd(), 'server/.env') })
+
+// Now import modules that depend on environment variables
 import express from 'express'
 import cors from 'cors'
 import OpenAI from 'openai'
-import { config } from 'dotenv'
-import { resolve } from 'path'
 import { BADU_KNOWLEDGE } from '../shared/badu-knowledge.js'
 import { buildBaduMessages, isBaduTopic, sanitizeBaduReply } from './badu-context.js'
 import usageTracker from './usageTracker.mjs'
 import extractUserIdMiddleware from './authMiddleware.mjs'
 import analyticsScheduler from './analyticsScheduler.mjs'
 import feedbackTracker from './feedbackTracker.mjs'
-
-// Load server-specific .env file to override root .env
-config({ path: resolve(process.cwd(), 'server/.env') })
+import { handleEnhancedChat } from './badu-enhanced-v2.mjs'
 
 function stripCodeFences(s = "") {
   const m = s.match(/```(?:json)?\s*([\s\S]*?)```/i)
@@ -453,6 +456,7 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPE
 const FLUX_API_KEY = process.env.FLUX_API_KEY || null
 const STABILITY_API_KEY = process.env.STABILITY_API_KEY || null
 const IDEOGRAM_API_KEY = process.env.IDEOGRAM_API_KEY || null
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null
 
 // Video provider API keys
 const RUNWAY_API_KEY = process.env.RUNWAY_API_KEY || null
@@ -800,18 +804,121 @@ ${JSON.stringify(schema, null, 2)}`,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AI-POWERED PROMPT REFINEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Intelligently refine a video prompt to fit within character limit
+ * Uses GPT to compress while preserving core meaning and logic
+ */
+async function refineVideoPrompt(longPrompt, targetLength = 990, provider = 'runway') {
+  if (!openai) {
+    console.warn('[Prompt Refiner] OpenAI not available, falling back to truncation')
+    return longPrompt.slice(0, targetLength)
+  }
+
+  try {
+    console.log(`[Prompt Refiner] Refining ${longPrompt.length} chars → ${targetLength} chars for ${provider}`)
+    
+    const systemPrompt = `You are an expert at refining video generation prompts. Your task is to compress a long prompt into ${targetLength} characters or less while preserving ALL key elements:
+
+- Subject/scene description
+- Camera movements and angles
+- Visual style and mood
+- Lighting and color grading
+- Motion characteristics
+- Technical details (aspect ratio, duration, etc.)
+
+Rules:
+1. Remove redundant words and filler
+2. Use concise, impactful language
+3. Keep all specific technical terms
+4. Preserve the creative vision
+5. Output ONLY the refined prompt, no explanations
+6. Must be ≤${targetLength} characters`
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o', // Fast and reliable for this task
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Original prompt (${longPrompt.length} chars):\n\n${longPrompt}` }
+      ],
+      temperature: 0.3, // Lower temperature for consistent refinement
+      max_tokens: 500,
+    })
+
+    const refined = response.choices[0]?.message?.content?.trim() || ''
+    
+    if (refined.length > 0 && refined.length <= targetLength) {
+      console.log(`[Prompt Refiner] ✓ Success: ${longPrompt.length} → ${refined.length} chars (saved ${longPrompt.length - refined.length})`)
+      return refined
+    } else if (refined.length > targetLength) {
+      console.warn(`[Prompt Refiner] ⚠️ Refined prompt still too long (${refined.length}), hard truncating`)
+      return refined.slice(0, targetLength)
+    } else {
+      console.warn('[Prompt Refiner] ⚠️ Empty result, using truncation fallback')
+      return longPrompt.slice(0, targetLength)
+    }
+  } catch (error) {
+    console.error('[Prompt Refiner] Error:', error.message)
+    console.log('[Prompt Refiner] Falling back to truncation')
+    return longPrompt.slice(0, targetLength)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // RUNWAY VIDEO GENERATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Supported Runway video models (verified via API testing)
 const RUNWAY_VIDEO_MODELS = new Set([
-  'veo3', // Only model available in Tier 1
+  'gen4_turbo',   // Gen-4 Turbo - Latest flagship, fast & high quality
+  'gen3a_turbo',  // Gen-3 Alpha Turbo - Legacy, reliable
+  'veo3',         // Google Veo 3 via Runway
 ])
+
+// Model-specific configurations
+const RUNWAY_MODEL_CONFIGS = {
+  gen4_turbo: {
+    name: 'Gen-4 Turbo',
+    durations: [5, 10],
+    ratios: ['1280:720', '720:1280', '1104:832', '832:1104', '960:960', '1584:672'],
+    aspectToRatio: {
+      '16:9': '1280:720',
+      '9:16': '720:1280',
+      '1:1': '960:960',
+    },
+    maxPromptLength: 1000,
+  },
+  gen3a_turbo: {
+    name: 'Gen-3 Alpha Turbo',
+    durations: [5, 10],
+    ratios: ['1280:768', '768:1280'],
+    aspectToRatio: {
+      '16:9': '1280:768',
+      '9:16': '768:1280',
+      '1:1': '1280:768', // No square, fallback to landscape
+    },
+    maxPromptLength: 1000,
+  },
+  veo3: {
+    name: 'Veo 3',
+    durations: [8], // Fixed duration
+    ratios: ['1280:720', '720:1280', '960:960'],
+    aspectToRatio: {
+      '16:9': '1280:720',
+      '9:16': '720:1280',
+      '1:1': '960:960',
+    },
+    maxPromptLength: 1000,
+  },
+}
 
 async function generateRunwayVideo({
   promptText,
   promptImage,
-  model = 'veo3', // veo3 available in Tier 1
-  duration = 8, // veo3 requires 8 seconds
+  model = 'gen4_turbo', // Default to Gen-4 Turbo (fastest, highest quality)
+  duration = 5, // Gen-4 Turbo default: 5 seconds
   ratio = '1280:720',
   watermark = false,
   seed,
@@ -823,26 +930,59 @@ async function generateRunwayVideo({
   if (!RUNWAY_VIDEO_MODELS.has(model)) {
     throw Object.assign(new Error('runway_model_not_supported'), {
       statusCode: 400,
-      details: { model },
+      details: { model, supported: Array.from(RUNWAY_VIDEO_MODELS) },
     })
   }
 
-  const normalizedDuration = model === 'veo3' ? 8 : duration
+  // Get model-specific configuration
+  const modelConfig = RUNWAY_MODEL_CONFIGS[model] || RUNWAY_MODEL_CONFIGS.gen4_turbo
+  
+  // Validate and normalize duration based on model
+  const validDurations = modelConfig.durations
+  const normalizedDuration = validDurations.includes(duration) 
+    ? duration 
+    : validDurations[0]
+  
+  // Validate ratio for the model
+  const validRatios = modelConfig.ratios
+  const normalizedRatio = validRatios.includes(ratio) ? ratio : validRatios[0]
+  
+  console.log(`[Runway] Model: ${model} (${modelConfig.name})`)
+  console.log(`[Runway] Duration: ${duration}s → ${normalizedDuration}s (valid: ${validDurations.join(', ')})`)
+  console.log(`[Runway] Ratio: ${ratio} → ${normalizedRatio} (valid: ${validRatios.join(', ')})`)
+  
+  // Runway API limit is 1000 characters, use 990 for safety
+  const MAX_PROMPT_LENGTH = modelConfig.maxPromptLength - 10 // 990 for safety
+  const MAX_INPUT_LENGTH = 2000 // Hard limit to prevent abuse
+  let trimmedPrompt = promptText.trim()
+  
+  // Safety check: truncate if extremely long (>2000 chars)
+  if (trimmedPrompt.length > MAX_INPUT_LENGTH) {
+    console.warn(`[Runway] Prompt too long (${trimmedPrompt.length} chars), truncating to ${MAX_INPUT_LENGTH} before AI refinement`)
+    trimmedPrompt = trimmedPrompt.slice(0, MAX_INPUT_LENGTH)
+  }
+  
+  // Use AI-powered refinement for long prompts (991-2000 chars), fallback to truncation
+  const finalPrompt = trimmedPrompt.length > MAX_PROMPT_LENGTH
+    ? await refineVideoPrompt(trimmedPrompt, MAX_PROMPT_LENGTH, 'runway')
+    : trimmedPrompt
 
   console.log('[Runway] Generating video:', {
     model,
+    modelName: modelConfig.name,
     duration: normalizedDuration,
-    ratio,
+    ratio: normalizedRatio,
     watermark,
-    promptLength: promptText.length,
+    promptLength: finalPrompt.length,
     hasSeed: !!seed,
+    wasTruncated: finalPrompt.length < trimmedPrompt.length,
   })
 
   const payload = {
-    promptText: promptText.trim(),
+    promptText: finalPrompt,
     model,
     duration: normalizedDuration,
-    ratio,
+    ratio: normalizedRatio,
     watermark,
   }
 
@@ -969,13 +1109,29 @@ async function generateLumaVideo({
     })
   }
 
+  // Luma API prompt limit (using same 990 character limit for consistency)
+  const MAX_PROMPT_LENGTH = 990
+  const MAX_INPUT_LENGTH = 2000 // Hard limit to prevent abuse
+  let trimmedPrompt = promptText.trim()
+  
+  // Safety check: truncate if extremely long (>2000 chars)
+  if (trimmedPrompt.length > MAX_INPUT_LENGTH) {
+    console.warn(`[Luma] Prompt too long (${trimmedPrompt.length} chars), truncating to ${MAX_INPUT_LENGTH} before AI refinement`)
+    trimmedPrompt = trimmedPrompt.slice(0, MAX_INPUT_LENGTH)
+  }
+  
+  // Use AI-powered refinement for long prompts (991-2000 chars), fallback to truncation
+  const finalPrompt = trimmedPrompt.length > MAX_PROMPT_LENGTH
+    ? await refineVideoPrompt(trimmedPrompt, MAX_PROMPT_LENGTH, 'luma')
+    : trimmedPrompt
+
   console.log('[Luma] Generating video:', {
     model,
     aspect,
     loop,
     duration,
     resolution,
-    promptLength: promptText.length,
+    promptLength: finalPrompt.length,
     hasImage: !!promptImage,
     hasKeyframes: !!keyframes,
     cameraMovement,
@@ -986,11 +1142,12 @@ async function generateLumaVideo({
     quality,
     seed,
     guidanceScale,
+    wasTruncated: finalPrompt.length < trimmedPrompt.length,
   })
 
   const payload = {
     model: model,
-    prompt: promptText.trim(),
+    prompt: finalPrompt,
     aspect_ratio: aspect,
     loop: Boolean(loop),
     duration: duration,
@@ -1243,19 +1400,19 @@ app.post('/v1/videos/generate', async (req, res) => {
       })
     }
 
-    // Runway Gen-3 supported ratios (from API documentation)
-    const aspectToRatio = {
-      '16:9': '1280:720',   // Landscape widescreen
-      '9:16': '720:1280',   // Portrait mobile
-      '1:1': '960:960',     // Square
-    }
-    const ratio = aspectToRatio[aspect] || '1280:720'
+    // Get model-specific aspect ratio mapping
+    const selectedModel = model || 'gen4_turbo'
+    const modelConfig = RUNWAY_MODEL_CONFIGS[selectedModel] || RUNWAY_MODEL_CONFIGS.gen4_turbo
+    const aspectToRatio = modelConfig.aspectToRatio
+    const ratio = aspectToRatio[aspect] || modelConfig.ratios[0]
+
+    console.log(`[Runway Endpoint] Model: ${selectedModel}, Aspect: ${aspect} → Ratio: ${ratio}`)
 
     try {
       const { taskId, status } = await generateRunwayVideo({
         promptText,
         promptImage,
-        model: model || 'veo3',
+        model: selectedModel,
         duration,
         ratio,
         watermark,
@@ -1268,7 +1425,7 @@ app.post('/v1/videos/generate', async (req, res) => {
         provider: 'runway',
         createdAt: Date.now(),
         promptText,
-        model: model || 'veo3',
+        model: selectedModel,
         duration,
         aspect,
         userId: req.userId || 'anonymous',
@@ -1503,6 +1660,7 @@ app.get('/health', (req, res) => {
       flux: !!FLUX_API_KEY,
       stability: !!STABILITY_API_KEY,
       ideogram: !!IDEOGRAM_API_KEY,
+      gemini: !!GEMINI_API_KEY,
     },
     videoProviders: {
       runway: !!RUNWAY_API_KEY,
@@ -1545,6 +1703,15 @@ app.post('/v1/images/generate', async (req, res) => {
     ideogramStyleType = 'AUTO',
     ideogramNegativePrompt = '',
     ideogramSeed,
+    // Gemini specific
+    geminiModel = 'gemini-3-pro-image-preview',
+    geminiResolution = '1K',
+    geminiThinking = true,
+    geminiGrounding = false,
+    referenceImages = [],
+    // Runway Gen-4 Image specific
+    runwayImageModel = 'gen4_image',
+    runwayImageRatio = '1024:1024',
   } = req.body
 
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
@@ -1597,6 +1764,27 @@ app.post('/v1/images/generate', async (req, res) => {
           styleType: ideogramStyleType,
           negativePrompt: ideogramNegativePrompt,
           seed: ideogramSeed,
+        })
+        break
+
+      case 'gemini':
+        assets = await generateGeminiImage({
+          prompt,
+          aspect,
+          model: geminiModel,
+          resolution: geminiResolution,
+          thinking: geminiThinking,
+          grounding: geminiGrounding,
+          referenceImages,
+        })
+        break
+
+      case 'runway':
+        assets = await generateRunwayImage({
+          prompt,
+          model: runwayImageModel,
+          ratio: runwayImageRatio,
+          referenceImages,
         })
         break
 
@@ -1919,6 +2107,312 @@ async function generateIdeogramImage({ prompt, aspect, model, magicPrompt, style
   }]
 }
 
+// Gemini Imagen 3 image generation (Google AI)
+async function generateGeminiImage({ prompt, aspect, model, resolution, thinking, grounding, referenceImages }) {
+  if (!GEMINI_API_KEY) {
+    throw new Error('gemini_not_configured')
+  }
+
+  // Map aspect ratios to Gemini format
+  const aspectMap = {
+    '1:1': '1:1',
+    '4:5': '4:5',
+    '16:9': '16:9',
+    '2:3': '2:3',
+    '3:2': '3:2',
+    '3:4': '3:4',
+    '4:3': '4:3',
+    '5:4': '5:4',
+    '9:16': '9:16',
+    '21:9': '21:9',
+    '7:9': '9:16', // Closest match
+    '9:7': '16:9', // Closest match
+  }
+  const geminiAspect = aspectMap[aspect] || '1:1'
+
+  // Resolution dimensions mapping
+  const resolutionDims = {
+    '1K': { width: 1024, height: 1024 },
+    '2K': { width: 2048, height: 2048 },
+    '4K': { width: 4096, height: 4096 },
+  }
+  const dims = resolutionDims[resolution] || resolutionDims['1K']
+
+  console.log('[Gemini] Generating with settings:', {
+    model,
+    resolution,
+    aspect: geminiAspect,
+    thinking,
+    grounding,
+    referenceImagesCount: referenceImages?.length || 0,
+  })
+
+  // Build contents array
+  const contents = [{ text: prompt }]
+
+  // Add reference images if provided (Gemini 3 Pro supports up to 14)
+  if (referenceImages && referenceImages.length > 0) {
+    const maxImages = model === 'gemini-3-pro-image-preview' ? 14 : 3
+    const imagesToUse = referenceImages.slice(0, maxImages)
+    
+    for (const imageData of imagesToUse) {
+      // Handle base64 data URLs
+      if (imageData.startsWith('data:')) {
+        const [mimeMatch, base64Data] = imageData.split(',')
+        const mimeType = mimeMatch.match(/data:([^;]+)/)?.[1] || 'image/jpeg'
+        contents.push({
+          inlineData: {
+            mimeType,
+            data: base64Data,
+          },
+        })
+      }
+    }
+  }
+
+  // Build config
+  const config = {
+    responseModalities: ['IMAGE'],
+    imageConfig: {
+      aspectRatio: geminiAspect,
+    },
+  }
+
+  // Add resolution for Pro model
+  if (model === 'gemini-3-pro-image-preview' && resolution !== '1K') {
+    config.imageConfig.imageSize = resolution
+  }
+
+  // Build the request payload
+  const payload = {
+    contents: [{ parts: contents }],
+    generationConfig: config,
+  }
+
+  // Add tools for grounding (Pro model only)
+  if (grounding && model === 'gemini-3-pro-image-preview') {
+    payload.tools = [{
+      googleSearch: {}
+    }]
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': GEMINI_API_KEY,
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[Gemini] API Error:', response.status, errorText)
+      throw new Error(`Gemini API error (${response.status}): ${errorText}`)
+    }
+
+    const data = await response.json()
+    
+    // Extract image from response
+    const candidates = data.candidates || []
+    const parts = candidates[0]?.content?.parts || []
+    
+    const imagePart = parts.find(part => part.inlineData)
+    
+    if (!imagePart || !imagePart.inlineData) {
+      console.error('[Gemini] No image in response:', JSON.stringify(data, null, 2))
+      throw new Error('Gemini returned no image')
+    }
+
+    const imageBase64 = imagePart.inlineData.data
+    const mimeType = imagePart.inlineData.mimeType || 'image/png'
+
+    // Get any text response (thinking output)
+    const textPart = parts.find(part => part.text)
+    if (textPart && thinking) {
+      console.log('[Gemini] Thinking output:', textPart.text.slice(0, 200))
+    }
+
+    return [{
+      id: id(),
+      url: `data:${mimeType};base64,${imageBase64}`,
+      thumbUrl: `data:${mimeType};base64,${imageBase64}`,
+      width: dims.width,
+      height: dims.height,
+      mimeType,
+      prompt,
+      seed: '',
+    }]
+  } catch (error) {
+    console.error('[Gemini] Generation failed:', error)
+    throw error
+  }
+}
+
+// Runway Gen-4 Image generation
+async function generateRunwayImage({ prompt, model, ratio, referenceImages }) {
+  if (!RUNWAY_API_KEY) {
+    throw new Error('runway_not_configured')
+  }
+
+  console.log('[Runway Image] Generating with settings:', {
+    model,
+    ratio,
+    referenceImagesCount: referenceImages?.length || 0,
+  })
+
+  // Parse ratio to get dimensions
+  const [width, height] = ratio.split(':').map(Number)
+
+  // Auto-insert @Ref tags if user didn't include any
+  let enhancedPrompt = prompt
+  const hasRefTags = /@Ref\d/i.test(prompt)
+  
+  if (!hasRefTags && referenceImages && referenceImages.length > 0) {
+    // Build tag string based on number of images
+    const tagCount = Math.min(referenceImages.length, 3)
+    const tags = []
+    for (let i = 1; i <= tagCount; i++) {
+      tags.push(`@Ref${i}`)
+    }
+    
+    // Append tags intelligently based on count
+    if (tagCount === 1) {
+      enhancedPrompt = `${prompt} in the style of ${tags[0]}`
+    } else if (tagCount === 2) {
+      enhancedPrompt = `${prompt} combining ${tags[0]} and ${tags[1]}`
+    } else {
+      enhancedPrompt = `${prompt} inspired by ${tags.join(', ')}`
+    }
+    
+    console.log('[Runway Image] Auto-inserted tags:', enhancedPrompt)
+  }
+
+  // Build the request payload
+  const payload = {
+    model,
+    ratio,
+    promptText: enhancedPrompt,
+    referenceImages: [], // Always include as empty array
+  }
+
+  // Add reference images if provided (up to 3 with tags)
+  // Runway Gen-4 Image REQUIRES at least 1 reference image
+  if (referenceImages && referenceImages.length > 0) {
+    const refs = []
+    const imagesToUse = referenceImages.slice(0, 3)
+    
+    for (let i = 0; i < imagesToUse.length; i++) {
+      const imageData = imagesToUse[i]
+      const tag = `Ref${i + 1}`
+      
+      // Handle base64 data URLs - Runway supports data URIs directly
+      if (imageData.startsWith('data:')) {
+        refs.push({
+          uri: imageData,
+          tag,
+        })
+      } else if (imageData.startsWith('http')) {
+        refs.push({
+          uri: imageData,
+          tag,
+        })
+      }
+    }
+    
+    if (refs.length > 0) {
+      payload.referenceImages = refs
+    }
+  }
+  
+  // Runway Gen-4 Image requires at least 1 reference image
+  if (!payload.referenceImages || payload.referenceImages.length === 0) {
+    throw new Error('Runway Gen-4 Image requires at least 1 reference image. Please upload an image first.')
+  }
+
+  const endpoint = 'https://api.dev.runwayml.com/v1/text_to_image'
+
+  try {
+    // Create the task
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RUNWAY_API_KEY}`,
+        'Content-Type': 'application/json',
+        'X-Runway-Version': '2024-11-06',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[Runway Image] API Error:', response.status, errorText)
+      throw new Error(`Runway API error (${response.status}): ${errorText}`)
+    }
+
+    const taskData = await response.json()
+    const taskId = taskData.id
+
+    console.log('[Runway Image] Task created:', taskId)
+
+    // Poll for completion
+    const maxAttempts = 60 // 2 minutes max
+    let attempts = 0
+    
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds
+      
+      const statusResponse = await fetch(`https://api.dev.runwayml.com/v1/tasks/${taskId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${RUNWAY_API_KEY}`,
+          'X-Runway-Version': '2024-11-06',
+        },
+      })
+
+      if (!statusResponse.ok) {
+        const errorText = await statusResponse.text()
+        console.error('[Runway Image] Status check error:', statusResponse.status, errorText)
+        throw new Error(`Runway status check error: ${errorText}`)
+      }
+
+      const statusData = await statusResponse.json()
+      console.log('[Runway Image] Task status:', statusData.status)
+
+      if (statusData.status === 'SUCCEEDED') {
+        const imageUrl = statusData.output?.[0]
+        
+        if (!imageUrl) {
+          throw new Error('Runway returned no image URL')
+        }
+
+        return [{
+          id: id(),
+          url: imageUrl,
+          thumbUrl: imageUrl,
+          width,
+          height,
+          mimeType: 'image/png',
+          prompt,
+          seed: '',
+        }]
+      } else if (statusData.status === 'FAILED') {
+        throw new Error(`Runway task failed: ${statusData.error || 'Unknown error'}`)
+      }
+
+      attempts++
+    }
+
+    throw new Error('Runway task timed out after 2 minutes')
+  } catch (error) {
+    console.error('[Runway Image] Generation failed:', error)
+    throw error
+  }
+}
+
 function sanitizeAttachmentPreview(attachment, index) {
   if (!attachment || typeof attachment !== 'object') return null
 
@@ -2184,14 +2678,20 @@ app.post('/v1/tools/video/enhance', async (req, res) => {
 // PICTURES PROMPT ENHANCEMENT
 // ═══════════════════════════════════════════════════════════════════════════════
 app.post('/v1/tools/pictures/suggest', async (req, res) => {
-  const { settings = {}, brief, provider = 'openai' } = req.body
+  const { settings = {}, brief, provider = 'openai', currentPrompt = '' } = req.body
 
   if (!openai && !MOCK_OPENAI) {
     return res.status(503).json({ error: 'openai_not_configured' })
   }
 
+  // Check if user has an existing prompt to refine
+  const hasExistingPrompt = currentPrompt && currentPrompt.trim().length > 0
+  const trimmedPrompt = currentPrompt.trim()
+
   if (MOCK_OPENAI) {
-    const mockSuggestion = `Professional product photography with ${settings.style || 'modern'} style, ${settings.lighting || 'natural'} lighting`
+    const mockSuggestion = hasExistingPrompt 
+      ? `${trimmedPrompt}, enhanced with ${settings.style || 'modern'} style and ${settings.lighting || 'natural'} lighting`
+      : `Professional product photography with ${settings.style || 'modern'} style, ${settings.lighting || 'natural'} lighting`
     return res.json({ suggestion: mockSuggestion, model: 'mock-openai', mock: true })
   }
 
@@ -2200,6 +2700,8 @@ app.post('/v1/tools/pictures/suggest', async (req, res) => {
     flux: { name: 'FLUX Pro', strengths: 'Photorealistic, human faces, professional photography' },
     stability: { name: 'Stability AI SD 3.5', strengths: 'Fine control via CFG, creative freedom' },
     ideogram: { name: 'Ideogram', strengths: 'Typography, text in images, brand assets' },
+    gemini: { name: 'Gemini Imagen 3', strengths: '4K output, thinking mode, Google Search grounding' },
+    runway: { name: 'Runway Gen-4 Image', strengths: 'Reference image styling, @Ref tags for image-to-image' },
   }[provider] || { name: provider, strengths: 'General purpose image generation' }
 
   const settingsContext = []
@@ -2211,25 +2713,56 @@ app.post('/v1/tools/pictures/suggest', async (req, res) => {
   if (settings.mood) settingsContext.push(`Mood: ${settings.mood}`)
   if (settings.backdrop) settingsContext.push(`Backdrop: ${settings.backdrop}`)
 
-  const systemPrompt = [
-    `You are a professional art director and image prompt engineer.`,
-    `You're creating prompts for ${providerInfo.name}.`,
-    '',
-    `Provider Strengths: ${providerInfo.strengths}`,
-    '',
-    `Your task:`,
-    `1. Create a detailed, descriptive image prompt optimized for ${provider}`,
-    `2. Focus on visual composition, lighting, colors, and mood`,
-    `3. Be specific about the subject, setting, and atmosphere`,
-    `4. Use professional photography/art terminology`,
-    `5. Keep prompts between 40-150 words`,
-    `6. Make it vivid and evocative`,
-    `7. Consider the selected settings: ${settingsContext.join(', ') || 'none specified'}`,
-    '',
-    `Response format: Return ONLY the prompt text, no explanations.`,
-  ].join('\n')
+  // Different system prompts for refinement vs. generation from scratch
+  let systemPrompt
+  if (hasExistingPrompt) {
+    systemPrompt = [
+      `You are a professional art director and image prompt engineer.`,
+      `You're refining prompts for ${providerInfo.name}.`,
+      '',
+      `Provider Strengths: ${providerInfo.strengths}`,
+      '',
+      `Your task:`,
+      `1. REFINE and ENHANCE the user's existing prompt - keep their core idea and intent`,
+      `2. Add professional photography/art terminology and details`,
+      `3. Improve specificity about lighting, colors, composition, and mood`,
+      `4. Keep the user's subject matter and main concept intact`,
+      `5. Expand to 40-150 words if the original is shorter`,
+      `6. Make it more vivid and evocative while preserving the original vision`,
+      `7. Apply the selected settings: ${settingsContext.join(', ') || 'none specified'}`,
+      provider === 'runway' ? `8. If reference images are mentioned with @Ref tags, preserve them exactly` : '',
+      '',
+      `IMPORTANT: Do NOT replace the user's idea with something completely different.`,
+      `Response format: Return ONLY the refined prompt text, no explanations.`,
+    ].filter(Boolean).join('\n')
+  } else {
+    systemPrompt = [
+      `You are a professional art director and image prompt engineer.`,
+      `You're creating prompts for ${providerInfo.name}.`,
+      '',
+      `Provider Strengths: ${providerInfo.strengths}`,
+      '',
+      `Your task:`,
+      `1. Create a detailed, descriptive image prompt optimized for ${provider}`,
+      `2. Focus on visual composition, lighting, colors, and mood`,
+      `3. Be specific about the subject, setting, and atmosphere`,
+      `4. Use professional photography/art terminology`,
+      `5. Keep prompts between 40-150 words`,
+      `6. Make it vivid and evocative`,
+      `7. Consider the selected settings: ${settingsContext.join(', ') || 'none specified'}`,
+      '',
+      `Response format: Return ONLY the prompt text, no explanations.`,
+    ].join('\n')
+  }
 
   const userSections = []
+
+  // If refining, show the user's prompt first
+  if (hasExistingPrompt) {
+    userSections.push(`--- USER'S CURRENT PROMPT (refine this) ---`)
+    userSections.push(trimmedPrompt)
+    userSections.push('')
+  }
 
   if (brief && brief.trim()) {
     userSections.push(`--- CAMPAIGN CONTEXT ---`)
@@ -2244,10 +2777,17 @@ app.post('/v1/tools/pictures/suggest', async (req, res) => {
   }
 
   userSections.push(`--- TASK ---`)
-  userSections.push(
-    `Create a compelling image prompt that will generate stunning visual content for this marketing campaign. ` +
-    `Focus on composition, lighting, mood, and brand alignment.`
-  )
+  if (hasExistingPrompt) {
+    userSections.push(
+      `Refine and enhance the user's prompt above. Keep their core subject and idea, but add professional details, ` +
+      `improve the visual description, and optimize it for ${providerInfo.name}. Do not change the fundamental concept.`
+    )
+  } else {
+    userSections.push(
+      `Create a compelling image prompt that will generate stunning visual content for this marketing campaign. ` +
+      `Focus on composition, lighting, mood, and brand alignment.`
+    )
+  }
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -2932,8 +3472,45 @@ function update(id, status, data = undefined, error = undefined) {
   return next
 }
 
-// Enhanced Badu Chat Endpoint with RAG and Structured JSON
-app.post('/v1/chat/enhanced', async (req, res) => {
+// Enhanced Badu Chat Endpoint V2 with RAG, Persistence, Streaming
+app.post('/v1/chat/enhanced', extractUserIdMiddleware, async (req, res) => {
+  const userId = req.userId
+  if (!userId) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+  
+  return handleEnhancedChat(req, res, userId)
+})
+
+// BADU Preferences API
+import { getPreferences, updatePreferences, resetPreferences } from './routes/badu-preferences.mjs'
+
+app.get('/api/v1/badu/preferences', extractUserIdMiddleware, async (req, res) => {
+  const userId = req.userId
+  if (!userId) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+  return getPreferences(req, res, userId)
+})
+
+app.put('/api/v1/badu/preferences', extractUserIdMiddleware, async (req, res) => {
+  const userId = req.userId
+  if (!userId) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+  return updatePreferences(req, res, userId)
+})
+
+app.post('/api/v1/badu/preferences/reset', extractUserIdMiddleware, async (req, res) => {
+  const userId = req.userId
+  if (!userId) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+  return resetPreferences(req, res, userId)
+})
+
+// Legacy Enhanced Badu Chat Endpoint (V1 - kept for backward compatibility)
+app.post('/v1/chat/enhanced/v1', async (req, res) => {
   const { message, history = [], attachments = [] } = req.body;
   
   if (!message || typeof message !== 'string' || !message.trim()) {
@@ -3411,6 +3988,167 @@ app.get('/api/feedback/summary', async (req, res) => {
     res.status(500).json({
       error: 'Failed to retrieve feedback summary',
       message: error.message
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// IMAGE UPLOAD PROXY ENDPOINT (For Supabase Storage)
+// ═══════════════════════════════════════════════════════════════════════════════
+app.post('/api/upload-image', async (req, res) => {
+  try {
+    const { tempUrl, userId, generationId, index, supabaseUrl, supabaseKey } = req.body;
+
+    if (!tempUrl || !userId || !generationId || index === undefined || !supabaseUrl || !supabaseKey) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields',
+      });
+    }
+
+    console.log(`[Upload ${index}] Proxying image from Azure blob...`);
+
+    // Fetch image from Azure blob (server-side, no CORS)
+    const response = await fetch(tempUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+    }
+
+    // Get image as buffer
+    const imageBuffer = await response.arrayBuffer();
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+
+    console.log(`[Upload ${index}] Fetched image: ${imageBuffer.byteLength} bytes`);
+
+    if (imageBuffer.byteLength === 0) {
+      throw new Error('Image buffer is empty');
+    }
+
+    // Generate filename
+    const extension = contentType.split('/')[1] || 'jpeg';
+    const filename = `${userId}/${generationId}/image-${index}.${extension}`;
+
+    console.log(`[Upload ${index}] Uploading to Supabase: ${filename}`);
+
+    // Upload to Supabase Storage
+    const uploadResponse = await fetch(
+      `${supabaseUrl}/storage/v1/object/generated-images/${filename}`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': contentType,
+          'x-upsert': 'true',
+        },
+        body: imageBuffer,
+      }
+    );
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error(`[Upload ${index}] Supabase upload failed:`, errorText);
+      throw new Error(`Supabase upload failed: ${uploadResponse.status} - ${errorText}`);
+    }
+
+    // Generate public URL
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/generated-images/${filename}`;
+
+    console.log(`[Upload ${index}] Success: ${publicUrl}`);
+
+    res.json({
+      success: true,
+      url: publicUrl,
+      filename: filename,
+    });
+
+  } catch (error) {
+    console.error('Upload proxy error:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VIDEO UPLOAD PROXY ENDPOINT (For Supabase Storage)
+// ═══════════════════════════════════════════════════════════════════════════════
+app.post('/api/upload-video', async (req, res) => {
+  try {
+    const { tempUrl, userId, generationId, index, supabaseUrl, supabaseKey } = req.body;
+
+    if (!tempUrl || !userId || !generationId || index === undefined || !supabaseUrl || !supabaseKey) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields',
+      });
+    }
+
+    console.log(`[Video Upload ${index}] Proxying video from temporary URL...`);
+    console.log(`[Video Upload ${index}] Source: ${tempUrl.substring(0, 80)}...`);
+
+    // Fetch video from temporary URL (server-side, no CORS, works with expired JWTs)
+    const response = await fetch(tempUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch video: ${response.status} ${response.statusText}`);
+    }
+
+    // Get video as buffer
+    const videoBuffer = await response.arrayBuffer();
+    const contentType = response.headers.get('content-type') || 'video/mp4';
+
+    console.log(`[Video Upload ${index}] Fetched video: ${(videoBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
+
+    if (videoBuffer.byteLength === 0) {
+      throw new Error('Video buffer is empty');
+    }
+
+    // Generate filename with proper extension
+    const extension = contentType.split('/')[1] || 'mp4';
+    const filename = `${userId}/${generationId}/video-${index}.${extension}`;
+
+    console.log(`[Video Upload ${index}] Uploading to Supabase Storage: ${filename}`);
+
+    // Upload to Supabase Storage
+    const uploadResponse = await fetch(
+      `${supabaseUrl}/storage/v1/object/generated-videos/${filename}`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': contentType,
+          'x-upsert': 'true', // Allows overwriting existing files
+        },
+        body: videoBuffer,
+      }
+    );
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error(`[Video Upload ${index}] Supabase upload failed:`, errorText);
+      throw new Error(`Supabase upload failed: ${uploadResponse.status} - ${errorText}`);
+    }
+
+    // Generate public URL
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/generated-videos/${filename}`;
+
+    console.log(`[Video Upload ${index}] ✅ Success: ${publicUrl}`);
+
+    res.json({
+      success: true,
+      url: publicUrl,
+      filename: filename,
+      size: videoBuffer.byteLength,
+      contentType: contentType,
+    });
+
+  } catch (error) {
+    console.error('[Video Upload] Error:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
     });
   }
 });

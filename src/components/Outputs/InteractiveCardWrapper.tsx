@@ -198,9 +198,33 @@ export function InteractiveCardWrapper({
       }
     };
 
-    card.addEventListener('pointerenter', pointerEnterHandler);
-    card.addEventListener('pointermove', pointerMoveHandler);
-    card.addEventListener('pointerleave', pointerLeaveHandler);
+    // Check if parent has dragging attribute
+    const shouldDisableTilt = () => {
+      const parent = wrap.closest('[data-dragging], .draggable-card');
+      return parent !== null;
+    };
+
+    const wrappedPointerMove = (e: Event) => {
+      if (!shouldDisableTilt()) {
+        pointerMoveHandler(e);
+      }
+    };
+
+    const wrappedPointerEnter = (e: Event) => {
+      if (!shouldDisableTilt()) {
+        pointerEnterHandler(e);
+      }
+    };
+
+    const wrappedPointerLeave = (e: Event) => {
+      if (!shouldDisableTilt()) {
+        pointerLeaveHandler(e);
+      }
+    };
+
+    card.addEventListener('pointerenter', wrappedPointerEnter);
+    card.addEventListener('pointermove', wrappedPointerMove);
+    card.addEventListener('pointerleave', wrappedPointerLeave);
     card.addEventListener('click', handleClick);
 
     const initialX = wrap.clientWidth / 2;
@@ -209,9 +233,9 @@ export function InteractiveCardWrapper({
     animationHandlers.updateCardTransform(initialX, initialY, card, wrap);
 
     return () => {
-      card.removeEventListener('pointerenter', pointerEnterHandler);
-      card.removeEventListener('pointermove', pointerMoveHandler);
-      card.removeEventListener('pointerleave', pointerLeaveHandler);
+      card.removeEventListener('pointerenter', wrappedPointerEnter);
+      card.removeEventListener('pointermove', wrappedPointerMove);
+      card.removeEventListener('pointerleave', wrappedPointerLeave);
       card.removeEventListener('click', handleClick);
       window.removeEventListener('deviceorientation', deviceOrientationHandler);
       animationHandlers.cancelAnimation();

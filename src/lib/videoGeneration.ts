@@ -79,6 +79,16 @@ export interface GeneratedVideo {
   watermark: boolean;
   prompt: string;
   createdAt: string;
+  meta?: {
+    prompt: string;
+    provider: string;
+    model: string;
+    aspect: string;
+    duration: number;
+    referenceImages?: string[];
+    referenceImageCount?: number;
+    [key: string]: unknown;
+  };
 }
 
 /**
@@ -87,7 +97,7 @@ export interface GeneratedVideo {
 export async function startVideoGeneration(
   props: VideoQuickProps
 ): Promise<{ taskId: string; status: string; provider: string }> {
-  const { provider, model, duration, aspect, watermark, seed, promptImage, lumaLoop, lumaKeyframes } = props;
+  const { provider, model, duration, aspect, watermark, seed, promptImages, lumaLoop, lumaKeyframes } = props;
 
   // Validate provider is resolved (not 'auto')
   if (provider === 'auto') {
@@ -114,9 +124,28 @@ export async function startVideoGeneration(
     request.seed = seed;
   }
 
-  // Add image if provided (image-to-video)
-  if (promptImage) {
-    request.promptImage = promptImage;
+  // Handle reference images based on provider
+  if (promptImages && promptImages.length > 0) {
+    if (provider === 'runway') {
+      // Runway: Single image for image-to-video
+      request.promptImage = promptImages[0];
+    } else if (provider === 'luma') {
+      // Luma: Convert to keyframes (up to 2 images)
+      request.keyframes = {
+        frame0: {
+          type: 'image',
+          url: promptImages[0]
+        }
+      };
+      
+      // Add second image if provided
+      if (promptImages.length > 1) {
+        request.keyframes.frame1 = {
+          type: 'image',
+          url: promptImages[1]
+        };
+      }
+    }
   }
 
   // Add Luma-specific parameters (FIX #2: Send ALL 19 parameters to backend)
@@ -153,13 +182,15 @@ export async function startVideoGeneration(
     if (props.lumaGuidanceScale !== undefined) request.lumaGuidanceScale = props.lumaGuidanceScale;
   }
 
-  console.log('[Video Generation] Starting:', {
+  console.log('[Video] Starting generation:', {
     provider,
     model,
+    enhancedPromptLength: enhancedPrompt.length,
+    hasImages: !!promptImages && promptImages.length > 0,
+    imageCount: promptImages?.length || 0,
+    hasKeyframes: !!request.keyframes,
     aspect,
-    promptLength: enhancedPrompt.length,
-    hasImage: !!promptImage,
-    loop: request.loop,
+    duration,
   });
 
   const response = await fetch(`${getApiBase()}/v1/videos/generate`, {
@@ -280,7 +311,7 @@ export async function generateRunwayVideo(
     throw new Error('Video generation succeeded but no URL returned');
   }
 
-  // Return structured video data
+  // Return structured video data with metadata including reference images
   // Provider is guaranteed to be 'runway' or 'luma' due to validation above
   return {
     url: result.videoUrl,
@@ -292,5 +323,17 @@ export async function generateRunwayVideo(
     watermark: props.watermark,
     prompt: props.promptText,
     createdAt: result.createdAt || new Date().toISOString(),
+    meta: {
+      prompt: props.promptText,
+      provider: props.provider as string,
+      model: props.model,
+      aspect: props.aspect,
+      duration: props.duration,
+      // Include reference images if provided
+      ...(props.promptImages && props.promptImages.length > 0 && {
+        referenceImages: props.promptImages,
+        referenceImageCount: props.promptImages.length,
+      }),
+    },
   };
 }

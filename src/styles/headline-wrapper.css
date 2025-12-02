@@ -1,0 +1,61 @@
+/* Headline Wrapper with Pill-Shaped Haze Effect */
+
+.headline-wrapper {
+  position: relative;
+  display: inline-block;
+  padding: 0.5rem 2rem;
+  border-radius: 9999px;
+  background: transparent;
+  overflow: visible;
+  transition: transform 0.4s ease;
+}
+
+/* Pseudo-element for diffused pill-shaped halo */
+.headline-wrapper::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  /* Radial gradient from green to transparent */
+  background: radial-gradient(ellipse at center,
+    rgba(0, 255, 120, 0.25) 0%,
+    rgba(0, 255, 120, 0.15) 40%,
+    rgba(0, 255, 120, 0.05) 70%,
+    rgba(0, 255, 120, 0) 100%);
+  filter: blur(40px);
+  transition: transform 0.4s ease, opacity 0.4s ease;
+}
+
+/* Lift and brighten the halo on hover - more pronounced */
+.headline-wrapper:hover {
+  transform: scale(1.08);
+}
+
+.headline-wrapper:hover::before {
+  transform: translate(-50%, -50%) scale(1.5);   /* enlarge the haze more */
+  opacity: 1;                                     /* ensure the glow brightens */
+}
+
+/* Update hero-title to work within wrapper */
+.headline-wrapper .hero-title {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(60px, 12vw, 180px);
+  font-weight: 900;
+  color: #00e676;
+  line-height: 1;
+  text-shadow: none;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  letter-spacing: 0.05em;
+  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: none;
+}

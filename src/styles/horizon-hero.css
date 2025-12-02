@@ -1,0 +1,567 @@
+/* Horizon Hero Section Styles */
+html, body {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  height: auto !important;
+  min-height: 100vh !important;
+}
+
+#root {
+  height: auto !important;
+  min-height: 100vh !important;
+}
+
+.hero-container {
+  position: relative;
+  width: 100%;
+  min-height: auto;
+  overflow: visible;
+  background: #000;
+  /* Ensure content can flow after this container */
+  display: block;
+}
+
+.cosmos-style {
+  background: linear-gradient(to bottom, #000000, #0a0a1a);
+}
+
+/* Title character styling */
+.title-char {
+  display: inline-block;
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  color: inherit !important;
+}
+
+/* Subtitle line styling */
+.subtitle-line {
+  margin: 0.25em 0;
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.hero-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.hero-content {
+  position: relative;
+  top: 0;
+  left: 0;
+  transform: none;
+  z-index: 10;
+  text-align: center;
+  pointer-events: none;
+  background: transparent;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-top: 35vh;
+  padding-bottom: 100vh;
+}
+
+.cosmos-content {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.hero-title {
+  font-size: clamp(60px, 12vw, 180px);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: #00e676 !important;
+  text-align: center;
+  line-height: 1;
+  /* Very soft diffuse haze - matches subtle red aura */
+  text-shadow:
+    0 0 24px rgba(0, 255, 120, 0.25),  /* wide but faint inner glow */
+    0 0 48px rgba(0, 255, 120, 0.15),  /* broader, even softer haze */
+    0 0 96px rgba(0, 255, 120, 0.08);  /* very diffuse outer halo */
+  transition: transform 0.3s ease, text-shadow 0.3s ease;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.hero-title:hover {
+  /* Gentle scale with slight lift on hover */
+  transform: scale(1.03);
+  text-shadow:
+    0 0 32px rgba(0, 255, 120, 0.3),
+    0 0 64px rgba(0, 255, 120, 0.18),
+    0 0 128px rgba(0, 255, 120, 0.1);
+}
+
+.hero-subtitle {
+  margin-top: 1.5rem;
+  font-size: clamp(18px, 2vw, 24px);
+  font-weight: 400;
+  color: rgba(255, 255, 255, 1) !important;
+  line-height: 1.5;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9),
+               0 0 20px rgba(255, 255, 255, 0.3);
+}
+
+.cosmos-subtitle {
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+.side-menu {
+  position: fixed;
+  left: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+}
+
+.menu-icon {
+  width: 30px;
+  height: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.menu-icon span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: white;
+  transition: all 0.3s ease;
+}
+
+.vertical-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 14px;
+  letter-spacing: 0.3em;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+}
+
+.scroll-progress {
+  position: fixed;
+  right: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.scroll-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 12px;
+  letter-spacing: 0.3em;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 500;
+}
+
+.progress-track {
+  width: 2px;
+  height: 100px;
+  background: rgba(255, 255, 255, 0.2);
+  position: relative;
+}
+
+.progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
+  background: white;
+  transition: height 0.3s ease;
+}
+
+.section-counter {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+.scroll-sections {
+  position: relative;
+  z-index: 5;
+  margin-top: 0;
+}
+
+.content-section {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  position: relative;
+  transition: opacity 0.5s ease-out;
+}
+
+.content-section:first-child {
+  justify-content: flex-start;
+  padding-top: 35vh;
+  min-height: 120vh;
+}
+
+.content-section:last-child {
+  min-height: 100vh;
+  margin-bottom: 0;
+  position: sticky;
+  top: 6px;
+  z-index: 10;
+}
+
+/* Scroll indicator after ELEVATE section */
+.content-section:last-child::after {
+  content: '';
+  position: absolute;
+  bottom: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 80px;
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.8), transparent);
+  animation: scrollPulse 2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 20;
+}
+
+@keyframes scrollPulse {
+  0%, 100% { opacity: 0.3; transform: translateX(-50%) translateY(0); }
+  50% { opacity: 1; transform: translateX(-50%) translateY(10px); }
+}
+
+.content-section .hero-title {
+  margin-bottom: 2rem;
+}
+
+.content-section .hero-subtitle {
+  margin-top: 0;
+}
+
+/* Side Menu */
+.side-menu {
+  position: fixed;
+  left: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+}
+
+.menu-icon {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.menu-icon span {
+  width: 100%;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.8);
+  transition: all 0.3s ease;
+}
+
+.menu-icon:hover span {
+  background: rgba(255, 255, 255, 1);
+}
+
+.vertical-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+}
+
+/* Main Content */
+.hero-content {
+  position: fixed;
+  top: 35vh;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  text-align: center;
+  width: 100%;
+  max-width: none;
+  pointer-events: none;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+  transition: opacity 0.5s ease-out;
+}
+
+.hero-title {
+  font-size: clamp(60px, 12vw, 180px);
+  font-weight: 900;
+  color: #00e676 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  text-align: center;
+  line-height: 1;
+  /* Very soft diffuse haze - matches subtle red aura */
+  text-shadow:
+    0 0 24px rgba(0, 255, 120, 0.25),  /* wide but faint inner glow */
+    0 0 48px rgba(0, 255, 120, 0.15),  /* broader, even softer haze */
+    0 0 96px rgba(0, 255, 120, 0.08);  /* very diffuse outer halo */
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  overflow: hidden;
+  transition: transform 0.3s ease, text-shadow 0.3s ease;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.hero-title:hover {
+  /* Gentle scale with slight lift on hover */
+  transform: scale(1.03);
+  text-shadow:
+    0 0 32px rgba(0, 255, 120, 0.3),
+    0 0 64px rgba(0, 255, 120, 0.18),
+    0 0 128px rgba(0, 255, 120, 0.1);
+}
+
+.hero-subtitle {
+  margin-top: 40px;
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.05em;
+  line-height: 1.8;
+}
+
+.subtitle-line {
+  margin: 8px 0;
+  opacity: 0;
+  transform: translateY(50px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Scroll Progress Indicator */
+.scroll-progress {
+  position: fixed;
+  right: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.scroll-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+}
+
+.progress-track {
+  width: 2px;
+  height: 150px;
+  background: rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    rgba(62, 139, 255, 0.8),
+    rgba(255, 0, 102, 0.8)
+  );
+  transition: height 0.3s ease;
+  transform-origin: top;
+}
+
+.section-counter {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 2px;
+}
+
+/* Scroll Sections */
+.scroll-sections {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Allow scroll to continue past last section */
+.scroll-sections::after {
+  content: '';
+  display: block;
+  height: 1px;
+  pointer-events: auto;
+}
+
+.content-section {
+  min-height: 1600px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  text-align: center;
+  padding: 0 20px;
+}
+
+.content-section .hero-title {
+  margin-bottom: 30px;
+}
+
+.content-section .hero-subtitle {
+  max-width: 800px;
+}
+
+/* Cosmos Style Variants */
+.cosmos-style {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.cosmos-content {
+  animation: fadeIn 1.5s ease-out;
+}
+
+.cosmos-subtitle {
+  color: rgba(255, 255, 255, 0.95) !important;
+  background: transparent;
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.9),
+               0 0 30px rgba(0, 0, 0, 0.8),
+               0 4px 40px rgba(0, 0, 0, 0.7) !important;
+  text-align: center;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .side-menu {
+    left: 20px;
+    gap: 20px;
+  }
+
+  .scroll-progress {
+    right: 20px;
+  }
+
+  .menu-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .vertical-text {
+    font-size: 12px;
+    letter-spacing: 3px;
+  }
+
+  .hero-title {
+    font-size: clamp(40px, 10vw, 100px);
+  }
+
+  .hero-subtitle {
+    font-size: clamp(16px, 4vw, 20px);
+    margin-top: 20px;
+  }
+
+  .progress-track {
+    height: 100px;
+  }
+
+  .section-counter {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .side-menu {
+    left: 15px;
+  }
+
+  .scroll-progress {
+    right: 15px;
+  }
+
+  .hero-title {
+    letter-spacing: 0.05em;
+  }
+
+  .hero-subtitle {
+    line-height: 1.6;
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .title-char,
+  .subtitle-line,
+  .menu-icon,
+  .cosmos-content {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .title-char,
+  .subtitle-line {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -1,6 +1,5 @@
 import type {
   SettingsState,
-  Goal,
   ContentQuickProps,
   Language,
   Persona,
@@ -14,13 +13,19 @@ import type {
   FluxMode,
   StabilityModel,
   IdeogramModel,
+  GeminiModel,
+  GeminiResolution,
+  RunwayImageModel,
+  RunwayImageRatio,
   VideoQuickProps,
   VideoHook,
   VideoAspect,
   VideoProvider,
   VideoModel,
+  RunwayModel,
   LumaModel,
   AiAttachment,
+  RunwayModelConfig,
 } from '../types';
 import { MAX_PICTURE_PROMPT_LENGTH } from './picturesPrompts';
 
@@ -29,6 +34,8 @@ const STORAGE_KEY = 'marketingEngine.settings.v1';
 const CTA_MAX_LENGTH = 60;
 const VIDEO_DURATION_MIN = 6;
 const VIDEO_DURATION_MAX = 30;
+// Runway API limit is 1000. Frontend allows up to 2000 chars for AI refinement on backend
+const MAX_VIDEO_PROMPT_LENGTH = 2000;
 
 const PERSONAS: readonly Persona[] = ['Generic', 'First-time', 'Warm lead', 'B2B DM', 'Returning'];
 const TONES: readonly Tone[] = ['Friendly', 'Informative', 'Bold', 'Premium', 'Playful', 'Professional'];
@@ -54,6 +61,60 @@ const PICTURE_QUALITY_OPTIONS = ['High detail', 'Sharp', 'Minimal noise'] as con
 const VIDEO_HOOKS: readonly VideoHook[] = ['Pain-point', 'Bold claim', 'Question', 'Pattern interrupt'];
 const VIDEO_ASPECTS: readonly VideoAspect[] = ['9:16', '1:1', '16:9'];
 const VIDEO_VOICEOVER_OPTIONS = ['On-screen text only', 'AI voiceover'] as const;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RUNWAY MODEL CONFIGURATIONS
+// Based on API testing and documentation: https://docs.dev.runwayml.com/assets/inputs/
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const RUNWAY_MODEL_CONFIGS: Record<RunwayModel, RunwayModelConfig> = {
+  gen4_turbo: {
+    id: 'gen4_turbo',
+    name: 'Gen-4 Turbo',
+    description: 'Latest flagship model - Fast, high quality video generation',
+    durations: [5, 10],
+    ratios: ['1280:720', '720:1280', '1104:832', '832:1104', '960:960', '1584:672'],
+    features: ['Fastest Gen-4', 'Cinema quality', 'Multiple durations', 'Wide aspect ratios'],
+    maxPromptLength: 1000,
+  },
+  gen3a_turbo: {
+    id: 'gen3a_turbo',
+    name: 'Gen-3 Alpha Turbo',
+    description: 'Legacy model - Reliable and well-tested',
+    durations: [5, 10],
+    ratios: ['1280:768', '768:1280'],
+    features: ['Proven reliability', 'Fast generation', 'Good for portraits'],
+    maxPromptLength: 1000,
+  },
+  veo3: {
+    id: 'veo3',
+    name: 'Veo 3',
+    description: 'Google Veo 3 via Runway - High quality, fixed 8s duration',
+    durations: [8],
+    ratios: ['1280:720', '720:1280', '960:960'],
+    features: ['Google AI', 'Fixed 8s', 'High quality', 'Consistent results'],
+    maxPromptLength: 1000,
+  },
+};
+
+// Helper to get aspect ratio mapping for each model
+export const RUNWAY_ASPECT_TO_RATIO: Record<RunwayModel, Record<VideoAspect, string>> = {
+  gen4_turbo: {
+    '16:9': '1280:720',   // Landscape widescreen
+    '9:16': '720:1280',   // Portrait mobile
+    '1:1': '960:960',     // Square
+  },
+  gen3a_turbo: {
+    '16:9': '1280:768',   // Landscape (slightly different ratio)
+    '9:16': '768:1280',   // Portrait
+    '1:1': '1280:768',    // No square, fallback to landscape
+  },
+  veo3: {
+    '16:9': '1280:720',   // Landscape widescreen
+    '9:16': '720:1280',   // Portrait mobile
+    '1:1': '960:960',     // Square
+  },
+};
 const VIDEO_DENSITY_OPTIONS = ['Light (3–4)', 'Medium (5–6)', 'Fast (7–8)'] as const;
 const VIDEO_PROOF_OPTIONS = ['Social proof', 'Feature highlight', 'Before/After'] as const;
 const VIDEO_DONOT_OPTIONS = ['No claims', 'No cramped shots', 'No busy bg'] as const;
@@ -102,6 +163,14 @@ const defaultPicturesQuickProps: PicturesQuickProps = {
   ideogramMagicPrompt: true,
   ideogramStyleType: 'AUTO',
   ideogramNegativePrompt: '',
+  // Gemini Imagen 3
+  geminiModel: 'gemini-3-pro-image-preview',
+  geminiResolution: '1K',
+  geminiThinking: true,
+  geminiGrounding: false,
+  // Runway Gen-4 Image
+  runwayImageModel: 'gen4_image',
+  runwayImageRatio: '1024:1024',
   // Advanced
   lockBrandColors: true,
   backdrop: 'Clean',
@@ -120,13 +189,15 @@ const defaultVideoQuickProps: VideoQuickProps = {
   // Provider selection
   provider: 'auto' as VideoProvider, // Show provider selection first
   // Runway API parameters
-  model: 'veo3', // veo3 available in Tier 1 (ray-2 for Luma)
+  model: 'gen4_turbo', // Default to Gen-4 Turbo (fastest, highest quality)
   promptText: '',
-  promptImage: undefined,
-  duration: 8, // veo3 requires 8 seconds
+  promptImages: undefined,
+  duration: 5, // Gen-4 Turbo default: 5 seconds (also supports 10s)
   aspect: '9:16',
   watermark: false,
   seed: undefined,
+  // Runway model-specific duration (for models with multiple options)
+  runwayDuration: 5, // 5s or 10s for gen4_turbo/gen3a_turbo, fixed 8s for veo3
   // Luma-specific parameters
   lumaLoop: false,
   lumaDuration: '5s',
@@ -272,10 +343,14 @@ function normalizePicturesQuickProps(
     ...pictures,
   };
 
-  const providerOptions: PicturesProviderKey[] = ['auto', 'flux', 'stability', 'openai', 'ideogram'];
+  const providerOptions: PicturesProviderKey[] = ['auto', 'flux', 'stability', 'openai', 'ideogram', 'gemini', 'runway'];
   const fluxModes: FluxMode[] = ['standard', 'ultra'];
   const stabilityModels: StabilityModel[] = ['large-turbo', 'large', 'medium'];
   const ideogramModels: IdeogramModel[] = ['v1', 'v2', 'turbo'];
+  const geminiModels: GeminiModel[] = ['gemini-3-pro-image-preview', 'gemini-2.5-flash-preview-image'];
+  const geminiResolutions: GeminiResolution[] = ['1K', '2K', '4K'];
+  const runwayImageModels: RunwayImageModel[] = ['gen4_image', 'gen4_image_turbo'];
+  const runwayImageRatios: RunwayImageRatio[] = ['1024:1024', '1080:1080', '720:720', '1920:1080', '1080:1920', '1280:720', '720:1280', '1440:1080', '1080:1440'];
   const dalleQualities = ['standard', 'hd'] as const;
   const dalleStyles = ['vivid', 'natural'] as const;
 
@@ -385,6 +460,22 @@ function normalizePicturesQuickProps(
       ? (candidate.ideogramStyleType as 'AUTO' | 'GENERAL' | 'REALISTIC' | 'DESIGN' | 'RENDER_3D' | 'ANIME')
       : defaultPicturesQuickProps.ideogramStyleType,
     ideogramNegativePrompt: sanitizeFreeText(candidate.ideogramNegativePrompt, defaultPicturesQuickProps.ideogramNegativePrompt ?? ''),
+    // Gemini Imagen 3
+    geminiModel: geminiModels.includes(candidate.geminiModel as GeminiModel)
+      ? (candidate.geminiModel as GeminiModel)
+      : defaultPicturesQuickProps.geminiModel,
+    geminiResolution: geminiResolutions.includes(candidate.geminiResolution as GeminiResolution)
+      ? (candidate.geminiResolution as GeminiResolution)
+      : defaultPicturesQuickProps.geminiResolution,
+    geminiThinking: asBoolean(candidate.geminiThinking, defaultPicturesQuickProps.geminiThinking),
+    geminiGrounding: asBoolean(candidate.geminiGrounding, defaultPicturesQuickProps.geminiGrounding),
+    // Runway Gen-4 Image
+    runwayImageModel: runwayImageModels.includes(candidate.runwayImageModel as RunwayImageModel)
+      ? (candidate.runwayImageModel as RunwayImageModel)
+      : defaultPicturesQuickProps.runwayImageModel,
+    runwayImageRatio: runwayImageRatios.includes(candidate.runwayImageRatio as RunwayImageRatio)
+      ? (candidate.runwayImageRatio as RunwayImageRatio)
+      : defaultPicturesQuickProps.runwayImageRatio,
     // Advanced
     lockBrandColors: asBoolean(candidate.lockBrandColors, defaultPicturesQuickProps.lockBrandColors),
     backdrop,
@@ -413,19 +504,48 @@ function normalizeVideoQuickProps(
     ? candidate.provider
     : defaultVideoQuickProps.provider;
 
+  // Valid Runway models
+  const validRunwayModels: RunwayModel[] = ['gen4_turbo', 'gen3a_turbo', 'veo3'];
+  
   // Model based on provider
   const model: VideoModel = provider === 'luma'
-    ? ((candidate.model as LumaModel) === 'ray-2'
-      ? 'ray-2'
-      : 'ray-2')
-    : 'veo3'; // Runway default
+    ? ((candidate.model as LumaModel) === 'ray-2' ? 'ray-2' : 'ray-2')
+    : validRunwayModels.includes(candidate.model as RunwayModel)
+      ? (candidate.model as RunwayModel)
+      : 'gen4_turbo'; // Default to Gen-4 Turbo for Runway
 
-  const promptText = typeof candidate.promptText === 'string'
-    ? candidate.promptText.trim().slice(0, 1000)
+  const rawPromptText = typeof candidate.promptText === 'string'
+    ? candidate.promptText.trim()
     : defaultVideoQuickProps.promptText;
+  
+  // Long prompts: AI refinement on backend (991-2000 chars), hard limit at 2000
+  const promptText = rawPromptText.length > MAX_VIDEO_PROMPT_LENGTH
+    ? (() => {
+        console.warn(`⚠️ Video prompt truncated: ${rawPromptText.length} → ${MAX_VIDEO_PROMPT_LENGTH} chars. Prompts >990 chars will be AI-refined on backend.`);
+        return rawPromptText.slice(0, MAX_VIDEO_PROMPT_LENGTH);
+      })()
+    : rawPromptText.length > 990
+      ? (() => {
+          console.log(`ℹ️ Video prompt is ${rawPromptText.length} chars. AI will intelligently compress to ≤990 while preserving meaning.`);
+          return rawPromptText;
+        })()
+      : rawPromptText;
 
-  // Veo-3 requires fixed 8-second duration
-  const duration = 8;
+  // Duration based on model
+  // - gen4_turbo: 5 or 10 seconds
+  // - gen3a_turbo: 5 or 10 seconds  
+  // - veo3: fixed 8 seconds
+  const modelConfig = RUNWAY_MODEL_CONFIGS[model as RunwayModel];
+  const validDurations = modelConfig?.durations || [8];
+  
+  // Get runway-specific duration or use candidate duration
+  const requestedDuration = candidate.runwayDuration ?? candidate.duration ?? validDurations[0];
+  const duration = validDurations.includes(requestedDuration as number)
+    ? (requestedDuration as 5 | 8 | 10)
+    : (validDurations[0] as 5 | 8 | 10);
+  
+  // Also store the runway-specific duration
+  const runwayDuration = duration;
 
   const aspect = VIDEO_ASPECTS.includes(candidate.aspect as VideoAspect)
     ? (candidate.aspect as VideoAspect)
@@ -506,6 +626,7 @@ function normalizeVideoQuickProps(
     aspect,
     watermark,
     seed,
+    runwayDuration,
     lumaLoop,
     lumaDuration,
     lumaResolution,
@@ -556,7 +677,28 @@ export const defaultSettings: SettingsState = {
     market: null,
     goal: null,
     currency: null,
+    niche: null,
+    leadToSalePct: null,
+    revenuePerSale: null,
+    manageFx: false,
+    channels: [],
+    channelMode: 'auto',
+    channelSplits: {},
+    manualCplEnabled: false,
+    manualCplValues: {},
     summary: null,
+    allocations: [],
+    scenario: null,
+    notes: null,
+    lastSyncedAt: null,
+    plannerValidatedAt: null,
+    channelsValidatedAt: null,
+    advancedValidatedAt: null,
+    campaignDuration: '6-months',
+    campaignStartDate: null,
+    campaignEndDate: null,
+    campaignObjective: null,
+    targetAudienceSize: null,
   },
   platforms: [],
   cards: {
@@ -659,30 +801,4 @@ export function validateSettings(settings: SettingsState): boolean {
   }
 
   return true;
-}
-
-// Mock function to simulate pulling plan data
-export async function pullMediaPlan(settings: {
-  budget: number;
-  market: string;
-  goal: Goal;
-  currency: string;
-}): Promise<SettingsState['mediaPlan']['summary']> {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1500));
-
-  // Generate mock data based on budget and goal
-  const impressions = Math.floor(settings.budget * (settings.goal === 'Awareness' ? 150 : 100));
-  const reach = Math.floor(impressions * 0.7);
-  const clicks = Math.floor(impressions * (settings.goal === 'Sales' ? 0.05 : 0.03));
-  const leads = Math.floor(clicks * (settings.goal === 'Leads' ? 0.15 : 0.08));
-  const roas = settings.goal === 'Sales' ? 3.2 : 2.1;
-
-  return {
-    impressions,
-    reach,
-    clicks,
-    leads,
-    roas,
-  };
 }

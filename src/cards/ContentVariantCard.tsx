@@ -1,9 +1,9 @@
-import { motion } from "framer-motion";
-import { Minus } from "lucide-react";
-import PlatformIcon from "@/ui/PlatformIcon";
-import CopyBtn from "@/ui/CopyBtn";
-import { InteractiveCardWrapper } from "@/components/Outputs/InteractiveCardWrapper";
-import "@/components/Outputs/InteractiveCard.css";
+import { motion } from 'framer-motion';
+import { X } from 'lucide-react';
+import PlatformIcon from '@/ui/PlatformIcon';
+import CopyBtn from '@/ui/CopyBtn';
+import { InteractiveCardWrapper } from '@/components/Outputs/InteractiveCardWrapper';
+import '@/components/Outputs/InteractiveCard.css';
 
 type Status = "queued" | "thinking" | "rendering" | "ready" | "error";
 
@@ -18,14 +18,12 @@ export default function ContentVariantCard({
   status,
   variant,
   onRegenerate,
-  onSave,
-  onMinimize
+  onHide,
 }: {
   status: Status;
   variant: ContentVariant | null;
   onRegenerate?: () => void;
-  onSave?: () => void;
-  onMinimize?: () => void;
+  onHide?: () => void;
 }) {
   const busyStages: Status[] = ["queued", "thinking", "rendering"];
   const stageIndex = busyStages.indexOf(status);
@@ -63,21 +61,6 @@ export default function ContentVariantCard({
           </div>
         ) : (
           <>
-            {/* Minimize Button - Top Right */}
-            {onMinimize && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMinimize();
-                }}
-                className="absolute top-4 right-4 z-20 flex h-6 w-6 items-center justify-center rounded-md bg-white/10 backdrop-blur-sm border border-white/5 transition-all hover:bg-white/20 hover:border-white/10 active:scale-95"
-                title="Minimize to Stage Manager"
-                aria-label="Minimize card"
-              >
-                <Minus className="h-3.5 w-3.5 text-white/70" />
-              </button>
-            )}
-
             <div className="px-4 pb-5 pt-4 space-y-4">
               <div className="flex items-start gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10">
@@ -113,24 +96,19 @@ export default function ContentVariantCard({
                 <p className="text-white/60 text-sm italic">No content yet for this platform.</p>
               ) : null}
             </div>
-            {(onSave || onRegenerate) && status === "ready" && !loading ? (
-              <div className="absolute bottom-4 right-4 flex items-center gap-2">
-                {onSave && (
-                  <button
-                    onClick={onSave}
-                    className="h-8 px-3 rounded-lg bg-white/12 hover:bg-white/16 border border-white/14 text-white/75 text-[11px]"
-                  >
-                    Save
-                  </button>
-                )}
-                {onRegenerate && (
-                  <button
-                    onClick={onRegenerate}
-                    className="h-8 px-3 rounded-lg bg-white/12 hover:bg-white/16 border border-white/14 text-white/75 text-[11px]"
-                  >
-                    Regenerate
-                  </button>
-                )}
+            {onHide && status === "ready" && !loading ? (
+              <div className="absolute bottom-4 right-4">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onHide();
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/8 hover:bg-red-500/20 border border-white/10 hover:border-red-500/30 text-white/60 hover:text-red-300 transition-all"
+                  title="Hide from main screen"
+                  aria-label="Hide card"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             ) : null}
           </>

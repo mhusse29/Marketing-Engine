@@ -1,0 +1,53 @@
+/**
+ * Draggable Card Styles
+ * Optimized for smooth, lightweight dragging
+ */
+
+/* Hide original card instantly when dragging starts */
+.draggable-card[data-dragging="true"] {
+  opacity: 0 !important;
+  visibility: hidden;
+}
+
+/* Simplify drag overlay content */
+.drag-overlay-content {
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* Hide complex UI elements during drag */
+.is-dragging .platform-rail,
+.is-dragging [class*="platform-rail"],
+.is-dragging .platform-icon,
+.is-dragging [class*="platform-icon"],
+.is-dragging .regenerate-button,
+.is-dragging [class*="button"],
+.is-dragging .copy-button {
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Remove box shadows during drag */
+.is-dragging [class*="shadow"],
+.is-dragging .shadow-lg,
+.is-dragging .shadow-xl {
+  box-shadow: none !important;
+}
+
+/* Simplify content during drag */
+.is-dragging .interactive-card-wrapper {
+  pointer-events: none !important;
+}
+
+/* Prevent flickering during position changes */
+.draggable-card {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+}
+
+/* Smooth cursor transitions */
+.draggable-card:active {
+  cursor: grabbing !important;
+}

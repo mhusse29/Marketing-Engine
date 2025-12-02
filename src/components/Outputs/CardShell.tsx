@@ -13,22 +13,17 @@ interface CardShellProps extends HTMLMotionProps<'div'> {
 export default function CardShell({ children, className, sheen = false, enableInteractive = true, style, ...rest }: CardShellProps) {
   const cardContent = (
     <motion.div
-      layout
-      initial={{ 
-        opacity: 0, 
-        y: 20,
-        scale: 0.96,
-      }}
+      initial={false}
       animate={{ 
         opacity: 1, 
         y: 0,
         scale: 1,
       }}
       exit={{
-        opacity: 0,
-        y: -20,
-        scale: 0.96,
-        transition: { duration: 0.25, ease: [0.4, 0, 0.2, 1] }
+        opacity: 0.92,
+        y: 48,
+        scale: 0.92,
+        transition: { type: 'spring', stiffness: 420, damping: 28, mass: 0.6 }
       }}
       transition={{ 
         duration: 0.45,

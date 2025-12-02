@@ -49,6 +49,7 @@
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.35s ease;
   z-index: 0;
 }
@@ -73,6 +74,7 @@
     radial-gradient(1200px 260px at 120% 0%, rgba(166, 227, 255, 0.06), transparent 35%);
   mix-blend-mode: screen;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.25s ease;
   z-index: 0;
 }

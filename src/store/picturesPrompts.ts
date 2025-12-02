@@ -83,12 +83,15 @@ export function craftPicturesPrompt(quickProps: PicturesQuickProps): string {
 /**
  * Enhance a pictures prompt using GPT-5
  * Takes the current settings and campaign context to generate a professional, 
- * detailed image prompt optimized for the selected provider
+ * detailed image prompt optimized for the selected provider.
+ * If the user has already typed a prompt, it will be refined rather than replaced.
  */
 export async function enhancePicturesPrompt(
   quickProps: PicturesQuickProps,
   brief?: string
 ): Promise<{ suggestion: string; model: string }> {
+  const currentPrompt = (quickProps.promptText ?? '').trim();
+  
   const response = await fetch(`${getApiBase()}/v1/tools/pictures/suggest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -107,6 +110,7 @@ export async function enhancePicturesPrompt(
         quality: quickProps.quality,
       },
       brief,
+      currentPrompt, // Pass the user's current prompt for refinement
       provider: quickProps.imageProvider === 'auto' ? 'openai' : quickProps.imageProvider,
     }),
   });

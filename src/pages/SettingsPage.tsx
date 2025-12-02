@@ -2,14 +2,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, User, Shield, Clock, Camera, Loader2, Mail, AlertTriangle, CheckCircle, BarChart3 } from 'lucide-react';
+import { X, User, Shield, Clock, Camera, Loader2, Mail, AlertTriangle, CheckCircle, BarChart3, History } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { logActivity, getActivityLogs } from '../lib/activityLogger';
 import { cn } from '../lib/format';
 import { UsagePanel } from '../components/UsagePanel';
+import SavedGenerationsPanel from '../components/SettingsDrawer/SavedGenerationsPanel';
 
-type Tab = 'profile' | 'account' | 'security' | 'activity' | 'usage';
+type Tab = 'profile' | 'account' | 'security' | 'activity' | 'usage' | 'history';
 
 interface SettingsPageProps {
   onClose: () => void;
@@ -219,6 +220,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
     { id: 'account', label: 'Account', icon: Mail },
     { id: 'security', label: 'Security', icon: Shield },
     { id: 'usage', label: 'Usage & Costs', icon: BarChart3 },
+    { id: 'history', label: 'Generation History', icon: History },
     { id: 'activity', label: 'Activity', icon: Clock },
   ];
 
@@ -227,8 +229,11 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed left-0 right-0 bottom-0 z-[69] bg-black/30 backdrop-blur-[1px] transition-opacity duration-200"
-      style={{ top: 'var(--topbar-h, 64px)' }}
+      className="fixed left-0 right-0 bottom-0 bg-black/30 backdrop-blur-[1px] transition-opacity duration-200"
+      style={{ 
+        zIndex: 1000,
+        top: 'var(--topbar-h, 64px)'
+      }}
       onClick={onClose}
     >
       <motion.div
@@ -236,9 +241,14 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         animate={{ opacity: 1, translateY: 0 }}
         exit={{ opacity: 0, translateY: -20 }}
         onClick={(e) => e.stopPropagation()}
-        className="absolute left-1/2 top-8 -translate-x-1/2 w-full max-w-4xl rounded-3xl border border-white/10 bg-white/[0.05] shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur"
+        className="absolute left-1/2 top-8 -translate-x-1/2 w-full max-w-4xl rounded-3xl"
         style={{
-          maxHeight: 'calc(100vh - var(--topbar-h, 64px) - 80px)'
+          maxHeight: 'calc(100vh - var(--topbar-h, 64px) - 80px)',
+          background: 'linear-gradient(180deg, rgba(10, 14, 20, 0.92), rgba(8, 12, 18, 0.92))',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          boxShadow: '0 12px 50px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.04) inset',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
         }}
       >
         {/* Header */}
@@ -341,6 +351,18 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                   transition={{ duration: 0.2 }}
                 >
                   <UsagePanel />
+                </motion.div>
+              )}
+
+              {activeTab === 'history' && (
+                <motion.div
+                  key="history"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <SavedGenerationsPanel />
                 </motion.div>
               )}
 

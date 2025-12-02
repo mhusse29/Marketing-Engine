@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import type { ContentGenerationMeta, ContentVariantResult } from './types'
+import type { CardKey, ContentGenerationMeta, ContentVariantResult } from './types'
+import { generationProgressActions } from '@/store/generationProgress'
 
 const API_BASE: string = ((import.meta.env?.VITE_API_BASE as string | undefined) ?? 'http://localhost:8787').replace(/\/$/, '')
 const EVENTS_PATH: string = (import.meta.env?.VITE_EVENTS_PATH as string | undefined) ?? '/events'
@@ -31,6 +32,8 @@ type ExtraRunOptions = {
   regen?: boolean
   regenHint?: string
 }
+
+const CONTENT_CARD: CardKey = 'content'
 
 function waitForContentCompletion(
   runId: string,
@@ -154,11 +157,21 @@ export function useContentAI() {
 
     const { runId } = responseData as { runId: string }
     setCurrentRunId(runId)
+    generationProgressActions.setRunId(CONTENT_CARD, runId)
+    generationProgressActions.updatePhase(CONTENT_CARD, 'queued', {
+      runId,
+      source: 'content-sse',
+      message: 'Content run queued',
+    })
 
     try {
       const payload = await waitForContentCompletion(runId, undefined, (nextStatus) => {
         if (nextStatus) {
           setStatus(nextStatus)
+          generationProgressActions.updatePhase(CONTENT_CARD, nextStatus, {
+            runId,
+            source: 'content-sse',
+          })
         }
       })
 
@@ -172,10 +185,19 @@ export function useContentAI() {
       }
       setError(undefined)
       setStatus('ready')
+      generationProgressActions.updatePhase(CONTENT_CARD, 'ready', {
+        runId,
+        source: 'content-sse',
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'provider_error'
       setError(message)
       setStatus('error')
+      generationProgressActions.updatePhase(CONTENT_CARD, 'error', {
+        runId,
+        source: 'content-sse',
+        message,
+      })
     }
   }
 

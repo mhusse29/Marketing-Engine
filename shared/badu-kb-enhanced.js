@@ -310,10 +310,94 @@ export const KNOWLEDGE_BASE = {
       },
     },
     
+    promptExamples: {
+      productPhotography: {
+        title: 'Product Photography (Professional E-Commerce)',
+        template: 'A premium product photograph of [PRODUCT] on [SURFACE/BACKGROUND] with [LIGHTING SETUP]. Shot from [ANGLE] using [CAMERA SPECS]. Color palette: [HEX CODES]. [MOOD/ATMOSPHERE]. Style: [GENRE], [QUALITY KEYWORDS]. Technical: [RESOLUTION], [COLOR SPACE], [ASPECT RATIO].',
+        examples: [
+          {
+            brief: 'Luxury skincare jar for Instagram',
+            detailed: 'A luxurious product photograph featuring an elegant glass jar of premium skincare cream positioned on a white marble pedestal with natural gold veining (#d4af37). Shot at a 3/4 angle from slightly above (15° elevation) to showcase the product\'s embossed lid and premium materials. Dramatic lighting setup: soft golden hour sunlight streaming from the left at 45° angle (5500K color temperature), creating warm highlights on the glass and deep shadows for dimension. Background: soft gradient from pearl white (#f5f5f5) to champagne gold (#f0e68c) at 30% opacity, completely defocused with f/2.0 aperture for professional bokeh. Foreground elements: fresh eucalyptus leaves and pristine water droplets adding organic luxury feel. Rim lighting from behind (LED strip at 6500K) creates a subtle glow around the jar\'s edges, separating it from background. Shot with an 85mm macro lens, ISO 100, 1/200s shutter speed, ultra-sharp focus on product label with every detail visible. Cinematic color grading with rich warm tones, enhanced contrast (+15%), and slight vignette (-10%). Style: high-end cosmetics advertising, Estée Lauder aesthetic, Vogue editorial quality, magazine-cover worthy. Technical: 8K resolution (7680×4320), Adobe RGB color space, 4:5 aspect ratio optimized for Instagram vertical posts, professional retouching.'
+          },
+          {
+            brief: 'Clean Amazon listing photo',
+            detailed: 'A clean, professional product shot of [PRODUCT] centered on a pure white background (#ffffff), perfectly lit with three-point studio lighting eliminating all shadows. Product shown straight-on at eye level, filling 80% of frame. Key light: 5000K softbox at 45° front-left, fill light: white reflector at 70% intensity opposite side, back light: LED strip separating product from white background. Ultra-sharp focus throughout entire product using f/11 aperture, 50mm lens, ISO 100. No props, no distractions - just product in natural state. Colors accurate and true-to-life, rendered in sRGB color space (#ffffff background, no tints). High-resolution 4K output (3840×2160) suitable for Amazon zoom functionality with 2000px minimum width requirement. Style: e-commerce photography, catalog-ready, Amazon listing compliant, marketplace standard. Technical: Perfect white balance (5000K), no color casts, sharp corners, clean edges, professional product isolation.'
+          },
+          {
+            brief: 'Creative brand campaign hero shot',
+            detailed: 'An artistic hero shot of [PRODUCT] floating in mid-air against a dreamy gradient background transitioning smoothly from deep ocean blue (#003366) at bottom to vibrant sunset orange (#ff6600) at top. Product surrounded by swirling smoke effects (volumetric fog at 40% opacity) and glowing light particles (#ffd700, 20px diameter, soft glow) creating a magical, ethereal atmosphere. Dramatic side lighting from right casts elongated shadows toward left, while subtle purple rim light (#9b59b6, 3000K) on left edge and cyan accent light (#00bcd4, 6500K) on right add depth and dimension. Product slightly rotated (15° tilt on Y-axis) for dynamic composition following rule of thirds. Shot with a 100mm tilt-shift lens at f/2.8 for selective focus plane, creating miniature effect with top/bottom blur. Depth of field: sharp focus on product center (200mm focus plane), gradual falloff creating dreamy aesthetic. Post-processing: high contrast (+25%), vibrant saturation (+20%), slight color grade toward warm tones, subtle vignette (-15%), light rays effect (5 rays at 15% opacity). Style: advertising photography, commercial art direction, award-winning creative, Cannes Lions worthy, Apple-level production value. Technical: 6K resolution (6144×3160), DCI-P3 color space for cinema-grade colors, 16:9 aspect ratio for hero banners, professional compositing with 32-bit color depth.'
+          }
+        ],
+        keyElements: [
+          'Camera specs: 85mm lens, f/2.8 aperture, ISO 100, 1/200s shutter',
+          'Lighting: Key light at 45°, fill at 70%, rim from behind',
+          'Colors: Use hex codes (#ffffff, #f5f5f5, #8b6914)',
+          'Angles: 3/4 view, 15° elevation, straight-on, top-down 90°',
+          'Technical: 8K resolution, Adobe RGB, 4:5 ratio for Instagram',
+          'Style: High-end, editorial, magazine-quality, commercial photography',
+          'Mood: Luxury, dramatic, warm, professional, premium, modern'
+        ]
+      },
+      
+      lifestyle: {
+        title: 'Lifestyle & Social Media Imagery',
+        examples: [
+          {
+            brief: 'Instagram flat-lay',
+            detailed: 'A vibrant flat-lay composition featuring [PRODUCT] surrounded by complementary lifestyle props on a pastel pink textured surface (#ffc0cb, linen texture). Shot from directly overhead (perfect 90° angle, bird\'s-eye view) with soft, diffused natural window light from north-facing window creating minimal shadows and even illumination. Color palette: millennial pink (#ffc0cb) for background, mint green (#98ff98) in props, rose gold accents (#b76e79), white elements (#ffffff). Props arranged asymmetrically: fresh pink peonies (3 stems, partially in frame), aesthetic rose gold stationery (pen, clips), modern wireless earbuds, marble coaster, succulent plant in white ceramic pot. Grid layout with product off-center (rule of thirds), 40% negative space on right for text overlay. Depth of field: f/4 for slight background blur on edges while keeping main elements sharp. Natural color temperature (5500K), bright and airy exposure (+0.7 EV), high-key lighting. Style: bright, airy, Instagram-aesthetic, modern lifestyle photography, influencer-quality, Pinterest-worthy. Technical: 4K resolution, sRGB for social media, 4:5 vertical ratio for Instagram feed, natural grain (+5 for authentic feel).'
+          }
+        ]
+      },
+      
+      abstract: {
+        title: 'Abstract & Creative Concepts',
+        examples: [
+          {
+            brief: 'Abstract cloud with geometric shapes',
+            detailed: 'A surreal, abstract composition featuring a photorealistic fluffy cumulus cloud formation floating in the center against a gradient sky backdrop transitioning from soft pastel pink (#ffb3d9) at top through vibrant coral orange (#ff6b6b) in middle to warm golden yellow (#ffd93d) at bottom. Cloud rendered with extreme detail: individual wisps visible, soft edges with natural light scattering, subsurface scattering showing translucency where sunlight passes through (5000K color temperature). Geometric element: a large transparent glass hexagon (3D render, 40% opacity, 2px frosted glass edge) perfectly framing the cloud, with subtle internal reflections and light refraction creating rainbow prisms. Additional geometric shapes: three smaller translucent triangles (20% opacity, sharp edges) floating around composition, reflecting ambient colors. Lighting: dramatic backlight from upper right creating rim glow on cloud edges (#ffffff highlights), ambient volumetric fog (10% opacity) adding atmospheric depth, god rays penetrating through cloud at 15° angle. Composition: cloud centered using rule of thirds, hexagon slightly rotated (10° on Z-axis) for dynamic feel, triangles following golden ratio placement. Camera: 50mm lens, f/2.0 for soft depth transitions, medium close-up showing cloud detail. Post-processing: dreamy glow effect (+20%), enhanced saturation on warm tones (+15%), soft vignette (-10%), slight lens flare (3 spots, 5% opacity), color grade toward warm sunset palette. Style: digital art, surrealism, conceptual photography, dreamscape aesthetic, album cover quality, artistic commercial. Technical: 6K resolution (6000×4000), ProPhoto RGB for maximum color range, 3:2 aspect ratio for versatility, 16-bit color depth for smooth gradients, no banding in sky transitions.'
+          }
+        ]
+      },
+      
+      typography: {
+        title: 'Text-Heavy Graphics & Posters (Use Ideogram)',
+        examples: [
+          {
+            brief: 'Event poster with text',
+            detailed: 'A bold, modern poster design featuring large sans-serif typography (Helvetica Neue Bold, 120pt for headline) reading "[EVENT NAME]" in white (#ffffff) with subtle drop shadow (2px offset, 30% opacity black). Background: vibrant gradient from electric blue (#0066ff) to deep purple (#6b0fff) at 45° angle. Typography layout: headline at top third, subheading in lighter weight (36pt, 80% white) centered below, date/time in small caps (24pt) at bottom. Geometric elements: three diagonal stripes (#ffffff at 10% opacity, 40px width) crossing composition from top-left to bottom-right adding dynamic movement. Central graphic: minimalist icon relevant to event (vector style, white fill, 200px size) positioned in vertical center. Text effects: headline has subtle gradient overlay (white to light blue #add8e6), all text with slight inner glow for readability. Composition: margins 60px all sides, balanced negative space, visual hierarchy clear. Color theory: complementary colors for contrast, 80-20 rule (80% blue-purple, 20% white elements). Style: modern graphic design, event poster, print-ready, social media optimized, contemporary typography, professional layout. Technical: 4K resolution (4000×5000), CMYK color mode for print compatibility, 4:5 portrait ratio for Instagram/print, vector-based text for crisp edges, 300 DPI print quality.'
+          }
+        ]
+      }
+    },
+    
+    promptStructure: {
+      essentialElements: [
+        '1. Subject: What you want (product, scene, concept)',
+        '2. Setting/Background: Environment, surface, backdrop with hex colors',
+        '3. Lighting: Direction, type, color temperature (5500K, etc)',
+        '4. Camera: Lens (85mm), aperture (f/2.8), angle (3/4 view, 45°)',
+        '5. Composition: Rule of thirds, negative space percentage',
+        '6. Colors: Specific hex codes (#ffffff, #1a1a1a)',
+        '7. Mood/Atmosphere: Luxury, dramatic, warm, professional',
+        '8. Style: Editorial, commercial, magazine-quality',
+        '9. Technical: Resolution (8K), color space (Adobe RGB), ratio (4:5)'
+      ],
+      template: '[SUBJECT] on/in [BACKGROUND with #HEX]. [LIGHTING from ANGLE at TEMP]. Shot [CAMERA ANGLE] with [LENS, APERTURE]. [MOOD WORDS]. Style: [GENRE]. Technical: [SPECS].',
+      examples: {
+        short: 'Luxury watch on marble, dramatic lighting, 85mm f/2.0, 8K',
+        detailed: 'Premium stainless steel watch on white marble (#f5f5f5) with gold veining (#d4af37). Golden hour sunlight from 45° left creating warm highlights. Shot 3/4 view with 85mm lens, f/2.0 aperture. Dramatic, luxury, professional. Style: high-end product photography, editorial quality. Technical: 8K, Adobe RGB, 4:5 ratio.'
+      }
+    },
+    
     bestPractices: [
       'Choose provider based on your content needs: DALL-E for products, FLUX for people, Ideogram for graphics',
       'Start with Auto provider selection if unsure',
       'Write detailed, specific prompts for better results',
+      'Include hex color codes for precise colors (#ffffff, #1a1a1a)',
+      'Specify camera specs (85mm lens, f/2.8, ISO 100)',
+      'Describe lighting setup (angle, temperature, intensity)',
+      'Add technical details (8K resolution, Adobe RGB, 4:5 ratio)',
+      'Use style references (Vogue, Apple, Estée Lauder)',
       'Use negative prompts with Stability to avoid unwanted elements',
       'Match aspect ratio to your target platform',
       'Enable Lock Brand Colors for consistent branding',

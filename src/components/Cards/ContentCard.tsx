@@ -4,9 +4,8 @@ import ContentVariantCard from '@/cards/ContentVariantCard'
 import type { ContentGenerationMeta, ContentVariantResult } from '@/types'
 import { useBusyProgress } from '@/hooks/useBusyProgress'
 import PlatformRail from '@/ui/PlatformRail'
-import { getPlatformId, getPlatformLabel } from '@/ui/platformUtils'
+import { getPlatformLabel } from '@/ui/platformUtils'
 import { saveRun } from '@/lib/saves'
-import type { StageManagerEntryInput } from '@/components/StageManager/types'
 
 interface ContentCardProps {
   status: string
@@ -24,7 +23,7 @@ interface ContentCardProps {
     versions: number,
     hint?: string
   ) => void
-  onMinimize?: (entry: StageManagerEntryInput) => void
+  onHide?: () => void
 }
 
 type RunStatus = 'idle' | 'queued' | 'thinking' | 'rendering' | 'ready' | 'error'
@@ -57,7 +56,7 @@ export default function ContentCard({
   versions,
   runId,
   onRegenerate,
-  onMinimize,
+  onHide,
 }: ContentCardProps) {
   const settingsPlatforms = useMemo(
     () => (Array.isArray(platformIds) ? platformIds.filter((p) => p !== 'Auto') : []),
@@ -81,6 +80,7 @@ export default function ContentCard({
   const [versionByPlatform, setVersionByPlatform] = useState<Record<string, number>>({})
   const cardRef = useRef<HTMLElement | null>(null)
   const isDev = Boolean(import.meta.env?.DEV)
+  const [isDragging, setIsDragging] = useState(false)
 
   useEffect(() => {
     const node = cardRef.current
@@ -115,6 +115,35 @@ export default function ContentCard({
     }
   }, [platforms, activePlat, variantsByPlat])
 
+  // Check if card is being dragged by checking parent's data-dragging attribute
+  useEffect(() => {
+    const node = cardRef.current
+    if (!node) return
+
+    const checkDragging = () => {
+      const parent = node.closest('[data-dragging]')
+      const dragging = parent?.getAttribute('data-dragging') === 'true'
+      setIsDragging(dragging)
+    }
+
+    // Check initially
+    checkDragging()
+
+    // Use MutationObserver to watch for data-dragging attribute changes
+    const observer = new MutationObserver(checkDragging)
+    
+    // Observe the closest draggable-card parent
+    const draggableParent = node.closest('.draggable-card')
+    if (draggableParent) {
+      observer.observe(draggableParent, {
+        attributes: true,
+        attributeFilter: ['data-dragging']
+      })
+    }
+
+    return () => observer.disconnect()
+  }, [])
+
   const listForActive = variantsByPlat.get(activePlat) || []
   const anyData = platforms.some((p) => (variantsByPlat.get(p) || []).length > 0)
   const resultPayload = useMemo(() => ({ variants, meta }), [variants, meta])
@@ -130,7 +159,8 @@ export default function ContentCard({
   const { key: runKey } = useBusyProgress(runStatus, resolvedRunId)
   const cardStatus: CardStatus = runStatus === 'idle' ? 'ready' : (runStatus as CardStatus)
 
-  if (isDev && (variants.length > 0 || status === 'ready')) {
+  // Removed debug logging to prevent console spam
+  if (false && isDev && (variants.length > 0 || status === 'ready')) {
     console.log('ContentCard Debug:', {
       status,
       platforms,
@@ -140,6 +170,12 @@ export default function ContentCard({
       anyData,
       totalVariants: variants.length,
     })
+  }
+  
+  // Check for empty results after generation completes
+  const isGenerationComplete = status === 'ready' && variants.length === 0;
+  if (isGenerationComplete) {
+    console.warn('⚠️ Content generation completed but no variants were returned');
   }
 
   const requestedIndex = versionByPlatform[activePlat] ?? 0
@@ -208,45 +244,22 @@ export default function ContentCard({
     }
   }
 
-  const handleContentMinimize = () => {
-    if (!onMinimize) {
-      return
-    }
-
-    const platformSource = typeof displayVariant?.platform === 'string' && displayVariant.platform.trim().length > 0
-      ? displayVariant.platform
-      : activePlat
-    const platformId = getPlatformId(platformSource) ?? platformSource
-
-    const entry: StageManagerEntryInput = {
-      cardType: 'content',
-      data: {
-        content: {
-          platformId,
-          platformLabel,
-          headline: cardHeadline ?? variantData?.headline ?? undefined,
-          caption: cardCaption ?? variantData?.caption ?? undefined,
-          hashtags: cardHashtags ?? undefined,
-        },
-      },
-    }
-
-    onMinimize(entry)
-  }
 
   return (
     <section className="grid grid-cols-[auto_1fr] gap-6">
-      <PlatformRail
-        platforms={platforms}
-        selected={activePlat}
-        onChange={(platform) => {
-          setActivePlat(platform)
-          setVersionByPlatform((prev) => ({ ...prev, [platform]: 0 }))
-        }}
-        targetRef={cardRef}
-        btnSize={40}
-        pad={8}
-      />
+      {!isDragging && (
+        <PlatformRail
+          platforms={platforms}
+          selected={activePlat}
+          onChange={(platform) => {
+            setActivePlat(platform)
+            setVersionByPlatform((prev) => ({ ...prev, [platform]: 0 }))
+          }}
+          targetRef={cardRef}
+          btnSize={40}
+          pad={8}
+        />
+      )}
 
       <div
         ref={(node) => {
@@ -256,7 +269,21 @@ export default function ContentCard({
       >
         {status === 'error' && error ? (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-            {error}
+            <div className="font-semibold mb-1">⚠️ Generation Error</div>
+            <div>{error}</div>
+          </div>
+        ) : null}
+        
+        {isGenerationComplete ? (
+          <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">
+            <div className="font-semibold mb-1">⚠️ No Content Generated</div>
+            <div className="text-xs">The AI didn't generate any content. Try:
+              <ul className="mt-2 ml-4 list-disc space-y-1">
+                <li>Making your brief more specific</li>
+                <li>Adding more context or details</li>
+                <li>Regenerating with different settings</li>
+              </ul>
+            </div>
           </div>
         ) : null}
 
@@ -289,8 +316,7 @@ export default function ContentCard({
           status={cardStatus}
           variant={currentVariant}
           onRegenerate={handleRegenerate}
-          onSave={hasReadyContent ? handleSave : undefined}
-          onMinimize={onMinimize ? handleContentMinimize : undefined}
+          onHide={onHide}
         />
       </div>
     </section>

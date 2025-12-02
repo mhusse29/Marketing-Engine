@@ -1,7 +1,12 @@
-export type CardKey = 'content' | 'pictures' | 'video';
+export type CardKey = 'content' | 'pictures' | 'video' | 'media-plan';
 
 // Settings Types
 export type Goal = 'Awareness' | 'Traffic' | 'Leads' | 'Sales';
+
+// Media Plan Types
+export type CampaignDuration = '1-month' | '3-months' | '6-months' | '1-year' | 'custom';
+export type CampaignObjective = 'awareness' | 'leads' | 'sales' | 'traffic' | 'engagement';
+export type ChartMetricType = 'roi' | 'conversion' | 'engagement';
 
 export type Platform =
   | 'facebook'
@@ -34,7 +39,7 @@ export type CopyLength = 'Compact' | 'Standard' | 'Detailed';
 export type PicStyle = 'Product' | 'Lifestyle' | 'UGC' | 'Abstract';
 export type PicAspect = '1:1' | '4:5' | '16:9' | '2:3' | '3:2' | '7:9' | '9:7';
 
-export type PicturesProvider = 'flux' | 'stability' | 'openai' | 'ideogram';
+export type PicturesProvider = 'flux' | 'stability' | 'openai' | 'ideogram' | 'gemini' | 'runway';
 export type PicturesProviderKey = PicturesProvider | 'auto';
 export type PictureOutputFormat = 'png' | 'jpeg' | 'webp';
 export type FluxMode = 'standard' | 'ultra';
@@ -53,14 +58,38 @@ export type IdeogramStyleType =
   | 'poster'
   | 'product';
 
+// Gemini Imagen 3 types
+export type GeminiModel = 'gemini-3-pro-image-preview' | 'gemini-2.5-flash-preview-image';
+export type GeminiResolution = '1K' | '2K' | '4K';
+export type GeminiAspectRatio = '1:1' | '2:3' | '3:2' | '3:4' | '4:3' | '4:5' | '5:4' | '9:16' | '16:9' | '21:9';
+
+// Runway Gen-4 Image types
+export type RunwayImageModel = 'gen4_image' | 'gen4_image_turbo';
+export type RunwayImageRatio = '1024:1024' | '1080:1080' | '720:720' | '1920:1080' | '1080:1920' | '1280:720' | '720:1280' | '1440:1080' | '1080:1440';
+
 export type VideoHook = 'Pain-point' | 'Bold claim' | 'Question' | 'Pattern interrupt';
 export type VideoAspect = '9:16' | '1:1' | '16:9';
-export type RunwayModel = 'veo3'; // Only veo3 available in Tier 1
+
+// Runway Video Models - Supported by API key
+export type RunwayModel = 
+  | 'gen4_turbo'   // Gen-4 Turbo - Fast, high quality (5s or 10s)
+  | 'gen3a_turbo'  // Gen-3 Alpha Turbo - Legacy, reliable (5s or 10s)
+  | 'veo3';        // Google Veo 3 via Runway (8s fixed)
+
 export type LumaModel = 'ray-2'; // Luma Ray model (ray-2 is currently available)
 export type VideoModel = RunwayModel | LumaModel;
-export type VideoDuration = 8; // Veo-3 fixed 8-second duration
+
+// Duration types per model
+export type Gen4TurboDuration = 5 | 10;  // Gen-4 Turbo supports 5s or 10s
+export type Gen3aTurboDuration = 5 | 10; // Gen-3 Alpha Turbo supports 5s or 10s
+export type Veo3Duration = 8;            // Veo-3 fixed 8-second duration
+export type VideoDuration = Gen4TurboDuration | Gen3aTurboDuration | Veo3Duration;
 export type LumaDuration = '5s' | '9s'; // Luma Ray-2 duration options
 export type LumaResolution = '720p' | '1080p'; // Luma resolution options
+
+// Runway model-specific aspect ratios
+export type Gen4TurboRatio = '1280:720' | '720:1280' | '1104:832' | '832:1104' | '960:960' | '1584:672';
+export type Gen3aTurboRatio = '1280:768' | '768:1280';
 
 // Luma-specific advanced parameters
 export type LumaCameraMovement = 'static' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'orbit_right';
@@ -75,8 +104,19 @@ export type LumaSubjectMovement = 'static' | 'subtle' | 'active' | 'dynamic';
 export type LumaQuality = 'standard' | 'high' | 'premium';
 export type LumaColorGrading = 'natural' | 'warm' | 'cool' | 'dramatic' | 'desaturated';
 export type LumaFilmLook = 'digital' | '35mm' | '16mm' | 'vintage';
-export type RunwayRatio = '1280:768' | '768:1280' | '1024:1024';
+export type RunwayRatio = Gen4TurboRatio | Gen3aTurboRatio;
 export type VideoProvider = 'runway' | 'luma' | 'auto';
+
+// Runway model configuration metadata
+export type RunwayModelConfig = {
+  id: RunwayModel;
+  name: string;
+  description: string;
+  durations: number[];
+  ratios: string[];
+  features: string[];
+  maxPromptLength: number;
+};
 
 // Advanced Video Parameters
 export type CameraMovement = 'static' | 'pan_left' | 'pan_right' | 'tilt_up' | 'tilt_down' | 
@@ -144,6 +184,7 @@ export type PicturesQuickProps = {
   style: PicStyle;
   aspect: PicAspect;
   promptText: string;
+  promptImages?: string[]; // Base64 images for reference (FLUX: 1, Stability: multiple, Ideogram: up to 3)
   validated: boolean;
   // DALL-E settings
   dalleQuality: 'standard' | 'hd';
@@ -166,6 +207,14 @@ export type PicturesQuickProps = {
   ideogramMagicPrompt: boolean;
   ideogramStyleType: 'AUTO' | 'GENERAL' | 'REALISTIC' | 'DESIGN' | 'RENDER_3D' | 'ANIME';
   ideogramNegativePrompt: string;
+  // Gemini Imagen 3 settings
+  geminiModel: GeminiModel;
+  geminiResolution: GeminiResolution;
+  geminiThinking: boolean; // Enable thinking mode for complex prompts
+  geminiGrounding: boolean; // Enable Google Search grounding
+  // Runway Gen-4 Image settings
+  runwayImageModel: RunwayImageModel;
+  runwayImageRatio: RunwayImageRatio;
   // Advanced settings
   lockBrandColors: boolean;
   backdrop?: 'Clean' | 'Gradient' | 'Real-world' | string;
@@ -186,11 +235,13 @@ export type VideoQuickProps = {
   // Runway API parameters
   model: VideoModel;
   promptText: string;
-  promptImage?: string; // Base64 image for image-to-video
+  promptImages?: string[]; // Base64 images for image-to-video (Runway: 1, Luma: multiple)
   duration: VideoDuration;
   aspect: VideoAspect;
   watermark: boolean;
   seed?: number;
+  // Runway model-specific duration (gen4_turbo/gen3a_turbo: 5|10, veo3: 8 fixed)
+  runwayDuration?: number;
   // Luma-specific parameters
   lumaLoop?: boolean; // Whether to make the video loop seamlessly
   lumaDuration?: LumaDuration; // Luma duration: 5s or 9s (ray-2)
@@ -260,20 +311,58 @@ export type VideoQuickProps = {
   validatedAt?: string | null;
 };
 
+export type MediaPlanSummary = {
+  impressions: number;
+  reach: number;
+  clicks: number;
+  leads: number;
+  roas: number;
+};
+
+export type MediaPlanAllocation = {
+  platform: string;
+  spendPercent: number;
+  cpa?: number | null;
+  reach?: number | null;
+  status?: 'increased' | 'decreased' | 'steady';
+};
+
+export type MediaPlanScenario = Goal;
+
+export type ChannelMode = 'auto' | 'manual';
+
+export type MediaPlanState = {
+  budget: number | null;
+  market: string | null;
+  goal: Goal | null;
+  currency: string | null;
+  niche: string | null;
+  leadToSalePct: number | null;
+  revenuePerSale: number | null;
+  manageFx: boolean;
+  channels: string[];
+  channelMode: ChannelMode;
+  channelSplits: Record<string, number>;
+  manualCplEnabled: boolean;
+  manualCplValues: Record<string, number | null>;
+  summary: MediaPlanSummary | null;
+  allocations: MediaPlanAllocation[];
+  scenario: MediaPlanScenario | null;
+  notes: string | null;
+  lastSyncedAt: string | null;
+  plannerValidatedAt: string | null;
+  channelsValidatedAt: string | null;
+  advancedValidatedAt: string | null;
+  // New timeline fields
+  campaignDuration: CampaignDuration;
+  campaignStartDate: string | null;
+  campaignEndDate: string | null;
+  campaignObjective: CampaignObjective | null;
+  targetAudienceSize: number | null;
+};
+
 export type SettingsState = {
-  mediaPlan: {
-    budget: number | null;
-    market: string | null;
-    goal: Goal | null;
-    currency: string | null;
-    summary?: {
-      impressions: number;
-      reach: number;
-      clicks: number;
-      leads: number;
-      roas: number;
-    } | null;
-  };
+  mediaPlan: MediaPlanState;
   platforms: Platform[];
   cards: {
     content: boolean;
@@ -332,7 +421,7 @@ export type PictureResultMeta = {
   safetyTolerance?: number;
 };
 
-export type PictureProvider = 'flux' | 'stability' | 'openai' | 'ideogram';
+export type PictureProvider = 'flux' | 'stability' | 'openai' | 'ideogram' | 'gemini' | 'runway';
 
 export type PictureRemixOptions = {
   mode?: 'prompt' | 'image';
@@ -413,4 +502,5 @@ export type CardsState = {
   hidden: Record<CardKey, boolean>;
   order: CardKey[];
   selected: CardKey | null;
+  pinned: Record<CardKey, boolean>;
 };

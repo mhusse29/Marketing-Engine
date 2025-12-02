@@ -1,15 +1,29 @@
+import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/format';
 
 type Props = {
   size?: number;
   compact?: boolean;
   className?: string;
+  linkToLanding?: boolean;
 };
 
-export default function SinaiqLogo({ size = 18, compact = false, className = '' }: Props) {
+export default function SinaiqLogo({ size = 18, compact = false, className = '', linkToLanding = false }: Props) {
+  const navigate = useNavigate();
+  
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    navigate(linkToLanding ? '/landing' : '/');
+  };
+  
   if (compact) {
     return (
-      <a href="/" aria-label="SINA IQ" className={cn('inline-flex items-center', className)}>
+      <a 
+        href={linkToLanding ? '/landing' : '/'} 
+        onClick={handleClick}
+        aria-label="SINA IQ" 
+        className={cn('inline-flex items-center cursor-pointer', className)}
+      >
         <span
           aria-hidden
           className="grid place-items-center rounded-full"
@@ -39,7 +53,12 @@ export default function SinaiqLogo({ size = 18, compact = false, className = '' 
   }
 
   return (
-    <a href="/" aria-label="SINA IQ" className={cn('select-none', className)}>
+    <a 
+      href={linkToLanding ? '/landing' : '/'} 
+      onClick={handleClick}
+      aria-label="SINA IQ" 
+      className={cn('select-none cursor-pointer', className)}
+    >
       <span
         aria-hidden
         className="font-extrabold tracking-[0.14em] leading-none align-middle"

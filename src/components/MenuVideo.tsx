@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
-import { ChevronDown, ChevronUp, ImageIcon, Wand2, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, ImageIcon, Wand2, Loader2, X, Maximize2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 
 import { cn } from '../lib/format';
 import type {
   SettingsState,
   VideoAspect,
-  VideoProvider
+  VideoProvider,
+  RunwayModel,
 } from '../types';
 import { useCardsStore } from '../store/useCardsStore';
 import { HintChip } from './AppMenuBar';
 import { enhanceVideoPrompt } from '../lib/videoPromptBuilder';
+import { RUNWAY_MODEL_CONFIGS } from '../store/settings';
 
 // Aspect Ratios
 const VIDEO_ASPECT_OPTIONS: VideoAspect[] = ['9:16', '1:1', '16:9'];
@@ -110,6 +113,28 @@ const LUMA_FILM_LOOK = [
   { value: 'vintage', label: 'Vintage', hint: 'Retro film grain' },
 ];
 
+// Runway model options
+const RUNWAY_MODEL_OPTIONS: { value: RunwayModel; label: string; hint: string }[] = [
+  { value: 'gen4_turbo', label: 'Gen-4 Turbo', hint: 'Latest flagship • Fast & high quality' },
+  { value: 'gen3a_turbo', label: 'Gen-3 Alpha', hint: 'Legacy • Reliable & well-tested' },
+  { value: 'veo3', label: 'Veo 3', hint: 'Google AI • Fixed 8s duration' },
+];
+
+// Runway duration options per model
+const RUNWAY_DURATION_OPTIONS: Record<RunwayModel, { value: number; label: string; hint: string }[]> = {
+  gen4_turbo: [
+    { value: 5, label: '5s', hint: 'Quick • Lower cost' },
+    { value: 10, label: '10s', hint: 'Extended • More detail' },
+  ],
+  gen3a_turbo: [
+    { value: 5, label: '5s', hint: 'Quick • Lower cost' },
+    { value: 10, label: '10s', hint: 'Extended • More detail' },
+  ],
+  veo3: [
+    { value: 8, label: '8s', hint: 'Fixed duration' },
+  ],
+};
+
 const sectionLabel = (label: string) => (
   <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/50">{label}</span>
 );
@@ -132,6 +157,7 @@ export function MenuVideo({
   const [validationNotice, setValidationNotice] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhanceError, setEnhanceError] = useState('');
+  const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachmentError, setAttachmentError] = useState('');
@@ -151,7 +177,14 @@ export function MenuVideo({
       
       // If provider is changing, also update the model to match
       if (patch.provider && patch.provider !== qp.provider) {
-        patch.model = patch.provider === 'luma' ? 'ray-2' : 'veo3';
+        if (patch.provider === 'luma') {
+          patch.model = 'ray-2';
+        } else {
+          // Default to gen4_turbo for Runway
+          patch.model = 'gen4_turbo';
+          patch.runwayDuration = 5;
+          patch.duration = 5;
+        }
       }
       
       onSettingsChange({
@@ -189,6 +222,15 @@ export function MenuVideo({
       const file = event.target.files?.[0];
       if (!file) return;
 
+      // Get provider-specific limit
+      const currentImages = qp.promptImages || [];
+      const limit = qp.provider === 'runway' ? 1 : 5; // Runway: 1, Luma: 5
+      
+      if (currentImages.length >= limit) {
+        setAttachmentError(`Maximum ${limit} image${limit > 1 ? 's' : ''} allowed for ${qp.provider === 'runway' ? 'Runway' : 'Luma'}`);
+        return;
+      }
+
       // Check file type
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
         setAttachmentError('Please select a JPG, PNG, or WebP image');
@@ -201,11 +243,12 @@ export function MenuVideo({
         return;
       }
 
-      // Read and store the image
+      // Read and add to array
       const reader = new FileReader();
       reader.onload = (e) => {
         if (e.target?.result) {
-          setVideo({ promptImage: e.target.result as string });
+          const newImages = [...currentImages, e.target.result as string];
+          setVideo({ promptImages: newImages });
           setAttachmentError('');
         }
       };
@@ -214,12 +257,15 @@ export function MenuVideo({
       // Reset input
       event.target.value = '';
     },
-    [setVideo]
+    [setVideo, qp.promptImages, qp.provider]
   );
 
-  const handleRemoveImage = useCallback(() => {
-    setVideo({ promptImage: undefined });
-  }, [setVideo]);
+  const handleRemoveImage = useCallback((index: number) => {
+    const currentImages = qp.promptImages || [];
+    const newImages = currentImages.filter((_, i) => i !== index);
+    setVideo({ promptImages: newImages.length > 0 ? newImages : undefined });
+    setAttachmentError('');
+  }, [setVideo, qp.promptImages]);
 
   const setCardEnabled = useCardsStore((state) => state.setEnabled);
   
@@ -292,27 +338,45 @@ export function MenuVideo({
     ? `Prompt needs ${MIN_PROMPT_LENGTH - promptLength} more character${MIN_PROMPT_LENGTH - promptLength === 1 ? '' : 's'}`
     : 'Validate to lock in these settings for generation.';
 
+  // Provider configuration with image limits
+  const providers = [
+    { 
+      id: 'runway' as VideoProvider, 
+      label: 'Runway', 
+      model: 'Gen-4 Turbo / Gen-3 Alpha / Veo-3',
+      desc: 'Multiple models • 5s-10s videos',
+      features: ['Gen-4 Turbo (fastest)', 'Gen-3 Alpha (reliable)', 'Veo-3 (Google AI)', 'Cinema quality'],
+      imageLimit: 1 // Single image for image-to-video
+    },
+    { 
+      id: 'luma' as VideoProvider, 
+      label: 'Luma', 
+      model: 'Ray-2',
+      desc: 'Fast generation • 5s-9s • HD quality',
+      features: ['Quick results', '720p/1080p HD', 'Seamless loops', '5s or 9s videos'],
+      imageLimit: 2 // Two images via keyframes (frame0, frame1)
+    },
+  ];
+
+  const currentImageCount = qp.promptImages?.length ?? 0;
+  const currentProviderInfo = providers.find(p => p.id === qp.provider);
+  const imageLimit = currentProviderInfo?.imageLimit ?? 0;
+  const canAddMoreImages = currentImageCount < imageLimit;
+
   // Provider selection panel first
   if (!qp.provider || qp.provider === 'auto') {
-    const providers = [
-      { 
-        id: 'runway' as VideoProvider, 
-        label: 'Runway', 
-        model: 'Veo-3',
-        desc: 'High quality • 8s videos',
-        features: ['Cinema-quality output', 'Advanced controls', 'Slow generation']
-      },
-      { 
-        id: 'luma' as VideoProvider, 
-        label: 'Luma', 
-        model: 'Ray-2',
-        desc: 'Fast generation • 5s-9s • HD quality',
-        features: ['Quick results', '720p/1080p HD', 'Seamless loops', '5s or 9s videos']
-      },
-    ];
 
     return (
-      <div className="relative z-[1] rounded-3xl border border-white/10 bg-white/[0.05] p-5 pb-6 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur lg:p-6 lg:pb-7">
+      <div 
+        className="relative z-[1] rounded-3xl p-5 pb-6 lg:p-6 lg:pb-7"
+        style={{
+          background: 'linear-gradient(180deg, rgba(10, 14, 20, 0.92), rgba(8, 12, 18, 0.92))',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          boxShadow: '0 12px 50px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.04) inset',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+        }}
+      >
         {sectionLabel('Choose Video Provider')}
         <div className="grid gap-4">
           {providers.map((provider) => (
@@ -351,12 +415,17 @@ export function MenuVideo({
 
   // Full settings panel after provider selection
   const currentProvider = qp.provider;
+  
+  // Get current Runway model info
+  const currentRunwayModel = (qp.model as RunwayModel) || 'gen4_turbo';
+  const runwayModelConfig = RUNWAY_MODEL_CONFIGS[currentRunwayModel] || RUNWAY_MODEL_CONFIGS.gen4_turbo;
+  
   const providerInfo = {
     runway: {
       name: 'Runway',
-      model: 'Veo-3',
-      description: 'Cinema-quality video generation with advanced controls',
-      capabilities: ['8-second videos', 'Multiple aspect ratios', 'Camera movements', 'Visual styles'],
+      model: runwayModelConfig.name,
+      description: runwayModelConfig.description,
+      capabilities: runwayModelConfig.features,
     },
     luma: {
       name: 'Luma',
@@ -369,7 +438,16 @@ export function MenuVideo({
   const info = providerInfo[currentProvider] || providerInfo.runway;
 
   return (
-    <div className="relative z-[1] rounded-3xl border border-white/10 bg-white/[0.05] p-5 pb-6 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur lg:p-6 lg:pb-7">
+    <div 
+      className="relative z-[1] rounded-3xl p-5 pb-6 lg:p-6 lg:pb-7"
+      style={{
+        background: 'linear-gradient(180deg, rgba(10, 14, 20, 0.92), rgba(8, 12, 18, 0.92))',
+        border: '1px solid rgba(255, 255, 255, 0.06)',
+        boxShadow: '0 12px 50px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.04) inset',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+      }}
+    >
       <div className="space-y-4">
         {!isValidated && validationNotice && (
           <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
@@ -423,25 +501,6 @@ export function MenuVideo({
                 'focus:outline-none focus:ring-2 focus:ring-blue-500/35'
               )}
             />
-            {qp.promptImage && (
-              <div className="absolute top-3 right-24 flex h-9 w-9 items-center justify-center">
-                <div className="relative">
-                  <img
-                    src={qp.promptImage}
-                    alt="Reference"
-                    className="h-8 w-8 rounded-md object-cover ring-1 ring-white/20"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleRemoveImage}
-                    className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white shadow-sm hover:bg-red-600"
-                    aria-label="Remove image"
-                  >
-                    <span className="text-xs">×</span>
-                  </button>
-                </div>
-              </div>
-            )}
             {/* Enhance button */}
             <button
               type="button"
@@ -464,8 +523,11 @@ export function MenuVideo({
             <button
               type="button"
               onClick={handleImageSelect}
+              disabled={!canAddMoreImages}
               className={cn(
-                'absolute top-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/12 bg-white/5 text-white/70 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/35'
+                'absolute top-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/12 bg-white/5 text-white/70 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/35',
+                currentImageCount > 0 && 'border-blue-500/40 bg-blue-500/10 text-blue-400',
+                !canAddMoreImages && 'cursor-not-allowed opacity-50'
               )}
               aria-label="Add reference image"
             >
@@ -480,9 +542,60 @@ export function MenuVideo({
             />
         </div>
           {enhanceError && <p className="text-xs text-rose-300">{enhanceError}</p>}
-          <p className={cn('text-xs', attachmentError ? 'text-amber-300' : 'text-white/45')}>
-            {attachmentError || 'Optional: Add a reference image • Click wand icon to enhance with AI'}
-          </p>
+          
+          {/* Provider-specific messaging */}
+          <div className="space-y-1">
+            <p className={cn('text-xs', attachmentError ? 'text-rose-300' : currentImageCount > 0 ? 'text-emerald-400' : 'text-white/45')}>
+              {attachmentError || (
+                currentImageCount > 0
+                  ? imageLimit === 1
+                    ? '✓ 1 reference image added'
+                    : `✓ ${currentImageCount} of ${imageLimit} reference images added`
+                  : imageLimit === 1
+                  ? 'Add 1 reference image for image-to-video (Runway)'
+                  : `Add up to 2 reference images as start/end frames (Luma keyframes)`
+              )}
+            </p>
+            <p className="text-xs text-white/40">Click wand icon to enhance prompt with AI</p>
+          </div>
+
+          {/* Image Thumbnails Grid */}
+          {currentImageCount > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {qp.promptImages?.map((img, idx) => (
+                <div key={idx} className="group relative w-16 h-16 overflow-hidden rounded-lg border border-white/20 bg-black/40 cursor-pointer hover:border-blue-400/50 transition-all">
+                  <div 
+                    className="h-full w-full flex items-center justify-center"
+                    onClick={() => setExpandedImageIndex(idx)}
+                  >
+                    <img 
+                      src={img} 
+                      alt={`Reference ${idx + 1}`} 
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleRemoveImage(idx);
+                    }}
+                    className="absolute right-0.5 top-0.5 z-10 flex h-5 w-5 items-center justify-center rounded bg-black/80 text-white opacity-0 transition-opacity hover:bg-red-600 group-hover:opacity-100"
+                    aria-label={`Remove image ${idx + 1}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                  <div className="absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 py-0.5 text-[9px] text-white font-medium pointer-events-none">
+                    {idx + 1}
+                  </div>
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center pointer-events-none">
+                    <Maximize2 className="w-3 h-3 text-white opacity-0 group-hover:opacity-70 transition-opacity" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
       </section>
 
         {/* Basic Settings */}
@@ -508,6 +621,56 @@ export function MenuVideo({
             {/* Runway-specific basic controls */}
             {qp.provider === 'runway' && (
               <>
+                {/* Model Selection */}
+                <div className="pt-3 border-t border-white/5">
+                  <Label>Model</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {RUNWAY_MODEL_OPTIONS.map((option) => (
+                      <HintChip
+                        key={option.value}
+                        label={option.label}
+                        hint={option.hint}
+                        active={currentRunwayModel === option.value}
+                        onClick={() => {
+                          // When changing model, also update duration to valid value for new model
+                          const newModelConfig = RUNWAY_MODEL_CONFIGS[option.value];
+                          const currentDuration = qp.runwayDuration || qp.duration;
+                          const validDuration = newModelConfig.durations.includes(currentDuration)
+                            ? currentDuration
+                            : newModelConfig.durations[0];
+                          setVideo({ 
+                            model: option.value, 
+                            runwayDuration: validDuration,
+                            duration: validDuration as 5 | 8 | 10,
+                          });
+                        }}
+                        size="small"
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Duration (model-specific) */}
+                <div className="flex items-center justify-between pt-3">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-white/50">Duration</span>
+                  <div className="flex gap-1.5">
+                    {RUNWAY_DURATION_OPTIONS[currentRunwayModel].map((option) => (
+                      <HintChip
+                        key={option.value}
+                        label={option.label}
+                        hint={option.hint}
+                        active={(qp.runwayDuration || qp.duration) === option.value}
+                        onClick={() => setVideo({ 
+                          runwayDuration: option.value,
+                          duration: option.value as 5 | 8 | 10,
+                        })}
+                        size="small"
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Watermark */}
                 <div className="flex items-center justify-between pt-3 border-t border-white/5">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-white/50">Watermark</span>
                   <div className="flex gap-1.5">
@@ -912,6 +1075,74 @@ export function MenuVideo({
         </div>
       </section>
       </div>
+
+      {/* Image Expansion Modal */}
+      <AnimatePresence>
+        {expandedImageIndex !== null && qp.promptImages && qp.promptImages[expandedImageIndex] && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+            onClick={() => setExpandedImageIndex(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative max-w-4xl max-h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-white font-medium">Reference Image {expandedImageIndex + 1}</h3>
+                <button
+                  onClick={() => setExpandedImageIndex(null)}
+                  className="p-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Image */}
+              <div className="flex-1 flex items-center justify-center rounded-xl overflow-hidden bg-white/5 border border-white/20">
+                {qp.promptImages && qp.promptImages[expandedImageIndex] && (
+                  <img
+                    src={qp.promptImages[expandedImageIndex]}
+                    alt={`Reference ${expandedImageIndex + 1}`}
+                    className="max-w-full max-h-[calc(90vh-120px)] object-contain"
+                  />
+                )}
+              </div>
+
+              {/* Navigation */}
+              {qp.promptImages && qp.promptImages.length > 1 && (
+                <div className="flex items-center justify-center gap-4 mt-4">
+                  <button
+                    onClick={() => setExpandedImageIndex(Math.max(0, expandedImageIndex - 1))}
+                    disabled={expandedImageIndex === 0}
+                    className="p-2 rounded-lg bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+
+                  <span className="text-white/80 text-sm">
+                    {expandedImageIndex + 1} / {qp.promptImages.length}
+                  </span>
+
+                  <button
+                    onClick={() => qp.promptImages && setExpandedImageIndex(Math.min(qp.promptImages.length - 1, expandedImageIndex + 1))}
+                    disabled={qp.promptImages ? expandedImageIndex === qp.promptImages.length - 1 : true}
+                    className="p-2 rounded-lg bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,6 +1,7 @@
-import { ChevronDown, HelpCircle, LogOut, Save, Loader2, Wand2, Settings, MessageCircle, X } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronDown, HelpCircle, LogOut, Loader2, Wand2, Settings, MessageCircle, X, Sparkles, FolderOpen } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 
 import { cn } from '../lib/format'
 import SinaiqLogo from './SinaiqLogo'
@@ -21,7 +22,7 @@ export interface AppTopBarProps {
   active: Tab;
   onChange(tab: Tab): void;
   onNewCampaign(): void;
-  onSave(): void;
+  onSave?(): void;
   onOpenSettings(): void;
   onHelp(): void;
   onSignOut(): void;
@@ -36,11 +37,14 @@ export interface AppTopBarProps {
   onSettingsChange?: (settings: SettingsState) => void;
   onOpenPanel?: (tab: Tab) => void;
   onSetHovering?: (hovering: boolean) => void;
+  onOpenFeedbackSlider?: () => void;
+  showPrimaryTabs?: boolean;
+  height?: number;
+  customNavContent?: ReactNode;
 }
 
 export function AppTopBar({
   onChange,
-  onSave,
   onOpenSettings,
   onHelp,
   onSignOut,
@@ -51,6 +55,10 @@ export function AppTopBar({
   isGenerating = false,
   onOpenPanel,
   onSetHovering,
+  onOpenFeedbackSlider,
+  showPrimaryTabs = true,
+  height,
+  customNavContent,
 }: AppTopBarProps) {
   const { user, profile } = useAuth()
   const [showFeedback, setShowFeedback] = useState(false)
@@ -58,6 +66,7 @@ export function AppTopBar({
   const [feedbackText, setFeedbackText] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const navigate = useNavigate()
 
   const handleSubmitFeedback = async () => {
     if (selectedRating === null || !user) return
@@ -116,7 +125,7 @@ export function AppTopBar({
     <div
       className="w-full bg-transparent backdrop-blur-xl"
       style={{
-        height: 'var(--topbar-h, 64px)',
+        height: height !== undefined ? `${height}px` : 'var(--topbar-h, 64px)',
         boxShadow: `
           0 8px 32px -8px rgba(0, 0, 0, 0.2),
           0 4px 16px -4px rgba(0, 0, 0, 0.15),
@@ -154,14 +163,17 @@ export function AppTopBar({
         </div>
 
         <div className="flex items-center">
+          {customNavContent ? (
+            customNavContent
+          ) : showPrimaryTabs ? (
             <GradientMenu 
               onItemClick={(item) => {
                 onChange(item as Tab);
                 onOpenPanel?.(item as Tab);
               }}
               onItemHover={(item) => {
-                onOpenPanel?.(item as Tab);
-                onSetHovering?.(true);
+                onOpenPanel?.(item as Tab)
+                onSetHovering?.(true)
               }}
               onMouseLeave={() => onSetHovering?.(false)}
               validatedItems={[
@@ -170,6 +182,7 @@ export function AppTopBar({
                 ...(videoValidated ? ['video'] : [])
               ]}
             />
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2 md:gap-3">
@@ -288,9 +301,13 @@ export function AppTopBar({
               </div>
               
               <div className="p-2">
-                <DropdownMenuItem onClick={onSave} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
-                  <Save className="h-4 w-4 text-white/75" /> Save campaign
+                <DropdownMenuItem onClick={() => navigate('/')} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
+                  <Sparkles className="h-4 w-4 text-white/75" /> Marketing Engine
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/media-plan-lite')} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
+                  <FolderOpen className="h-4 w-4 text-white/75" /> Media Plan Lite
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-white/10 my-2" />
                 <DropdownMenuItem onClick={onOpenSettings} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
                   <Settings className="h-4 w-4 text-white/75" /> Settings
                 </DropdownMenuItem>
@@ -329,7 +346,7 @@ export function AppTopBar({
               animate={{ opacity: 1, translateY: 0 }}
               exit={{ opacity: 0, translateY: -20 }}
               onClick={(e) => e.stopPropagation()}
-              className="absolute left-1/2 top-8 -translate-x-1/2 w-full max-w-md rounded-3xl border border-white/10 bg-white/[0.05] shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur"
+              className="absolute left-1/2 top-8 -translate-x-1/2 w-full max-w-md rounded-3xl border border-white/10 bg-zinc-900 shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
@@ -413,6 +430,27 @@ export function AppTopBar({
                         className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white placeholder:text-white/30 focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 resize-none"
                       />
                     </div>
+
+                    {/* Quick Feedback Slider CTA */}
+                    {onOpenFeedbackSlider && (
+                      <div className="mb-4">
+                        <div className="relative">
+                          <div className="absolute inset-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                          <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-zinc-900 px-2 text-white/40">or</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowFeedback(false);
+                            onOpenFeedbackSlider();
+                          }}
+                          className="mt-4 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 font-medium text-emerald-400 transition-all hover:bg-emerald-500/20 hover:border-emerald-500/50"
+                        >
+                          ✨ Try Interactive Feedback Slider
+                        </button>
+                      </div>
+                    )}
 
                     {/* Submit Button */}
                     <button 

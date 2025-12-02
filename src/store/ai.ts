@@ -7,6 +7,7 @@ import type {
   CardKey,
 } from '../types';
 export { generatePictureOutputs as generatePictures } from '../lib/pictureGeneration';
+import { generationProgressActions } from './generationProgress';
 
 export const defaultAiState: AiUIState = {
   locked: true,
@@ -328,10 +329,30 @@ export async function generateVideo(
         props,
         (progress, status) => {
           console.log(`[Video ${v + 1}/${versions}] ${status}: ${progress}%`);
+          if (status === 'PENDING') {
+            generationProgressActions.updatePhase('video', 'thinking', {
+              source: 'video-polling',
+              message: 'Video job acknowledged by provider',
+            });
+          } else if (status === 'RUNNING') {
+            generationProgressActions.updatePhase('video', 'rendering', {
+              source: 'video-polling',
+              message: `Rendering in Runway (${Math.round(progress)}%)`,
+            });
+          } else if (status === 'SUCCEEDED') {
+            generationProgressActions.updatePhase('video', 'ready', {
+              source: 'video-polling',
+            });
+          } else if (status === 'FAILED') {
+            generationProgressActions.updatePhase('video', 'error', {
+              source: 'video-polling',
+              message: 'Video generation failed',
+            });
+          }
         },
         signal
       );
-      
+
       videoVersions.push(video);
       console.log(`[Video ${v + 1}/${versions}] Generated successfully!`);
     } catch (error) {
