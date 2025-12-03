@@ -7,6 +7,7 @@ import StandaloneAnalyticsDashboard from './pages/StandaloneAnalyticsDashboard';
 import MediaPlanLite from './pages/MediaPlanLite';
 import LandingPage from './pages/LandingPage';
 import LandingPage2 from './pages/LandingPage2';
+import FAQPage from './pages/FAQPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { BaduDashboard } from './components/Analytics/BaduDashboard';
 
@@ -20,6 +21,7 @@ export default function Router() {
       {/* Public Landing Pages */}
       <Route path="/landing" element={<LandingPage />} />
       <Route path="/landing2" element={<LandingPage2 />} />
+      <Route path="/faq" element={<FAQPage />} />
       
       {/* Protected App Route */}
       <Route

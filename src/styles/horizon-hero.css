@@ -430,6 +430,73 @@ html, body {
   letter-spacing: 2px;
 }
 
+/* Global Scroll Progress Indicator - visible across all sections */
+.scroll-progress-global {
+  position: fixed;
+  right: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  pointer-events: none;
+}
+
+.scroll-progress-global .scroll-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+}
+
+.scroll-progress-global .progress-track {
+  width: 2px;
+  height: 150px;
+  background: rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.scroll-progress-global .progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(62, 139, 255, 0.8),
+    rgba(255, 0, 102, 0.8)
+  );
+  transition: height 0.2s ease-out;
+  transform-origin: top;
+  will-change: height;
+}
+
+.scroll-progress-global .section-counter {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 2px;
+}
+
+@media (max-width: 768px) {
+  .scroll-progress-global {
+    right: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .scroll-progress-global {
+    right: 15px;
+  }
+}
+
 /* Scroll Sections */
 .scroll-sections {
   position: relative;

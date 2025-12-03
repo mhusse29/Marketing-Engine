@@ -5,6 +5,8 @@ import { HandWrittenTitle } from './hand-writing-text';
 import { LayeredText } from "./layered-text";
 import { MagnetizeButton } from "./magnetize-button";
 import { Skiper28 } from "./skiper28";
+import PricingSection from "./pricing-section";
+import { FooterSection } from "./footer-section";
 
 export default function MediaPlanScrollSection() {
   // Fixed configuration values
@@ -116,6 +118,12 @@ export default function MediaPlanScrollSection() {
       </div>
       
       <Skiper28 />
+      
+      {/* Pricing Section - After Skiper28 */}
+      <PricingSection />
+      
+      {/* Footer Section */}
+      <FooterSection />
     </div>
   );
 }

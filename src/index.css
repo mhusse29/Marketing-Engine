@@ -1,9 +1,34 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 @import "./theme.css";
 @import "./styles/glass-anim.css";
 @import "./styles/premium-anim.css";
 @import "./styles/media-plan-lite.css";
 @import "./components/Outputs/InteractiveCard.css";
+
+/* Accordion animations - exact copy from landing-page-2 */
+:root {
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
 
 /* Custom scrollbar for analytics dashboard */
 .custom-scrollbar::-webkit-scrollbar {

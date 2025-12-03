@@ -29,8 +29,8 @@ export default {
         'fade-in': 'fade-in 280ms ease-out',
         'slide-up': 'slide-up 280ms ease-out',
         'scale-press': 'scale-press 90ms ease-out',
-        'accordion-down': 'accordion-down 200ms ease-out',
-        'accordion-up': 'accordion-up 200ms ease-out',
+        'accordion-down': 'accordion-down 0.3s cubic-bezier(0.87, 0, 0.13, 1)',
+        'accordion-up': 'accordion-up 0.3s cubic-bezier(0.87, 0, 0.13, 1)',
         'first': 'moveVertical 30s ease infinite',
         'second': 'moveInCircle 20s reverse infinite',
         'third': 'moveInCircle 40s linear infinite',
@@ -65,12 +65,12 @@ export default {
           '100%': { transform: 'scale(1)' },
         },
         'accordion-down': {
-          '0%': { height: '0' },
-          '100%': { height: 'var(--radix-accordion-content-height)' },
+          '0%': { height: '0', opacity: '0' },
+          '100%': { height: 'var(--radix-accordion-content-height)', opacity: '1' },
         },
         'accordion-up': {
-          '0%': { height: 'var(--radix-accordion-content-height)' },
-          '100%': { height: '0' },
+          '0%': { height: 'var(--radix-accordion-content-height)', opacity: '1' },
+          '100%': { height: '0', opacity: '0' },
         },
         'moveHorizontal': {
           '0%': { transform: 'translateX(-50%) translateY(-10%)' },
@@ -90,5 +90,5 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [require("tailwindcss-animate")],
 }

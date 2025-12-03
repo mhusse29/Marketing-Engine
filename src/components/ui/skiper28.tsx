@@ -23,10 +23,10 @@ const Skiper28 = () => {
   ];
 
   /**
-   * Moderate vertical travel: 100px per message (5 × 100 = 500px).
-   * Creates a balanced slide effect without excessive movement.
+   * Reduced vertical travel: 60px per message (5 × 60 = 300px).
+   * Creates a quicker slide effect for shorter scroll distance.
    */
-  const startOffset = messages.length * 100; // 500px
+  const startOffset = messages.length * 60; // 300px
   const yMotionValue = useTransform(scrollYProgress, [0, 1], [startOffset, 0]);
 
   /**
@@ -50,7 +50,7 @@ const Skiper28 = () => {
     <ReactLenis root options={{ duration: 1.2, easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)) }}>
       <div
         ref={targetRef}
-        className="relative z-10 h-[300vh] w-full bg-black text-white"
+        className="relative z-10 h-[150vh] w-full bg-black text-white"
       >
         <div
           className="sticky top-0 mx-auto flex h-screen items-center justify-center bg-transparent py-20"

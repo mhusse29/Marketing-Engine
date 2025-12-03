@@ -4,6 +4,8 @@ import path from "node:path";
 const LOADER = path.resolve(__dirname, 'src/visual-edits/component-tagger-loader.js');
 
 const nextConfig: NextConfig = {
+  // Allow cross-origin requests from the main app
+  allowedDevOrigins: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://127.0.0.1:63406'],
   images: {
     remotePatterns: [
       {

@@ -7,8 +7,6 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import FuzzyText from './FuzzyText';
-import { StaggeredMenu } from './StaggeredMenu';
-import type { StaggeredMenuItem, StaggeredMenuSocialItem } from './StaggeredMenu';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -17,15 +15,10 @@ export const Component = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const subtitleRef = useRef<HTMLDivElement>(null);
-  const scrollProgressRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   const smoothCameraPos = useRef({ x: 0, y: 30, z: 100 });
   
-  const [scrollProgress, setScrollProgress] = useState(0);
-  const [currentSection, setCurrentSection] = useState(1);
   const [isReady, setIsReady] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const totalSections = 2;
   
   const threeRefs = useRef<{
@@ -51,25 +44,6 @@ export const Component = () => {
     mountains: [],
     animationId: null
   });
-
-  // Menu items configuration
-  const menuItems: StaggeredMenuItem[] = [
-    { label: 'Home', ariaLabel: 'Go to home page', link: '/' },
-    { label: 'Create', ariaLabel: 'Create campaigns', link: '#create' },
-    { label: 'Amplify', ariaLabel: 'Amplify content', link: '#amplify' },
-    { label: 'Elevate', ariaLabel: 'Elevate marketing', link: '#elevate' }
-  ];
-
-  const socialItems: StaggeredMenuSocialItem[] = [
-    { label: 'Twitter', link: 'https://twitter.com' },
-    { label: 'GitHub', link: 'https://github.com' },
-    { label: 'LinkedIn', link: 'https://linkedin.com' }
-  ];
-
-  // Toggle menu handler
-  const toggleMenu = () => {
-    setMenuOpen(prev => !prev);
-  };
 
   // Initialize Three.js
   useEffect(() => {
@@ -487,21 +461,11 @@ export const Component = () => {
     if (!isReady) return;
     
     // Set initial states to prevent flash
-    gsap.set([menuRef.current, titleRef.current, subtitleRef.current, scrollProgressRef.current], {
+    gsap.set([titleRef.current, subtitleRef.current], {
       visibility: 'visible'
     });
 
     const tl = gsap.timeline();
-
-    // Animate menu
-    if (menuRef.current) {
-      tl.from(menuRef.current, {
-        x: -100,
-        opacity: 0,
-        duration: 1,
-        ease: "power3.out"
-      });
-    }
 
     // Animate title with split text
     if (titleRef.current) {
@@ -527,16 +491,6 @@ export const Component = () => {
       }, "-=0.8");
     }
 
-    // Animate scroll indicator
-    if (scrollProgressRef.current) {
-      tl.from(scrollProgressRef.current, {
-        opacity: 0,
-        y: 50,
-        duration: 1,
-        ease: "power2.out"
-      }, "-=0.5");
-    }
-
     return () => {
       tl.kill();
     };
@@ -551,9 +505,7 @@ export const Component = () => {
       const maxScroll = Math.max(containerHeight - windowHeight, 1);
       const progress = Math.min(scrollY / maxScroll, 1);
       
-      setScrollProgress(progress);
       const newSection = Math.floor(progress * totalSections);
-      setCurrentSection(newSection);
 
       const { current: refs } = threeRefs;
       
@@ -614,43 +566,7 @@ export const Component = () => {
     >
       <canvas ref={canvasRef} className="hero-canvas" />
       
-      {/* Side menu */}
-      <div ref={menuRef} className="side-menu" style={{ visibility: 'hidden' }}>
-        <div className="menu-icon" onClick={toggleMenu} style={{ cursor: 'pointer' }}>
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-        <div className="vertical-text">SPACE</div>
-      </div>
-
-      {/* Staggered Menu Overlay */}
-      <StaggeredMenu
-        position="left"
-        items={menuItems}
-        socialItems={socialItems}
-        displaySocials={true}
-        displayItemNumbering={true}
-        colors={['#00e676']}
-        accentColor="#00e676"
-        isFixed={true}
-        isOpen={menuOpen}
-        onToggle={toggleMenu}
-      />
-
-      {/* Scroll progress indicator */}
-      <div ref={scrollProgressRef} className="scroll-progress" style={{ visibility: 'hidden' }}>
-        <div className="scroll-text">SCROLL</div>
-        <div className="progress-track">
-          <div 
-            className="progress-fill" 
-            style={{ width: `${scrollProgress * 100}%` }}
-          />
-        </div>
-        <div className="section-counter">
-          {String(currentSection).padStart(2, '0')} / {String(totalSections).padStart(2, '0')}
-        </div>
-      </div>
+      {/* Side menu and scroll progress - REMOVED: Now using global NavigationMenu and ScrollProgressIndicator in LandingPage */}
 
       {/* All three titles as scrollable sections */}
       <div className="scroll-sections">
