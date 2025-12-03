@@ -1,0 +1,56 @@
+/* Landing Page 2 Styles */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+.landing-page-2 {
+  --color-background: #000000;
+  --color-foreground: #ffffff;
+  --color-card: #000000;
+  --color-card-foreground: #ffffff;
+  --color-popover: #000000;
+  --color-popover-foreground: #ffffff;
+  --color-primary: #ffffff;
+  --color-primary-foreground: #000000;
+  --color-secondary: #1a1a1a;
+  --color-secondary-foreground: #ffffff;
+  --color-muted: rgba(255, 255, 255, 0.4);
+  --color-muted-foreground: rgba(255, 255, 255, 0.6);
+  --color-accent: #0ea5e9;
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #fafafa;
+  --color-border: rgba(255, 255, 255, 0.2);
+  --color-input: #1a1a1a;
+  --color-ring: #0ea5e9;
+  --color-foreground-secondary: rgba(255, 255, 255, 0.6);
+  --color-foreground-divider: rgba(255, 255, 255, 0.2);
+  --color-accent-orange: #f97316;
+  --color-accent-coral: #ff8c66;
+  --color-button-background: rgba(255, 255, 255, 0.95);
+  --color-button-icon: #1a1a1a;
+  --color-dot-inactive: rgba(255, 255, 255, 0.3);
+  
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.landing-page-2 * {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.landing-page-2 .hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.landing-page-2 .hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.landing-page-2 h1,
+.landing-page-2 h2,
+.landing-page-2 h3,
+.landing-page-2 h4,
+.landing-page-2 h5,
+.landing-page-2 h6 {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
