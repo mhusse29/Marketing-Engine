@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "buildCommand": "npm run web:build",
+  "outputDirectory": "dist",
+  "framework": null,
+  "build": {
+    "env": {
+      "VITE_SUPABASE_URL": "https://wkhcakxjhmwapvqjrxld.supabase.co",
+      "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndraGNha3hqaG13YXB2cWpyeGxkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3MjA4MDcsImV4cCI6MjA3NjI5NjgwN30.EMrmcipkt-v-lp7JNf5Hv5yBpYAghmBf2gE7JR4jq0c",
+      "VITE_API_URL": "https://marketing-engine-backend-production.up.railway.app"
+    }
+  },
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
