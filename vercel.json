@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "npm run web:build",
+  "buildCommand": "vite build",
   "outputDirectory": "dist",
   "framework": null,
   "build": {
