@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { ThumbsUp, ThumbsDown } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
-const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'http://localhost:3001'
+const GATEWAY_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
 
 const REASON_TAGS = {
   positive: [

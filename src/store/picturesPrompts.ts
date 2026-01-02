@@ -26,55 +26,11 @@ export function withActivePromptForProvider(
 export function craftPicturesPrompt(quickProps: PicturesQuickProps): string {
   const segments: string[] = [];
 
-  const styleSegment = `Create ${quickProps.style.toLowerCase()} imagery that highlights the hero product.`;
-  const aspectSegment = `Frame for a ${quickProps.aspect} aspect ratio.`;
-
-  segments.push(styleSegment, aspectSegment);
-
-  if (quickProps.lockBrandColors) {
-    segments.push('Keep brand colours locked and harmonised.');
-  } else {
-    segments.push('Use complementary colours that still feel on-brand.');
+  if (quickProps.style) {
+    segments.push(`Create ${quickProps.style.toLowerCase()} imagery that highlights the hero product.`);
   }
-
-  if (quickProps.backdrop && quickProps.backdrop !== 'Clean') {
-    segments.push(`Backdrop preference: ${quickProps.backdrop.toLowerCase()}.`);
-  }
-
-  if (quickProps.lighting) {
-    segments.push(`Lighting: ${quickProps.lighting.toLowerCase()} lighting.`);
-  }
-
-  if (quickProps.composition) {
-    segments.push(`Composition: ${quickProps.composition.toLowerCase()}.`);
-  }
-
-  if (quickProps.camera) {
-    segments.push(`Camera angle: ${quickProps.camera.toLowerCase()}.`);
-  }
-
-  if (quickProps.mood) {
-    segments.push(`Overall mood: ${quickProps.mood.toLowerCase()}.`);
-  }
-
-  if (quickProps.colourPalette) {
-    segments.push(`Colour palette: ${quickProps.colourPalette.toLowerCase()}.`);
-  }
-
-  if (quickProps.finish) {
-    segments.push(`Surface finish: ${quickProps.finish.toLowerCase()}.`);
-  }
-
-  if (quickProps.texture) {
-    segments.push(`Texture cues: ${quickProps.texture.toLowerCase()}.`);
-  }
-
-  if (quickProps.quality) {
-    segments.push(`Prioritise a ${quickProps.quality.toLowerCase()} result.`);
-  }
-
-  if (quickProps.negative && quickProps.negative !== 'None') {
-    segments.push(`Avoid ${quickProps.negative.toLowerCase()}.`);
+  if (quickProps.aspect) {
+    segments.push(`Frame for a ${quickProps.aspect} aspect ratio.`);
   }
 
   return clampPrompt(segments.filter(Boolean).join(' '));
@@ -99,15 +55,6 @@ export async function enhancePicturesPrompt(
       settings: {
         style: quickProps.style,
         aspect: quickProps.aspect,
-        lighting: quickProps.lighting,
-        composition: quickProps.composition,
-        camera: quickProps.camera,
-        mood: quickProps.mood,
-        backdrop: quickProps.backdrop,
-        colourPalette: quickProps.colourPalette,
-        finish: quickProps.finish,
-        texture: quickProps.texture,
-        quality: quickProps.quality,
       },
       brief,
       currentPrompt, // Pass the user's current prompt for refinement

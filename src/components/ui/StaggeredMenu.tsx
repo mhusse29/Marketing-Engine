@@ -1,5 +1,6 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
+import { SinaiqLogo } from './sinaiq-logo';
 
 export interface StaggeredMenuItem {
   label: string;
@@ -301,6 +302,11 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
           onClick={handlePanelClick}
         >
           <div className="sm-panel-inner flex-1 flex flex-col gap-5">
+            {/* Logo - centered at top */}
+            <div className="sm-logo flex justify-center mb-8">
+              <SinaiqLogo size="md" withText={true} triggerAnimation={isOpen} />
+            </div>
+            
             <ul
               className="sm-panel-list list-none m-0 p-0 flex flex-col gap-2"
               role="list"

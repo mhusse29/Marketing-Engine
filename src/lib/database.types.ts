@@ -12,78 +12,51 @@ export type Database = {
   }
   public: {
     Tables: {
-      user_card_snapshots: {
+      user_generations: {
         Row: {
           id: string
           user_id: string
           card_type: string
-          scope: string
-          position: number
+          generation_id: string
+          generation_batch_id: string | null
           snapshot: Json
-          created_at: string
-          updated_at: string
-          drag_offset_x: number
-          drag_offset_y: number
-          is_pinned: boolean
-          display_order: number
+          thumbnail_url: string | null
+          aspect_ratio: number | null
+          position: number | null
+          is_hidden: boolean | null
+          is_pinned: boolean | null
+          created_at: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: string
           user_id: string
           card_type: string
-          scope: string
-          position?: number
+          generation_id: string
+          generation_batch_id?: string | null
           snapshot: Json
-          created_at?: string
-          updated_at?: string
-          drag_offset_x?: number
-          drag_offset_y?: number
-          is_pinned?: boolean
-          display_order?: number
+          thumbnail_url?: string | null
+          aspect_ratio?: number | null
+          position?: number | null
+          is_hidden?: boolean | null
+          is_pinned?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
         }
         Update: {
           id?: string
           user_id?: string
           card_type?: string
-          scope?: string
-          position?: number
+          generation_id?: string
+          generation_batch_id?: string | null
           snapshot?: Json
-          created_at?: string
-          updated_at?: string
-          drag_offset_x?: number
-          drag_offset_y?: number
-          is_pinned?: boolean
-          display_order?: number
-        }
-        Relationships: []
-      }
-      user_card_progress: {
-        Row: {
-          user_id: string
-          card_type: string
-          run_id: string | null
-          phase: string
-          message: string | null
-          meta: Json | null
-          updated_at: string
-        }
-        Insert: {
-          user_id: string
-          card_type: string
-          run_id?: string | null
-          phase: string
-          message?: string | null
-          meta?: Json | null
-          updated_at?: string
-        }
-        Update: {
-          user_id?: string
-          card_type?: string
-          run_id?: string | null
-          phase?: string
-          message?: string | null
-          meta?: Json | null
-          updated_at?: string
+          thumbnail_url?: string | null
+          aspect_ratio?: number | null
+          position?: number | null
+          is_hidden?: boolean | null
+          is_pinned?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -98,8 +71,24 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      persist_card_snapshots: {
-        Args: { _payload: Json }
+      delete_card_generation: {
+        Args: { _generation_id: string }
+        Returns: undefined
+      }
+      update_card_position: {
+        Args: { _generation_id: string; _drag_x: number; _drag_y: number; _display_order: number }
+        Returns: undefined
+      }
+      toggle_card_pin: {
+        Args: { _generation_id: string }
+        Returns: boolean
+      }
+      hide_card_generation: {
+        Args: { _generation_id: string }
+        Returns: undefined
+      }
+      restore_card_generation: {
+        Args: { _generation_id: string }
         Returns: undefined
       }
       [key: string]: {

@@ -769,6 +769,43 @@ body.ai-generating .notebook > .grid-walkers {
   backdrop-filter: blur(10px);
 }
 
+/* Dropdown menu - grow down from top edge */
+@keyframes dropdown-grow {
+  from {
+    opacity: 0;
+    transform: scaleY(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+[data-radix-popper-content-wrapper] {
+  animation: none !important;
+  transition: none !important;
+}
+
+[data-radix-popper-content-wrapper] .menu-sheet,
+[data-radix-popper-content-wrapper] .ui-popover {
+  transform-origin: top center !important;
+  animation: dropdown-grow 0.15s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+}
+
+/* Settings panel - simple fade animation (no transform to preserve position) */
+.cta-popover.opacity-100 {
+  animation: panel-fade-in 0.18s ease-out forwards;
+}
+
+@keyframes panel-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* Tooltip */
 .ui-tip {
   position: fixed;
@@ -808,6 +845,33 @@ body.ai-generating .notebook > .grid-walkers {
   background: inherit;
   border-left: 1px solid var(--border-1);
   border-bottom: 1px solid var(--border-1);
+}
+
+/* Tooltip positioned below the trigger */
+.ui-tip.ui-tip-bottom {
+  transform: translate(-50%, 10px);
+  animation: tooltip-fade-in-bottom 0.15s ease-out;
+}
+
+.ui-tip.ui-tip-bottom .ui-tip-arrow {
+  top: -6px;
+  bottom: auto;
+  transform: translateX(-50%) rotate(45deg);
+  border-left: none;
+  border-bottom: none;
+  border-right: 1px solid var(--border-1);
+  border-top: 1px solid var(--border-1);
+}
+
+@keyframes tooltip-fade-in-bottom {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 10px);
+  }
 }
 
 .tip-anchor:focus-visible {

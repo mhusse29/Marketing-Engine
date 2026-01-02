@@ -6,7 +6,9 @@
 import type { VideoQuickProps } from '../types';
 import { buildVideoPrompt } from './videoPromptBuilder';
 
-const GATEWAY_DEFAULT_URL = 'http://localhost:8787';
+const GATEWAY_DEFAULT_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+const MAX_IMAGE_DIMENSION = 1024; // Max width/height for video reference images
+const MAX_IMAGE_SIZE_KB = 500; // Target size in KB
 
 function getApiBase(): string {
   const explicit = import.meta.env?.VITE_AI_GATEWAY_URL as string | undefined;
@@ -16,15 +18,87 @@ function getApiBase(): string {
   return GATEWAY_DEFAULT_URL;
 }
 
+/**
+ * Compress a base64 image to reduce payload size for video APIs
+ * Runway and other providers have payload limits (~10MB)
+ */
+async function compressImageForVideo(base64Image: string): Promise<string> {
+  // If it's a URL (not base64), return as-is
+  if (base64Image.startsWith('http://') || base64Image.startsWith('https://')) {
+    return base64Image;
+  }
+
+  // Skip if already small enough (rough estimate: base64 is ~1.37x larger than binary)
+  const estimatedSizeKB = (base64Image.length * 0.75) / 1024;
+  if (estimatedSizeKB < MAX_IMAGE_SIZE_KB) {
+    console.log(`[Video] Image already small: ${estimatedSizeKB.toFixed(0)}KB`);
+    return base64Image;
+  }
+
+  console.log(`[Video] Compressing image from ${estimatedSizeKB.toFixed(0)}KB...`);
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+
+      // Scale down if larger than max dimension
+      if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+        const scale = Math.min(MAX_IMAGE_DIMENSION / width, MAX_IMAGE_DIMENSION / height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Try progressively lower quality until size is acceptable
+      let quality = 0.8;
+      let result = canvas.toDataURL('image/jpeg', quality);
+      
+      while ((result.length * 0.75) / 1024 > MAX_IMAGE_SIZE_KB && quality > 0.3) {
+        quality -= 0.1;
+        result = canvas.toDataURL('image/jpeg', quality);
+      }
+
+      const finalSizeKB = (result.length * 0.75) / 1024;
+      console.log(`[Video] Compressed to ${finalSizeKB.toFixed(0)}KB (quality: ${quality.toFixed(1)})`);
+      resolve(result);
+    };
+
+    img.onerror = () => reject(new Error('Failed to load image for compression'));
+    img.src = base64Image;
+  });
+}
+
 export interface VideoGenerationRequest {
-  provider: 'runway' | 'luma';
+  provider: 'runway' | 'luma' | 'google' | 'sora';
   promptText: string;
   model: string;
-  duration: 8;
+  duration: number;
   aspect: string;
   watermark: boolean;
   seed?: number;
   promptImage?: string;
+  
+  // Google Veo-specific parameters
+  googleVeoModel?: string;
+  googleVeoDuration?: number;
+  googleVeoAudio?: boolean;
+  
+  // OpenAI Sora-specific parameters
+  soraModel?: string;
+  soraDuration?: number;
+  soraQuality?: string;
+  soraSize?: string;
   
   // Luma-specific core settings
   loop?: boolean;
@@ -73,7 +147,7 @@ export interface GeneratedVideo {
   url: string;
   taskId: string;
   model: string;
-  provider: 'runway' | 'luma';
+  provider: 'runway' | 'luma' | 'google' | 'sora';
   duration: number;
   aspect: string;
   watermark: boolean;
@@ -101,7 +175,7 @@ export async function startVideoGeneration(
 
   // Validate provider is resolved (not 'auto')
   if (provider === 'auto') {
-    throw new Error('Provider must be selected (runway or luma), not auto');
+    throw new Error('Provider must be selected (runway, luma, google, or sora), not auto');
   }
 
   // Build enhanced prompt from all parameters
@@ -109,6 +183,15 @@ export async function startVideoGeneration(
   
   if (!enhancedPrompt || enhancedPrompt.length < 10) {
     throw new Error('Video prompt must be at least 10 characters');
+  }
+
+  // Compress reference images to avoid 413 Payload Too Large errors
+  let compressedImages: string[] = [];
+  if (promptImages && promptImages.length > 0) {
+    console.log(`[Video] Compressing ${promptImages.length} reference image(s)...`);
+    compressedImages = await Promise.all(
+      promptImages.map(img => compressImageForVideo(img))
+    );
   }
 
   const request: VideoGenerationRequest = {
@@ -125,27 +208,39 @@ export async function startVideoGeneration(
   }
 
   // Handle reference images based on provider
-  if (promptImages && promptImages.length > 0) {
+  if (compressedImages.length > 0) {
     if (provider === 'runway') {
       // Runway: Single image for image-to-video
-      request.promptImage = promptImages[0];
+      request.promptImage = compressedImages[0];
+    } else if (provider === 'google') {
+      // Google Veo: Single image for image-to-video
+      request.promptImage = compressedImages[0];
     } else if (provider === 'luma') {
       // Luma: Convert to keyframes (up to 2 images)
       request.keyframes = {
         frame0: {
           type: 'image',
-          url: promptImages[0]
+          url: compressedImages[0]
         }
       };
       
       // Add second image if provided
-      if (promptImages.length > 1) {
+      if (compressedImages.length > 1) {
         request.keyframes.frame1 = {
           type: 'image',
-          url: promptImages[1]
+          url: compressedImages[1]
         };
       }
     }
+  }
+
+  // Add Google Veo-specific parameters
+  if (provider === 'google') {
+    request.googleVeoModel = props.googleVeoModel || 'veo-3-fast';
+    request.googleVeoDuration = props.googleVeoDuration || 8;
+    request.googleVeoAudio = props.googleVeoAudio !== false;
+    // Override duration with Google-specific duration
+    request.duration = props.googleVeoDuration || 8;
   }
 
   // Add Luma-specific parameters (FIX #2: Send ALL 19 parameters to backend)
@@ -180,6 +275,12 @@ export async function startVideoGeneration(
     if (props.lumaSeed !== undefined) request.lumaSeed = props.lumaSeed;
     if (props.lumaNegativePrompt) request.lumaNegativePrompt = props.lumaNegativePrompt;
     if (props.lumaGuidanceScale !== undefined) request.lumaGuidanceScale = props.lumaGuidanceScale;
+  }
+
+  // Add OpenAI Sora-specific parameters
+  if (provider === 'sora') {
+    request.soraModel = props.soraModel || 'sora-2';
+    request.soraSize = props.soraSize || '1280x720';
   }
 
   console.log('[Video] Starting generation:', {
@@ -218,10 +319,13 @@ export async function startVideoGeneration(
 }
 
 /**
- * Poll video task status (Runway or Luma)
+ * Poll video task status (Runway, Luma, or Google)
  */
 export async function pollVideoTask(taskId: string, provider?: string): Promise<RunwayTask> {
-  const url = new URL(`${getApiBase()}/v1/videos/tasks/${taskId}`);
+  // Google Veo returns taskId with slashes (e.g., "models/veo-3.0.../operations/xyz")
+  // Use query param instead of path param to avoid URL routing issues
+  const url = new URL(`${getApiBase()}/v1/videos/tasks/status`);
+  url.searchParams.set('taskId', taskId);
   if (provider) {
     url.searchParams.set('provider', provider);
   }
@@ -312,12 +416,12 @@ export async function generateRunwayVideo(
   }
 
   // Return structured video data with metadata including reference images
-  // Provider is guaranteed to be 'runway' or 'luma' due to validation above
+  // Provider is guaranteed to be 'runway', 'luma', or 'google' due to validation above
   return {
     url: result.videoUrl,
     taskId: result.taskId,
     model: props.model,
-    provider: props.provider as 'runway' | 'luma',
+    provider: props.provider as 'runway' | 'luma' | 'google',
     duration: props.duration,
     aspect: props.aspect,
     watermark: props.watermark,

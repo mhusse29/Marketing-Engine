@@ -6,7 +6,6 @@ import FeedbackDashboard from './pages/FeedbackDashboard';
 import StandaloneAnalyticsDashboard from './pages/StandaloneAnalyticsDashboard';
 import MediaPlanLite from './pages/MediaPlanLite';
 import LandingPage from './pages/LandingPage';
-import LandingPage2 from './pages/LandingPage2';
 import FAQPage from './pages/FAQPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { BaduDashboard } from './components/Analytics/BaduDashboard';
@@ -14,13 +13,15 @@ import { BaduDashboard } from './components/Analytics/BaduDashboard';
 /**
  * Main application router
  * Handles all top-level routes and protected route wrappers
+ * 
+ * Note: Landing Page 2 (Features) is a separate Next.js app in /landing-page-2 folder
+ * Run it with: cd landing-page-2 && npm run dev (opens at localhost:3000)
  */
 export default function Router() {
   return (
     <Routes>
       {/* Public Landing Pages */}
       <Route path="/landing" element={<LandingPage />} />
-      <Route path="/landing2" element={<LandingPage2 />} />
       <Route path="/faq" element={<FAQPage />} />
       
       {/* Protected App Route */}

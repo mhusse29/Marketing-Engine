@@ -16,6 +16,7 @@ export const defaultAiState: AiUIState = {
   generating: false,
   steps: [],
   stepStatus: {},
+  errorMessages: {},
   outputs: {},
 };
 
@@ -46,7 +47,7 @@ const delay = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener('abort', handleAbort);
   });
 
-const GATEWAY_DEFAULT_URL = 'http://localhost:8787';
+const GATEWAY_DEFAULT_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787';
 
 const PROVIDER_PLATFORM_LABELS: Record<Platform, string> = {
   facebook: 'FBIG',

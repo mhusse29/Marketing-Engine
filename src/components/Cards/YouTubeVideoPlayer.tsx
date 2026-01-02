@@ -261,7 +261,8 @@ export function YouTubeVideoPlayer({
   return (
     <div
       ref={containerRef}
-      className={`relative bg-black overflow-hidden flex items-center justify-center ${className}`}
+      className={`relative bg-black overflow-hidden ${className}`}
+      style={{ aspectRatio: aspectRatio?.replace(':', '/') || '16/9' }}
       onMouseMove={handleMouseMove}
       onMouseLeave={() => playing && setShowControls(false)}
     >
@@ -272,8 +273,7 @@ export function YouTubeVideoPlayer({
         loop={loop}
         autoPlay={autoPlay}
         draggable={false}
-        className="w-full h-full object-contain"
-        style={{ aspectRatio: aspectRatio.replace(':', '/') }}
+        className="absolute inset-0 w-full h-full object-contain"
         onClick={() => {
           if (isDraggingTimeline) return; // Don't toggle during drag
           togglePlay();
@@ -287,19 +287,19 @@ export function YouTubeVideoPlayer({
           showControls || !playing ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
-        {/* Center Play Button (when paused) */}
+        {/* Center Play Button (when paused) - minimal, no blur */}
         {!playing && (
           <button
             onClick={togglePlay}
-            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-red-600/90 hover:bg-red-600 rounded-full flex items-center justify-center transition-all hover:scale-110 shadow-2xl"
+            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center transition-all hover:scale-105"
           >
-            <Play size={36} className="text-white fill-white ml-1" />
+            <Play size={20} className="text-white fill-white ml-0.5" />
           </button>
         )}
         
-        {/* Bottom Controls Bar with Glassmorphism */}
+        {/* Bottom Controls Bar */}
         <div 
-          className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent backdrop-blur-md px-4 py-3 space-y-2"
+          className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-4 py-3 space-y-2"
           onMouseDown={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
         >

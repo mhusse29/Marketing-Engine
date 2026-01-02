@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { X, Sparkles, Rocket, Briefcase, Building2, CreditCard } from "lucide-react";
 import { cn } from "../../lib/utils";
+import confetti from "canvas-confetti";
+import NumberFlow from "@number-flow/react";
 
 interface Feature {
   name: string;
@@ -42,7 +44,7 @@ const pricingPlans: PricingPlan[] = [
     features: [
       { name: "Media Planner", included: true, detail: "Full + Export" },
       { name: "Content", included: true, detail: "GPT-4o-mini" },
-      { name: "Images", included: true, detail: "DALL·E Standard" },
+      { name: "Images", included: true, detail: "GPT Image" },
       { name: "Video", included: false, detail: "—" },
       { name: "BADU", included: true, detail: "Basic" },
     ],
@@ -149,9 +151,38 @@ const payAsYouGoPlan: PricingPlan = {
 
 export default function PricingSection() {
   const [isMonthly, setIsMonthly] = useState(true);
+  const switchRef = useRef<HTMLButtonElement>(null);
 
-  const handleToggle = (checked: boolean) => {
-    setIsMonthly(!checked);
+  const handleToggle = () => {
+    const wasMonthly = isMonthly;
+    setIsMonthly(!isMonthly);
+    
+    // Confetti when switching to annual
+    if (wasMonthly && switchRef.current) {
+      const rect = switchRef.current.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: {
+          x: x / window.innerWidth,
+          y: y / window.innerHeight,
+        },
+        colors: [
+          "#22d3ee",
+          "#34C759",
+          "#a78bfa",
+          "#f472b6",
+        ],
+        ticks: 200,
+        gravity: 1.2,
+        decay: 0.94,
+        startVelocity: 30,
+        shapes: ["circle"],
+      });
+    }
   };
 
   return (
@@ -192,11 +223,13 @@ export default function PricingSection() {
             Monthly
           </span>
           <button
-            onClick={() => handleToggle(!isMonthly)}
+            ref={switchRef}
+            onClick={handleToggle}
             className={cn(
-              "w-11 h-6 rounded-full relative outline-none cursor-pointer transition-colors",
+              "w-11 h-6 rounded-full relative outline-none cursor-pointer transition-colors duration-200",
               !isMonthly ? "bg-white" : "bg-white/20"
             )}
+            aria-label="Toggle billing period"
           >
             <span className={cn(
               "block w-5 h-5 bg-black rounded-full transition-transform duration-200 absolute top-0.5",
@@ -241,7 +274,13 @@ export default function PricingSection() {
             >
               {/* Popular Badge */}
               {plan.isPopular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 py-1 px-4 rounded-full flex items-center justify-center shadow-lg">
+                <div 
+                  className="absolute -top-3 left-1/2 -translate-x-1/2 py-1 px-4 rounded-full flex items-center justify-center shadow-lg animate-shimmer"
+                  style={{
+                    backgroundImage: 'linear-gradient(to right, #22d3ee, #a855f7, #ec4899)',
+                    backgroundSize: '200% 100%',
+                  }}
+                >
                   <span className="text-black text-xs font-semibold">Most Popular</span>
                 </div>
               )}
@@ -263,7 +302,20 @@ export default function PricingSection() {
                   {typeof plan.price === "number" ? (
                     <>
                       <span className="text-3xl font-bold text-white">
-                        ${isMonthly ? plan.price : plan.yearlyPrice}
+                        <NumberFlow
+                          value={isMonthly ? plan.price : (plan.yearlyPrice as number)}
+                          format={{
+                            style: "currency",
+                            currency: "USD",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }}
+                          transformTiming={{
+                            duration: 500,
+                            easing: "ease-out",
+                          }}
+                          willChange
+                        />
                       </span>
                       <span className="text-white/50 text-sm">/{plan.period}</span>
                     </>
@@ -308,9 +360,13 @@ export default function PricingSection() {
                 className={cn(
                   "w-full py-2 px-4 rounded-md text-sm font-semibold text-center transition-all duration-300 inline-flex items-center justify-center",
                   plan.isPopular
-                    ? "bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 text-black shadow-lg"
+                    ? "animate-shimmer border-0 text-black shadow-lg"
                     : "bg-white/5 border border-white/20 text-white hover:bg-white/10 hover:border-white/30"
                 )}
+                style={plan.isPopular ? {
+                  backgroundImage: 'linear-gradient(to right, #22d3ee, #a855f7, #ec4899)',
+                  backgroundSize: '200% 100%',
+                } : undefined}
               >
                 {plan.buttonText}
               </a>

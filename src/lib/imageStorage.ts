@@ -28,7 +28,7 @@ export async function uploadImageToStorage(
   }
 
   // Use backend proxy server to bypass CORS
-  const proxyUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787';
+  const proxyUrl = import.meta.env.VITE_API_URL || 'http://localhost:8787';
   
   try {
     console.log(`🔄 [${index}] Calling proxy server at ${proxyUrl}/api/upload-image`);
@@ -123,11 +123,15 @@ export async function uploadGeneratedImages(
               globalIndex
             );
 
-            // Return asset with permanent URL
+            // Return asset with permanent URL - only keep essential fields to avoid storing base64
             return {
-              ...asset,
+              id: asset.id || `asset-${globalIndex}`,
               url: permanentUrl,
-              originalUrl: asset.url, // Keep original for reference
+              prompt: asset.prompt,
+              mimeType: asset.mimeType || 'image/jpeg',
+              width: asset.width || 1024,
+              height: asset.height || 1024,
+              seed: asset.seed,
               isPermanent: true,
             };
           } catch (uploadError) {
@@ -192,7 +196,7 @@ export async function uploadVideoToStorage(
   }
 
   // Use backend proxy server to handle video download and upload
-  const proxyUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787';
+  const proxyUrl = import.meta.env.VITE_API_URL || 'http://localhost:8787';
   
   try {
     console.log(`🔄 [Video ${index}] Calling proxy server at ${proxyUrl}/api/upload-video`);
@@ -266,11 +270,15 @@ export async function uploadGeneratedVideos(
       }
 
       // Check if URL is temporary (has JWT token or other expiring signature)
+      // Google Veo URLs require authentication and must be uploaded to permanent storage
       const isTemporary = video.url.includes('?_jwt=') || 
                          video.url.includes('cloudfront.net') ||
-                         video.url.includes('blob.core.windows.net');
+                         video.url.includes('blob.core.windows.net') ||
+                         video.url.includes('generativelanguage.googleapis.com') ||
+                         video.url.includes('lumalabs.ai');
 
-      if (!isTemporary) {
+      // Skip if already uploaded to our Supabase storage
+      if (!isTemporary && video.url.includes('supabase.co')) {
         console.log(`⏭️ Video ${index}: Already permanent URL, skipping`);
         return video;
       }
@@ -286,11 +294,16 @@ export async function uploadGeneratedVideos(
           index
         );
 
-        // Return video with permanent URL
+        // Return video with permanent URL - only keep essential fields
         return {
-          ...video,
+          taskId: video.taskId,
+          model: video.model,
+          provider: video.provider,
+          duration: video.duration,
+          width: video.width,
+          height: video.height,
+          prompt: video.prompt,
           url: permanentUrl,
-          originalUrl: video.url, // Keep original for reference
           isPermanent: true,
         };
       } catch (uploadError) {

@@ -10,6 +10,10 @@ import type {
   PicStyle,
   PicAspect,
   PicturesProviderKey,
+  OpenAIImageModel,
+  OpenAIImageQuality,
+  OpenAIImageBackground,
+  PictureOutputFormat,
   FluxMode,
   StabilityModel,
   IdeogramModel,
@@ -22,10 +26,16 @@ import type {
   VideoAspect,
   VideoProvider,
   VideoModel,
+  VideoDuration,
   RunwayModel,
   LumaModel,
+  GoogleVeoModel,
+  GoogleVeoDuration,
+  SoraModel,
+  SoraModelConfig,
   AiAttachment,
   RunwayModelConfig,
+  GoogleVeoModelConfig,
 } from '../types';
 import { MAX_PICTURE_PROMPT_LENGTH } from './picturesPrompts';
 
@@ -53,10 +63,6 @@ const CONTENT_FORMATS: readonly ContentFormat[] = ['Auto', 'FB/IG', 'LinkedIn', 
 
 const PICTURE_STYLES: readonly PicStyle[] = ['Product', 'Lifestyle', 'UGC', 'Abstract'];
 const PICTURE_ASPECTS: readonly PicAspect[] = ['1:1', '4:5', '16:9', '2:3', '3:2', '7:9', '9:7'];
-const PICTURE_BACKDROPS = ['Clean', 'Gradient', 'Real-world'] as const;
-const PICTURE_LIGHTING = ['Soft', 'Hard', 'Neon'] as const;
-const PICTURE_NEGATIVE_OPTIONS = ['None', 'Logos', 'Busy background', 'Extra hands', 'Glare'] as const;
-const PICTURE_QUALITY_OPTIONS = ['High detail', 'Sharp', 'Minimal noise'] as const;
 
 const VIDEO_HOOKS: readonly VideoHook[] = ['Pain-point', 'Bold claim', 'Question', 'Pattern interrupt'];
 const VIDEO_ASPECTS: readonly VideoAspect[] = ['9:16', '1:1', '16:9'];
@@ -86,13 +92,60 @@ export const RUNWAY_MODEL_CONFIGS: Record<RunwayModel, RunwayModelConfig> = {
     features: ['Proven reliability', 'Fast generation', 'Good for portraits'],
     maxPromptLength: 1000,
   },
-  veo3: {
-    id: 'veo3',
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GOOGLE VEO MODEL CONFIGURATIONS
+// Native Google API - 62.5% cheaper than via Runway for Veo 3 Fast
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const GOOGLE_VEO_MODEL_CONFIGS: Record<GoogleVeoModel, GoogleVeoModelConfig> = {
+  'veo-3': {
+    id: 'veo-3',
     name: 'Veo 3',
-    description: 'Google Veo 3 via Runway - High quality, fixed 8s duration',
-    durations: [8],
-    ratios: ['1280:720', '720:1280', '960:960'],
-    features: ['Google AI', 'Fixed 8s', 'High quality', 'Consistent results'],
+    description: 'High quality video with native audio',
+    durations: [5, 6, 7, 8],
+    aspects: ['16:9', '9:16', '1:1'],
+    features: ['Native audio', 'High quality', 'Up to 8s', 'Best results'],
+    costPerSecond: 0,
+    maxPromptLength: 1000,
+  },
+  'veo-3-fast': {
+    id: 'veo-3-fast',
+    name: 'Veo 3 Fast',
+    description: 'Faster video generation with native audio',
+    durations: [5, 6, 7, 8],
+    aspects: ['16:9', '9:16', '1:1'],
+    features: ['Fast generation', 'Native audio', 'Up to 8s'],
+    costPerSecond: 0,
+    maxPromptLength: 1000,
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OPENAI SORA MODEL CONFIGURATIONS
+// OpenAI's video generation models
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const SORA_MODEL_CONFIGS: Record<SoraModel, SoraModelConfig> = {
+  'sora-2': {
+    id: 'sora-2',
+    name: 'Sora 2',
+    description: 'Speed and flexibility for fast video generation',
+    durations: [5, 10, 15, 20],
+    sizes: ['720x1280', '1280x720'], // sora-2 only supports 720p sizes
+    features: ['Fast generation', 'Up to 20s', '720p quality', 'Text-to-video'],
+    costPerSecond: 0.10,
+    maxPromptLength: 1000,
+  },
+  'sora-2-pro': {
+    id: 'sora-2-pro',
+    name: 'Sora 2 Pro',
+    description: 'Premium quality for professional video content',
+    durations: [5, 10, 15, 20],
+    sizes: ['720x1280', '1280x720', '1024x1792', '1792x1024'], // Pro supports larger sizes
+    features: ['Best quality', 'Up to 20s', 'HD sizes', 'Enhanced detail'],
+    costPerSecond: 0.20,
     maxPromptLength: 1000,
   },
 };
@@ -108,11 +161,6 @@ export const RUNWAY_ASPECT_TO_RATIO: Record<RunwayModel, Record<VideoAspect, str
     '16:9': '1280:768',   // Landscape (slightly different ratio)
     '9:16': '768:1280',   // Portrait
     '1:1': '1280:768',    // No square, fallback to landscape
-  },
-  veo3: {
-    '16:9': '1280:720',   // Landscape widescreen
-    '9:16': '720:1280',   // Portrait mobile
-    '1:1': '960:960',     // Square
   },
 };
 const VIDEO_DENSITY_OPTIONS = ['Light (3–4)', 'Medium (5–6)', 'Fast (7–8)'] as const;
@@ -138,51 +186,45 @@ const defaultContentQuickProps: ContentQuickProps = {
 const defaultPicturesQuickProps: PicturesQuickProps = {
   imageProvider: 'auto',
   mode: 'images',
-  style: 'Product',
-  aspect: '1:1',
+  style: undefined, // Let user choose
+  aspect: undefined, // Let user choose - REQUIRED field
   promptText: '',
   validated: false,
   // DALL-E
-  dalleQuality: 'standard',
-  dalleStyle: 'vivid',
+  dalleQuality: undefined, // Let user choose - REQUIRED field
+  dalleStyle: undefined, // Let user choose
+  // OpenAI GPT Image
+  openaiImageModel: undefined, // Let user choose
+  openaiQuality: undefined, // Let user choose
+  openaiOutputFormat: undefined, // Let user choose
+  openaiBackground: undefined, // Let user choose
+  openaiOutputCompression: undefined, // Optional
   // FLUX
-  fluxMode: 'standard',
-  fluxGuidance: 3,
-  fluxSteps: 40,
-  fluxPromptUpsampling: false,
-  fluxRaw: false,
-  fluxOutputFormat: 'jpeg',
+  fluxMode: undefined, // Let user choose - REQUIRED field
+  fluxGuidance: undefined, // Let user choose
+  fluxSteps: undefined, // Let user choose
+  fluxPromptUpsampling: undefined, // Let user choose
+  fluxRaw: undefined, // Let user choose
+  fluxOutputFormat: undefined, // Let user choose
   // Stability
-  stabilityModel: 'large',
-  stabilityCfg: 7,
-  stabilitySteps: 40,
+  stabilityModel: undefined, // Let user choose - REQUIRED field
+  stabilityCfg: undefined, // Let user choose
+  stabilitySteps: undefined, // Let user choose
   stabilityNegativePrompt: '',
-  stabilityStylePreset: '',
+  stabilityStylePreset: undefined, // Let user choose
   // Ideogram
-  ideogramModel: 'v2',
-  ideogramMagicPrompt: true,
-  ideogramStyleType: 'AUTO',
+  ideogramModel: undefined, // Let user choose - REQUIRED field
+  ideogramMagicPrompt: undefined, // Let user choose
+  ideogramStyleType: undefined, // Let user choose
   ideogramNegativePrompt: '',
   // Gemini Imagen 3
-  geminiModel: 'gemini-3-pro-image-preview',
-  geminiResolution: '1K',
-  geminiThinking: true,
-  geminiGrounding: false,
+  geminiModel: undefined, // Let user choose - REQUIRED field
+  geminiResolution: undefined, // Let user choose
+  geminiThinking: undefined, // Let user choose
+  geminiGrounding: undefined, // Let user choose
   // Runway Gen-4 Image
-  runwayImageModel: 'gen4_image',
-  runwayImageRatio: '1024:1024',
-  // Advanced
-  lockBrandColors: true,
-  backdrop: 'Clean',
-  lighting: 'Soft',
-  negative: 'None',
-  quality: 'High detail',
-  composition: '',
-  camera: '',
-  mood: '',
-  colourPalette: '',
-  finish: '',
-  texture: '',
+  runwayImageModel: undefined, // Let user choose - REQUIRED field
+  runwayImageRatio: undefined, // Let user choose - REQUIRED field
 };
 
 const defaultVideoQuickProps: VideoQuickProps = {
@@ -197,7 +239,11 @@ const defaultVideoQuickProps: VideoQuickProps = {
   watermark: false,
   seed: undefined,
   // Runway model-specific duration (for models with multiple options)
-  runwayDuration: 5, // 5s or 10s for gen4_turbo/gen3a_turbo, fixed 8s for veo3
+  runwayDuration: 5, // 5s or 10s for gen4_turbo/gen3a_turbo
+  // Google Veo-specific parameters
+  googleVeoModel: 'veo-3-fast' as GoogleVeoModel, // Default to budget-friendly option
+  googleVeoDuration: 8 as GoogleVeoDuration, // Default to 8 seconds
+  googleVeoAudio: true, // Enable native audio by default
   // Luma-specific parameters
   lumaLoop: false,
   lumaDuration: '5s',
@@ -344,29 +390,31 @@ function normalizePicturesQuickProps(
   };
 
   const providerOptions: PicturesProviderKey[] = ['auto', 'flux', 'stability', 'openai', 'ideogram', 'gemini', 'runway'];
-  const fluxModes: FluxMode[] = ['standard', 'ultra'];
+  const fluxModes: FluxMode[] = ['standard', 'ultra', 'flux2-pro', 'flux2-flex'];
   const stabilityModels: StabilityModel[] = ['large-turbo', 'large', 'medium'];
-  const ideogramModels: IdeogramModel[] = ['v1', 'v2', 'turbo'];
-  const geminiModels: GeminiModel[] = ['gemini-3-pro-image-preview', 'gemini-2.5-flash-preview-image'];
+  const ideogramModels: IdeogramModel[] = ['v1', 'v1-turbo', 'v2', 'v2-turbo'];
+  const geminiModels: GeminiModel[] = ['gemini-3-pro-image-preview', 'gemini-2.5-flash-image-preview', 'imagen-4.0-generate-001', 'imagen-4.0-ultra-generate-001', 'imagen-4.0-fast-generate-001'];
   const geminiResolutions: GeminiResolution[] = ['1K', '2K', '4K'];
   const runwayImageModels: RunwayImageModel[] = ['gen4_image', 'gen4_image_turbo'];
   const runwayImageRatios: RunwayImageRatio[] = ['1024:1024', '1080:1080', '720:720', '1920:1080', '1080:1920', '1280:720', '720:1280', '1440:1080', '1080:1440'];
   const dalleQualities = ['standard', 'hd'] as const;
   const dalleStyles = ['vivid', 'natural'] as const;
+  const openaiImageModels: OpenAIImageModel[] = ['gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'];
+  const openaiQualities: OpenAIImageQuality[] = ['low', 'medium', 'high', 'auto'];
+  const openaiOutputFormats: PictureOutputFormat[] = ['png', 'jpeg', 'webp'];
+  const openaiBackgrounds: OpenAIImageBackground[] = ['transparent', 'opaque', 'auto'];
 
-  const clampNumber = (value: unknown, min: number, max: number, fallback: number) => {
-    if (typeof value !== 'number' || Number.isNaN(value)) {
-      return fallback;
-    }
-    const rounded = Math.round(value * 10) / 10; // One decimal place
-    if (!Number.isFinite(rounded)) {
-      return fallback;
-    }
+  // Allow undefined to pass through - no forced defaults
+  const clampNumberOptional = (value: unknown, min: number, max: number): number | undefined => {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'number' || Number.isNaN(value)) return undefined;
+    const rounded = Math.round(value * 10) / 10;
+    if (!Number.isFinite(rounded)) return undefined;
     return Math.min(max, Math.max(min, rounded));
   };
 
-  const asBoolean = (value: unknown, fallback: boolean) =>
-    typeof value === 'boolean' ? value : fallback;
+  const asBooleanOptional = (value: unknown): boolean | undefined =>
+    typeof value === 'boolean' ? value : undefined;
 
   const sanitizePrompt = (value: unknown) =>
     typeof value === 'string' ? value.trim().slice(0, MAX_PICTURE_PROMPT_LENGTH) : '';
@@ -383,36 +431,14 @@ function normalizePicturesQuickProps(
     return trimmed.slice(0, ADVANCED_LIMIT);
   };
 
+  // Allow undefined for optional fields - user chooses their preferences
   const style = PICTURE_STYLES.includes(candidate.style as PicStyle)
     ? (candidate.style as PicStyle)
-    : defaultPicturesQuickProps.style;
+    : undefined;
 
   const aspect = PICTURE_ASPECTS.includes(candidate.aspect as PicAspect)
     ? (candidate.aspect as PicAspect)
-    : defaultPicturesQuickProps.aspect;
-
-  const backdrop =
-    candidate.backdrop && (PICTURE_BACKDROPS as readonly string[]).includes(candidate.backdrop)
-      ? candidate.backdrop
-      : defaultPicturesQuickProps.backdrop;
-
-  const lighting =
-    candidate.lighting && (PICTURE_LIGHTING as readonly string[]).includes(candidate.lighting)
-      ? candidate.lighting
-      : defaultPicturesQuickProps.lighting;
-
-  const negativeRaw = typeof candidate.negative === 'string' ? candidate.negative.trim() : '';
-  const negative =
-    negativeRaw.length === 0
-      ? defaultPicturesQuickProps.negative
-      : (PICTURE_NEGATIVE_OPTIONS as readonly string[]).includes(negativeRaw)
-        ? negativeRaw
-        : negativeRaw.slice(0, CTA_MAX_LENGTH);
-
-  const quality =
-    candidate.quality && (PICTURE_QUALITY_OPTIONS as readonly string[]).includes(candidate.quality)
-      ? candidate.quality
-      : defaultPicturesQuickProps.quality;
+    : undefined;
 
   return {
     imageProvider: providerOptions.includes(candidate.imageProvider as PicturesProviderKey)
@@ -422,72 +448,73 @@ function normalizePicturesQuickProps(
     style,
     aspect,
     promptText: sanitizePrompt(candidate.promptText),
-    validated: asBoolean(candidate.validated, false),
-    // DALL-E
+    validated: candidate.validated === true,
+    // DALL-E - allow undefined (user chooses)
     dalleQuality: dalleQualities.includes(candidate.dalleQuality as (typeof dalleQualities)[number])
       ? (candidate.dalleQuality as (typeof dalleQualities)[number])
-      : defaultPicturesQuickProps.dalleQuality,
+      : undefined,
     dalleStyle: dalleStyles.includes(candidate.dalleStyle as (typeof dalleStyles)[number])
       ? (candidate.dalleStyle as (typeof dalleStyles)[number])
-      : defaultPicturesQuickProps.dalleStyle,
-    // FLUX
+      : undefined,
+    openaiImageModel: openaiImageModels.includes(candidate.openaiImageModel as OpenAIImageModel)
+      ? (candidate.openaiImageModel as OpenAIImageModel)
+      : undefined,
+    openaiQuality: openaiQualities.includes(candidate.openaiQuality as OpenAIImageQuality)
+      ? (candidate.openaiQuality as OpenAIImageQuality)
+      : undefined,
+    openaiOutputFormat: openaiOutputFormats.includes(candidate.openaiOutputFormat as PictureOutputFormat)
+      ? (candidate.openaiOutputFormat as PictureOutputFormat)
+      : undefined,
+    openaiBackground: openaiBackgrounds.includes(candidate.openaiBackground as OpenAIImageBackground)
+      ? (candidate.openaiBackground as OpenAIImageBackground)
+      : undefined,
+    openaiOutputCompression: clampNumberOptional(candidate.openaiOutputCompression, 0, 100),
+    // FLUX - allow undefined (user chooses)
     fluxMode: fluxModes.includes(candidate.fluxMode as FluxMode)
       ? (candidate.fluxMode as FluxMode)
-      : defaultPicturesQuickProps.fluxMode,
-    fluxGuidance: clampNumber(candidate.fluxGuidance, 1.5, 5, defaultPicturesQuickProps.fluxGuidance),
-    fluxSteps: clampNumber(candidate.fluxSteps, 20, 50, defaultPicturesQuickProps.fluxSteps),
-    fluxPromptUpsampling: asBoolean(candidate.fluxPromptUpsampling, defaultPicturesQuickProps.fluxPromptUpsampling),
-    fluxRaw: asBoolean(candidate.fluxRaw, defaultPicturesQuickProps.fluxRaw),
+      : undefined,
+    fluxGuidance: clampNumberOptional(candidate.fluxGuidance, 1.5, 5),
+    fluxSteps: clampNumberOptional(candidate.fluxSteps, 20, 50),
+    fluxPromptUpsampling: asBooleanOptional(candidate.fluxPromptUpsampling),
+    fluxRaw: asBooleanOptional(candidate.fluxRaw),
     fluxOutputFormat: ['jpeg', 'png', 'webp'].includes(candidate.fluxOutputFormat as string)
       ? (candidate.fluxOutputFormat as 'jpeg' | 'png' | 'webp')
-      : defaultPicturesQuickProps.fluxOutputFormat,
-    // Stability
+      : undefined,
+    // Stability - allow undefined (user chooses)
     stabilityModel: stabilityModels.includes(candidate.stabilityModel as StabilityModel)
       ? (candidate.stabilityModel as StabilityModel)
-      : defaultPicturesQuickProps.stabilityModel,
-    stabilityCfg: clampNumber(candidate.stabilityCfg, 1, 20, defaultPicturesQuickProps.stabilityCfg),
-    stabilitySteps: clampNumber(candidate.stabilitySteps, 20, 60, defaultPicturesQuickProps.stabilitySteps),
-    stabilityNegativePrompt: sanitizeFreeText(candidate.stabilityNegativePrompt, defaultPicturesQuickProps.stabilityNegativePrompt ?? ''),
+      : undefined,
+    stabilityCfg: clampNumberOptional(candidate.stabilityCfg, 1, 20),
+    stabilitySteps: clampNumberOptional(candidate.stabilitySteps, 20, 60),
+    stabilityNegativePrompt: sanitizeFreeText(candidate.stabilityNegativePrompt, ''),
     stabilityStylePreset: typeof candidate.stabilityStylePreset === 'string' 
-      ? candidate.stabilityStylePreset.trim().slice(0, 50)
-      : defaultPicturesQuickProps.stabilityStylePreset,
-    // Ideogram
+      ? candidate.stabilityStylePreset.trim().slice(0, 50) || undefined
+      : undefined,
+    // Ideogram - allow undefined (user chooses)
     ideogramModel: ideogramModels.includes(candidate.ideogramModel as IdeogramModel)
       ? (candidate.ideogramModel as IdeogramModel)
-      : defaultPicturesQuickProps.ideogramModel,
-    ideogramMagicPrompt: asBoolean(candidate.ideogramMagicPrompt, defaultPicturesQuickProps.ideogramMagicPrompt),
+      : undefined,
+    ideogramMagicPrompt: asBooleanOptional(candidate.ideogramMagicPrompt),
     ideogramStyleType: ['AUTO', 'GENERAL', 'REALISTIC', 'DESIGN', 'RENDER_3D', 'ANIME'].includes(candidate.ideogramStyleType as string)
       ? (candidate.ideogramStyleType as 'AUTO' | 'GENERAL' | 'REALISTIC' | 'DESIGN' | 'RENDER_3D' | 'ANIME')
-      : defaultPicturesQuickProps.ideogramStyleType,
-    ideogramNegativePrompt: sanitizeFreeText(candidate.ideogramNegativePrompt, defaultPicturesQuickProps.ideogramNegativePrompt ?? ''),
-    // Gemini Imagen 3
+      : undefined,
+    ideogramNegativePrompt: sanitizeFreeText(candidate.ideogramNegativePrompt, ''),
+    // Gemini Imagen 3 - allow undefined (user chooses)
     geminiModel: geminiModels.includes(candidate.geminiModel as GeminiModel)
       ? (candidate.geminiModel as GeminiModel)
-      : defaultPicturesQuickProps.geminiModel,
+      : undefined,
     geminiResolution: geminiResolutions.includes(candidate.geminiResolution as GeminiResolution)
       ? (candidate.geminiResolution as GeminiResolution)
-      : defaultPicturesQuickProps.geminiResolution,
-    geminiThinking: asBoolean(candidate.geminiThinking, defaultPicturesQuickProps.geminiThinking),
-    geminiGrounding: asBoolean(candidate.geminiGrounding, defaultPicturesQuickProps.geminiGrounding),
-    // Runway Gen-4 Image
+      : undefined,
+    geminiThinking: asBooleanOptional(candidate.geminiThinking),
+    geminiGrounding: asBooleanOptional(candidate.geminiGrounding),
+    // Runway Gen-4 Image - allow undefined (user chooses)
     runwayImageModel: runwayImageModels.includes(candidate.runwayImageModel as RunwayImageModel)
       ? (candidate.runwayImageModel as RunwayImageModel)
-      : defaultPicturesQuickProps.runwayImageModel,
+      : undefined,
     runwayImageRatio: runwayImageRatios.includes(candidate.runwayImageRatio as RunwayImageRatio)
       ? (candidate.runwayImageRatio as RunwayImageRatio)
-      : defaultPicturesQuickProps.runwayImageRatio,
-    // Advanced
-    lockBrandColors: asBoolean(candidate.lockBrandColors, defaultPicturesQuickProps.lockBrandColors),
-    backdrop,
-    lighting,
-    negative,
-    quality,
-    composition: sanitizeFreeText(candidate.composition, defaultPicturesQuickProps.composition ?? ''),
-    camera: sanitizeFreeText(candidate.camera, defaultPicturesQuickProps.camera ?? ''),
-    mood: sanitizeFreeText(candidate.mood, defaultPicturesQuickProps.mood ?? ''),
-    colourPalette: sanitizeFreeText(candidate.colourPalette, defaultPicturesQuickProps.colourPalette ?? ''),
-    finish: sanitizeFreeText(candidate.finish, defaultPicturesQuickProps.finish ?? ''),
-    texture: sanitizeFreeText(candidate.texture, defaultPicturesQuickProps.texture ?? ''),
+      : undefined,
   };
 }
 
@@ -499,20 +526,30 @@ function normalizeVideoQuickProps(
     ...video,
   };
 
-  // Provider selection
-  const provider = (candidate.provider === 'luma' || candidate.provider === 'runway' || candidate.provider === 'auto')
+  // Provider selection (now includes 'google')
+  const provider = (candidate.provider === 'luma' || candidate.provider === 'runway' || candidate.provider === 'google' || candidate.provider === 'auto')
     ? candidate.provider
     : defaultVideoQuickProps.provider;
 
-  // Valid Runway models
-  const validRunwayModels: RunwayModel[] = ['gen4_turbo', 'gen3a_turbo', 'veo3'];
+  // Valid Runway models (veo3 removed - now native Google)
+  const validRunwayModels: RunwayModel[] = ['gen4_turbo', 'gen3a_turbo'];
+  const validGoogleVeoModels: GoogleVeoModel[] = ['veo-3', 'veo-3-fast'];
   
   // Model based on provider
-  const model: VideoModel = provider === 'luma'
-    ? ((candidate.model as LumaModel) === 'ray-2' ? 'ray-2' : 'ray-2')
-    : validRunwayModels.includes(candidate.model as RunwayModel)
+  let model: VideoModel;
+  if (provider === 'luma') {
+    model = (candidate.model as LumaModel) === 'ray-2' ? 'ray-2' : 'ray-2';
+  } else if (provider === 'google') {
+    // For Google provider, use googleVeoModel or fallback to veo-3-fast
+    model = validGoogleVeoModels.includes(candidate.googleVeoModel as GoogleVeoModel)
+      ? (candidate.googleVeoModel as GoogleVeoModel)
+      : 'veo-3-fast';
+  } else {
+    // Runway provider
+    model = validRunwayModels.includes(candidate.model as RunwayModel)
       ? (candidate.model as RunwayModel)
-      : 'gen4_turbo'; // Default to Gen-4 Turbo for Runway
+      : 'gen4_turbo';
+  }
 
   const rawPromptText = typeof candidate.promptText === 'string'
     ? candidate.promptText.trim()
@@ -531,21 +568,36 @@ function normalizeVideoQuickProps(
         })()
       : rawPromptText;
 
-  // Duration based on model
-  // - gen4_turbo: 5 or 10 seconds
-  // - gen3a_turbo: 5 or 10 seconds  
-  // - veo3: fixed 8 seconds
-  const modelConfig = RUNWAY_MODEL_CONFIGS[model as RunwayModel];
-  const validDurations = modelConfig?.durations || [8];
+  // Duration based on provider and model
+  let duration: number;
+  let runwayDuration: number | undefined;
+  let googleVeoDuration: GoogleVeoDuration | undefined;
   
-  // Get runway-specific duration or use candidate duration
-  const requestedDuration = candidate.runwayDuration ?? candidate.duration ?? validDurations[0];
-  const duration = validDurations.includes(requestedDuration as number)
-    ? (requestedDuration as 5 | 8 | 10)
-    : (validDurations[0] as 5 | 8 | 10);
-  
-  // Also store the runway-specific duration
-  const runwayDuration = duration;
+  if (provider === 'google') {
+    // Google Veo durations: 5-8 seconds
+    const validGoogleDurations = [5, 6, 7, 8];
+    const requestedGoogleDuration = candidate.googleVeoDuration ?? candidate.duration ?? 8;
+    googleVeoDuration = validGoogleDurations.includes(requestedGoogleDuration as number)
+      ? (requestedGoogleDuration as GoogleVeoDuration)
+      : 8;
+    duration = googleVeoDuration;
+    runwayDuration = undefined;
+  } else if (provider === 'runway') {
+    // Runway durations based on model
+    const modelConfig = RUNWAY_MODEL_CONFIGS[model as RunwayModel];
+    const validDurations = modelConfig?.durations || [5];
+    const requestedDuration = candidate.runwayDuration ?? candidate.duration ?? validDurations[0];
+    duration = validDurations.includes(requestedDuration as number)
+      ? (requestedDuration as number)
+      : validDurations[0];
+    runwayDuration = duration;
+    googleVeoDuration = undefined;
+  } else {
+    // Luma or auto - use default
+    duration = candidate.duration ?? 5;
+    runwayDuration = undefined;
+    googleVeoDuration = undefined;
+  }
 
   const aspect = VIDEO_ASPECTS.includes(candidate.aspect as VideoAspect)
     ? (candidate.aspect as VideoAspect)
@@ -618,15 +670,26 @@ function normalizeVideoQuickProps(
     ? candidate.lumaGuidanceScale 
     : defaultVideoQuickProps.lumaGuidanceScale;
 
+  // Google Veo-specific parameters
+  const googleVeoModel = validGoogleVeoModels.includes(candidate.googleVeoModel as GoogleVeoModel)
+    ? (candidate.googleVeoModel as GoogleVeoModel)
+    : defaultVideoQuickProps.googleVeoModel;
+  const googleVeoAudio = typeof candidate.googleVeoAudio === 'boolean'
+    ? candidate.googleVeoAudio
+    : defaultVideoQuickProps.googleVeoAudio;
+
   return {
     provider,
     model,
     promptText,
-    duration,
+    duration: duration as VideoDuration,
     aspect,
     watermark,
     seed,
     runwayDuration,
+    googleVeoModel,
+    googleVeoDuration,
+    googleVeoAudio,
     lumaLoop,
     lumaDuration,
     lumaResolution,
@@ -770,7 +833,23 @@ export function loadSettings(): SettingsState {
 
 export function saveSettings(settings: SettingsState): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    // Strip out large base64 data before saving to localStorage
+    // promptImages can be several MB and will exceed the 5MB localStorage quota
+    const settingsToSave = {
+      ...settings,
+      quickProps: {
+        ...settings.quickProps,
+        pictures: {
+          ...settings.quickProps.pictures,
+          promptImages: undefined, // Don't persist base64 reference images
+        },
+        video: {
+          ...settings.quickProps.video,
+          promptImages: undefined, // Don't persist base64 reference images for video
+        },
+      },
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsToSave));
   } catch (error) {
     console.error('Failed to save settings:', error);
   }

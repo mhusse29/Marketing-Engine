@@ -22,6 +22,7 @@ import DraggableCard from './components/Outputs/DraggableCard';
 import { SmartGenerationLoader } from './components/SmartGenerationLoader';
 import FeedbackSlider from './components/ui/feedback-slider';
 import { feedbackManager, type FeedbackTouchpoint } from './lib/feedbackManager';
+import { ToastProvider, useToast } from './components/ErrorToast';
 // import { InteractiveCardController } from './components/Debug/InteractiveCardController';
 
 import {
@@ -152,6 +153,7 @@ const mediaPlansEqual = (a: MediaPlanState, b: MediaPlanState): boolean =>
   a.advancedValidatedAt === b.advancedValidatedAt;
 
 function App() {
+  const { showError } = useToast();
   const initialSettings = useMemo(() => loadSettings(), []);
   const [settingsState, setSettingsState] = useState<SettingsState>(initialSettings);
   const mediaPlanState = useMediaPlanState((state) => state.mediaPlan);
@@ -185,12 +187,65 @@ function App() {
   const [hiddenCardTypes, setHiddenCardTypes] = useState<Set<CardKey>>(() => new Set());
 
   // Multi-generation persistence
-  const { addGeneration, setCurrentBatchId } = useGeneratedCardsStore();
+  const { addGeneration, setCurrentBatchId, cards, isHydrated } = useGeneratedCardsStore();
   useLoadGeneratedCards(); // Load saved cards on mount
   const currentBatchIdRef = useRef<string | null>(null);
+  const hasHydratedCanvasRef = useRef(false);
   
   // Track which generations we've already saved to prevent duplicates
   const savedGenerationsRef = useRef<Set<string>>(new Set());
+  
+  // Hydrate canvas from saved generations on page load
+  useEffect(() => {
+    if (isHydrated && cards.length > 0 && !hasHydratedCanvasRef.current) {
+      hasHydratedCanvasRef.current = true;
+      
+      // Find most recent pictures generation
+      const picturesCard = cards.find(c => c.cardType === 'pictures' && !c.isHidden);
+      if (picturesCard?.snapshot?.data) {
+        console.log('🔄 Hydrating canvas with saved pictures generation');
+        setAiState((prev) => ({
+          ...prev,
+          outputs: { 
+            ...prev.outputs, 
+            pictures: picturesCard.snapshot.data as { versions: any[] }
+          },
+          stepStatus: { ...prev.stepStatus, pictures: 'ready' },
+        }));
+        // Mark as already saved to prevent duplicate save
+        savedGenerationsRef.current.add(`pictures-${picturesCard.generationId}`);
+      }
+      
+      // Find most recent video generation
+      const videoCard = cards.find(c => c.cardType === 'video' && !c.isHidden);
+      if (videoCard?.snapshot?.data) {
+        console.log('🔄 Hydrating canvas with saved video generation');
+        setAiState((prev) => ({
+          ...prev,
+          outputs: { 
+            ...prev.outputs, 
+            video: videoCard.snapshot.data as { versions: any[] }
+          },
+          stepStatus: { ...prev.stepStatus, video: 'ready' },
+        }));
+        savedGenerationsRef.current.add(`video-${videoCard.generationId}`);
+      }
+      
+      // Find most recent content generation
+      const contentCard = cards.find(c => c.cardType === 'content' && !c.isHidden);
+      if (contentCard?.snapshot?.data) {
+        console.log('🔄 Hydrating canvas with saved content generation');
+        const data = contentCard.snapshot.data as { variants?: any[]; meta?: any };
+        if (data.variants) {
+          setContentVariants(data.variants);
+        }
+        if (data.meta) {
+          setContentMeta(data.meta);
+        }
+        savedGenerationsRef.current.add(`content-${contentCard.generationId}`);
+      }
+    }
+  }, [isHydrated, cards]);
 
   const { open: panelOpen, toggle: togglePanel, close: closePanel, openPanel, setHovering } = useTopBarPanels();
 
@@ -822,7 +877,17 @@ function App() {
               throw new Error('Picture generation yielded no outputs.');
             }
 
-            // Upload images to PERMANENT Supabase Storage
+            // IMMEDIATELY show the generated images (with temporary URLs)
+            setAiState((prev) => ({
+              ...prev,
+              outputs: { ...prev.outputs, pictures: { versions } },
+              stepStatus: { ...prev.stepStatus, pictures: 'ready' },
+            }));
+            recordPhase('pictures', 'ready', {
+              source: 'image-gateway',
+            });
+
+            // Upload images to PERMANENT Supabase Storage in background
             console.log('🚀 Starting PERMANENT image upload to Supabase Storage...');
             const userId = await getCurrentUserId();
             const generationKey = `pictures-${Date.now()}`;
@@ -846,24 +911,20 @@ function App() {
                 
                 if (hasSupabaseUrls) {
                   console.log('✅ SUCCESS! Images uploaded to PERMANENT Supabase Storage');
+                  // Update UI with permanent URLs
+                  setAiState((prev) => ({
+                    ...prev,
+                    outputs: { ...prev.outputs, pictures: { versions: versionsWithPermanentUrls } },
+                  }));
                 } else {
                   console.error('❌ UPLOAD FAILED! Still using temporary URLs');
                   console.log('URLs:', versionsWithPermanentUrls[0]?.assets?.[0]?.url);
                 }
               } catch (uploadError) {
                 console.error('❌ UPLOAD ERROR:', uploadError);
-                throw uploadError; // Don't save if upload fails
+                // Don't throw - image is already displayed with temp URL
               }
             }
-
-            setAiState((prev) => ({
-              ...prev,
-              outputs: { ...prev.outputs, pictures: { versions: versionsWithPermanentUrls } },
-              stepStatus: { ...prev.stepStatus, pictures: 'ready' },
-            }));
-            recordPhase('pictures', 'ready', {
-              source: 'image-gateway',
-            });
             
             // Persist to database ONLY ONCE with permanent URLs
             if (currentBatchIdRef.current && versionsWithPermanentUrls.length > 0) {
@@ -884,10 +945,25 @@ function App() {
               return;
             }
             console.error('Picture generation failed', error);
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            // Extract user-friendly message from API errors
+            let displayMessage = errorMsg;
+            if (errorMsg.includes('safety system')) {
+              displayMessage = 'Content blocked by safety filter. Try rephrasing your prompt.';
+            } else if (errorMsg.includes('Invalid value')) {
+              displayMessage = 'Invalid image settings. Please check aspect ratio.';
+            } else if (errorMsg.includes('organization must be verified')) {
+              displayMessage = 'OpenAI org verification required for this model.';
+            } else if (errorMsg.includes('rate limit')) {
+              displayMessage = 'Rate limit exceeded. Please wait and try again.';
+            }
             setAiState((prev) => ({
               ...prev,
               stepStatus: { ...prev.stepStatus, pictures: 'error' },
+              errorMessages: { ...prev.errorMessages, pictures: displayMessage },
             }));
+            // Show error toast popup
+            showError('Picture Generation Failed', displayMessage);
             recordPhase('pictures', 'error', {
               source: 'image-gateway',
               message: error instanceof Error ? error.message : undefined,
@@ -932,7 +1008,17 @@ function App() {
                 throw new Error('Video generation yielded no outputs.');
               }
 
-              // Upload videos to PERMANENT Supabase Storage
+              // IMMEDIATELY show the generated videos (with temporary URLs)
+              setAiState((prev) => ({
+                ...prev,
+                outputs: { ...prev.outputs, video: { versions } },
+                stepStatus: { ...prev.stepStatus, video: 'ready' },
+              }));
+              recordPhase('video', 'ready', {
+                source: 'video-polling',
+              });
+
+              // Upload videos to PERMANENT Supabase Storage in background
               console.log('🚀 Starting PERMANENT video upload to Supabase Storage...');
               const userId = await getCurrentUserId();
               const generationKey = `video-${Date.now()}`;
@@ -956,24 +1042,20 @@ function App() {
                   
                   if (hasSupabaseUrls) {
                     console.log('✅ SUCCESS! Videos uploaded to PERMANENT Supabase Storage');
+                    // Update UI with permanent URLs
+                    setAiState((prev) => ({
+                      ...prev,
+                      outputs: { ...prev.outputs, video: { versions: versionsWithPermanentUrls } },
+                    }));
                   } else {
                     console.error('❌ UPLOAD FAILED! Still using temporary URLs');
                     console.log('URLs:', versionsWithPermanentUrls[0]?.url);
                   }
                 } catch (uploadError) {
                   console.error('❌ VIDEO UPLOAD ERROR:', uploadError);
-                  throw uploadError; // Don't save if upload fails
+                  // Don't throw - video is already displayed with temp URL
                 }
               }
-
-              setAiState((prev) => ({
-                ...prev,
-                outputs: { ...prev.outputs, video: { versions: versionsWithPermanentUrls } },
-                stepStatus: { ...prev.stepStatus, video: 'ready' },
-              }));
-              recordPhase('video', 'ready', {
-                source: 'video-polling',
-              });
               
               // Persist to database ONLY ONCE with permanent URLs
               if (currentBatchIdRef.current && versionsWithPermanentUrls.length > 0) {
@@ -994,10 +1076,22 @@ function App() {
                 return;
               }
               console.error('Video generation failed', error);
+              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+              let displayMessage = errorMsg;
+              if (errorMsg.includes('safety') || errorMsg.includes('content policy')) {
+                displayMessage = 'Content blocked by safety filter. Try a different prompt.';
+              } else if (errorMsg.includes('rate limit')) {
+                displayMessage = 'Rate limit exceeded. Please wait and try again.';
+              } else if (errorMsg.includes('timeout')) {
+                displayMessage = 'Video generation timed out. Try a shorter duration.';
+              }
               setAiState((prev) => ({
                 ...prev,
                 stepStatus: { ...prev.stepStatus, video: 'error' },
+                errorMessages: { ...prev.errorMessages, video: displayMessage },
               }));
+              // Show error toast popup
+              showError('Video Generation Failed', displayMessage);
               recordPhase('video', 'error', {
                 source: 'video-polling',
                 message: error instanceof Error ? error.message : undefined,
@@ -1341,6 +1435,7 @@ function App() {
             pictures={picturesVersions}
             currentVersion={picturesIndex}
             status={getCardStatus('pictures')}
+            errorMessage={aiState.errorMessages?.pictures}
           />
         ),
       });
@@ -1363,6 +1458,7 @@ function App() {
           <VideoCard
             videos={videoVersions}
             status={getCardStatus('video')}
+            errorMessage={aiState.errorMessages?.video}
           />
         ),
       });
@@ -1486,6 +1582,7 @@ function App() {
         openPanel(tab);
       }}
       onSetHovering={setHovering}
+      onClosePanel={closePanel}
       onGenerate={() => handleGenerate(settings.quickProps.content.brief, aiState.uploads)}
       onNewCampaign={handleNewCampaign}
       onSave={handleSaveCampaign}
@@ -1496,6 +1593,7 @@ function App() {
         setCurrentFeedbackTouchpoint('feature_discovery');
         setShowFeedbackModal(true);
       }}
+      showPrimaryTabs={true}
     />
   );
 
@@ -1523,7 +1621,8 @@ function App() {
 
     // Submit feedback to backend
     try {
-      await fetch('http://localhost:8787/api/feedback', {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+      await fetch(`${apiUrl}/api/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1657,4 +1756,12 @@ function App() {
   );
 }
 
-export default App;
+function AppWithToast() {
+  return (
+    <ToastProvider>
+      <App />
+    </ToastProvider>
+  );
+}
+
+export default AppWithToast;

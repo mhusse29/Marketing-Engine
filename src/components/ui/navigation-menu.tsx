@@ -3,13 +3,18 @@ import { StaggeredMenu } from "./StaggeredMenu";
 import type { StaggeredMenuItem, StaggeredMenuSocialItem } from "./StaggeredMenu";
 
 // Use localhost:3000 for landing-page-2 in dev, deployed URL in production
-const landingPage2Url = import.meta.env.DEV ? 'http://localhost:3000' : '/landing2';
+const featuresAppBase = import.meta.env.DEV ? 'http://localhost:3000' : 'https://landing-page-2-ashen.vercel.app';
+const landingPage2Url = featuresAppBase;
+const aboutPageUrl = `${featuresAppBase}/about`;
+const pricingUrl = `${featuresAppBase}/#pricing`;
 
 const menuItems: StaggeredMenuItem[] = [
   { label: 'Home', ariaLabel: 'Go to home page', link: '/landing' },
   { label: 'Features', ariaLabel: 'Explore AI Models & Features', link: landingPage2Url },
+  { label: 'Pricing', ariaLabel: 'View pricing plans', link: pricingUrl },
+  { label: 'App', ariaLabel: 'Open Marketing Engine App', link: '/' },
   { label: 'FAQ', ariaLabel: 'Frequently Asked Questions', link: '/faq' },
-  { label: 'App', ariaLabel: 'Open Marketing Engine App', link: '/' }
+  { label: 'About', ariaLabel: 'Learn about SINAIQ', link: aboutPageUrl }
 ];
 
 const socialItems: StaggeredMenuSocialItem[] = [

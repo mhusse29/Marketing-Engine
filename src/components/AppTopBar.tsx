@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 
 import { cn } from '../lib/format'
-import SinaiqLogo from './SinaiqLogo'
+import { SinaiqLogo } from './ui/sinaiq-logo'
 import { useAuth } from '../contexts/AuthContext'
 import {
   DropdownMenu,
@@ -36,6 +36,7 @@ export interface AppTopBarProps {
   settings?: SettingsState;
   onSettingsChange?: (settings: SettingsState) => void;
   onOpenPanel?: (tab: Tab) => void;
+  onClosePanel?: () => void;
   onSetHovering?: (hovering: boolean) => void;
   onOpenFeedbackSlider?: () => void;
   showPrimaryTabs?: boolean;
@@ -54,6 +55,7 @@ export function AppTopBar({
   videoValidated = false,
   isGenerating = false,
   onOpenPanel,
+  onClosePanel,
   onSetHovering,
   onOpenFeedbackSlider,
   showPrimaryTabs = true,
@@ -75,7 +77,8 @@ export function AppTopBar({
 
     try {
       const ratingLabels = ['GOOD', 'NOT BAD', 'BAD']
-      const response = await fetch('http://localhost:8787/api/feedback', {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+      const response = await fetch(`${apiUrl}/api/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -159,10 +162,19 @@ export function AppTopBar({
       />
       <div className="mx-auto flex h-full w-full max-w-[1200px] items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-3">
-          <SinaiqLogo size={21} className="hover:opacity-90 transition-opacity" />
+          <SinaiqLogo 
+              size="sm" 
+              layout="horizontal"
+              iconSize={42}
+              fontSize={18}
+              hoverAnimation={true}
+              animationStyle="stagger-fade"
+              withText={true}
+              onClick={() => navigate('/')}
+            />
         </div>
 
-        <div className="flex items-center">
+        <div className="flex items-center overflow-visible">
           {customNavContent ? (
             customNavContent
           ) : showPrimaryTabs ? (
@@ -188,145 +200,27 @@ export function AppTopBar({
         <div className="flex items-center gap-2 md:gap-3">
           {/* Generate CTA Button */}
           {onGenerate && (
-            <div className="relative group">
-              <button
-                onClick={onGenerate}
-                disabled={!contentValidated && !picturesValidated && !videoValidated}
-                className={cn(
-                  'relative w-[56px] h-[56px] rounded-full flex items-center justify-center',
-                  'backdrop-blur-xl border transition-all duration-500 ease-out',
-                  'hover:w-[160px] cursor-pointer',
-                  (contentValidated || picturesValidated || videoValidated) && !isGenerating
-                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white border-emerald-500/30'
-                    : 'bg-white/5 text-white/30 border-white/10 cursor-not-allowed',
-                  isGenerating && 'opacity-75 cursor-wait'
-                )}
-              >
-                {/* Icon - initially visible */}
-                <span className={cn(
-                  'relative z-10 transition-all duration-500 text-2xl',
-                  'group-hover:scale-0 delay-0'
-                )}>
-                  {isGenerating ? (
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  ) : (
-                    <Wand2 className="h-6 w-6" />
-                  )}
-                </span>
-                
-                {/* Title - shown when hover */}
-                <span className={cn(
-                  'absolute text-white uppercase tracking-wide text-xs font-medium',
-                  'transition-all duration-500',
-                  'scale-0 group-hover:scale-100 delay-150'
-                )}>
-                  {isGenerating ? 'GENERATING...' : 'GENERATE'}
-                </span>
-              </button>
-            </div>
+            <GenerateButton
+              onGenerate={onGenerate}
+              isGenerating={isGenerating}
+              isEnabled={contentValidated || picturesValidated || videoValidated}
+              onClosePanel={onClosePanel}
+            />
           )}
 
 
           {/* User Badge - Expandable */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  'group relative flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1.5',
-                  'transition-all duration-500 ease-out cursor-pointer',
-                  'hover:bg-white/[0.06] hover:border-white/20 hover:px-4',
-                  'focus-visible:outline-none'
-                )}
-                aria-label="Account & Settings"
-              >
-                {/* Avatar */}
-                {profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt={profile.full_name || 'User'}
-                    className="h-7 w-7 rounded-full object-cover flex-shrink-0"
-                  />
-                ) : (
-                  <div className="grid h-7 w-7 place-items-center rounded-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white text-xs font-semibold flex-shrink-0">
-                    {getUserInitials()}
-                  </div>
-                )}
-                
-                {/* Full name - appears on hover */}
-                <span className={cn(
-                  'overflow-hidden transition-all duration-500 text-sm font-medium text-white whitespace-nowrap',
-                  'max-w-0 opacity-0 group-hover:max-w-[200px] group-hover:opacity-100 group-hover:ml-2'
-                )}>
-                  {profile?.full_name || user?.email?.split('@')[0] || 'User'}
-                </span>
-                
-                <ChevronDown className="h-4 w-4 text-white/60 transition-colors group-hover:text-white/85 flex-shrink-0" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              sideOffset={8}
-              className="w-72 rounded-3xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.35)] text-[0.92rem] text-white p-0 animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-200"
-              style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.05) !important',
-                backdropFilter: 'blur(8px) !important',
-                WebkitBackdropFilter: 'blur(8px) !important',
-                backgroundImage: 'none !important'
-              } as React.CSSProperties}
-            >
-              {/* User Info Section */}
-              <div className="px-3 py-2.5 border-b border-white/10">
-                <div className="flex items-center gap-3">
-                  {profile?.avatar_url ? (
-                    <img
-                      src={profile.avatar_url}
-                      alt={profile.full_name || 'User'}
-                      className="h-10 w-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-semibold">
-                      {getUserInitials()}
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">
-                      {profile?.full_name || 'User'}
-                    </p>
-                    <p className="text-xs text-white/60 truncate">
-                      {user?.email || ''}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="p-2">
-                <DropdownMenuItem onClick={() => navigate('/')} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
-                  <Sparkles className="h-4 w-4 text-white/75" /> Marketing Engine
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/media-plan-lite')} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
-                  <FolderOpen className="h-4 w-4 text-white/75" /> Media Plan Lite
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-white/10 my-2" />
-                <DropdownMenuItem onClick={onOpenSettings} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
-                  <Settings className="h-4 w-4 text-white/75" /> Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowFeedback(true)} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
-                  <MessageCircle className="h-4 w-4 text-white/75" /> Share Feedback
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={onHelp} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
-                  <HelpCircle className="h-4 w-4 text-white/75" /> Help
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-white/10 my-2" />
-                <DropdownMenuItem
-                  onClick={onSignOut}
-                  className="gap-2 text-red-400 hover:bg-red-500/10 focus:bg-red-500/10 hover:text-red-300 cursor-pointer rounded-lg px-3 py-2"
-                >
-                  <LogOut className="h-4 w-4" /> Sign out
-                </DropdownMenuItem>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <UserBadgeDropdown
+            profile={profile}
+            user={user}
+            getUserInitials={getUserInitials}
+            onOpenSettings={onOpenSettings}
+            onHelp={onHelp}
+            onSignOut={onSignOut}
+            setShowFeedback={setShowFeedback}
+            navigate={navigate}
+            onClosePanel={onClosePanel}
+          />
         </div>
       </div>
 
@@ -468,6 +362,263 @@ export function AppTopBar({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// Smooth liquid spring config
+const liquidSpring = {
+  type: "spring" as const,
+  stiffness: 150,
+  damping: 20,
+  mass: 1,
+};
+
+// Generate Button with liquid animation
+function GenerateButton({ 
+  onGenerate, 
+  isGenerating, 
+  isEnabled,
+  onClosePanel
+}: { 
+  onGenerate: () => void; 
+  isGenerating: boolean; 
+  isEnabled: boolean;
+  onClosePanel?: () => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  
+  const handleClick = () => {
+    onClosePanel?.();
+    onGenerate();
+  };
+  
+  return (
+    <div className="relative">
+      <motion.button
+        onClick={handleClick}
+        disabled={!isEnabled}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className={cn(
+          'relative h-[56px] rounded-full flex items-center justify-center',
+          'backdrop-blur-xl border cursor-pointer overflow-hidden',
+          isEnabled && !isGenerating
+            ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white border-emerald-500/30'
+            : 'bg-white/5 text-white/30 border-white/10 cursor-not-allowed',
+          isGenerating && 'opacity-75 cursor-wait'
+        )}
+        animate={{
+          width: isHovered && isEnabled ? 160 : 56,
+        }}
+        transition={liquidSpring}
+      >
+        {/* Icon - initially visible */}
+        <motion.span 
+          className="relative z-10 text-2xl"
+          animate={{
+            scale: isHovered && isEnabled ? 0 : 1,
+            opacity: isHovered && isEnabled ? 0 : 1,
+          }}
+          transition={{
+            type: "spring" as const,
+            stiffness: 300,
+            damping: 25,
+          }}
+        >
+          {isGenerating ? (
+            <Loader2 className="h-6 w-6 animate-spin" />
+          ) : (
+            <Wand2 className="h-6 w-6" />
+          )}
+        </motion.span>
+        
+        {/* Title - shown when hover */}
+        <motion.span 
+          className="absolute text-white uppercase tracking-wide text-xs font-medium"
+          animate={{
+            scale: isHovered && isEnabled ? 1 : 0.75,
+            opacity: isHovered && isEnabled ? 1 : 0,
+          }}
+          transition={{
+            type: "spring" as const,
+            stiffness: 200,
+            damping: 20,
+            delay: isHovered ? 0.05 : 0,
+          }}
+        >
+          {isGenerating ? 'GENERATING...' : 'GENERATE'}
+        </motion.span>
+      </motion.button>
+    </div>
+  );
+}
+
+// User Badge Dropdown with liquid animation
+function UserBadgeDropdown({ 
+  profile, 
+  user, 
+  getUserInitials,
+  onOpenSettings,
+  onHelp,
+  onSignOut,
+  setShowFeedback,
+  navigate,
+  onClosePanel
+}: { 
+  profile: any;
+  user: any;
+  getUserInitials: () => string;
+  onOpenSettings: () => void;
+  onHelp: () => void;
+  onSignOut: () => void;
+  setShowFeedback: (show: boolean) => void;
+  navigate: (path: string) => void;
+  onClosePanel?: () => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  
+  // Keep expanded when open or hovered
+  const isExpanded = isHovered || isOpen;
+  
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (open) {
+      onClosePanel?.();
+    }
+  };
+  
+  return (
+    <DropdownMenu onOpenChange={handleOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <motion.button
+          type="button"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          className={cn(
+            'relative flex items-center gap-2 rounded-full border py-1.5 overflow-hidden',
+            'cursor-pointer focus-visible:outline-none',
+            isOpen 
+              ? 'bg-white/[0.08] border-white/25' 
+              : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.06] hover:border-white/20'
+          )}
+          animate={{
+            paddingLeft: isExpanded ? 16 : 8,
+            paddingRight: isExpanded ? 16 : 8,
+          }}
+          transition={liquidSpring}
+          aria-label="Account & Settings"
+        >
+          {/* Avatar */}
+          {profile?.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt={profile.full_name || 'User'}
+              className="h-7 w-7 rounded-full object-cover flex-shrink-0"
+            />
+          ) : (
+            <div className="grid h-7 w-7 place-items-center rounded-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white text-xs font-semibold flex-shrink-0">
+              {getUserInitials()}
+            </div>
+          )}
+          
+          {/* Full name - appears on hover/open */}
+          <motion.span 
+            className="text-sm font-medium text-white whitespace-nowrap overflow-hidden"
+            animate={{
+              width: isExpanded ? 'auto' : 0,
+              opacity: isExpanded ? 1 : 0,
+              marginLeft: isExpanded ? 8 : 0,
+            }}
+            transition={{
+              type: "spring" as const,
+              stiffness: 200,
+              damping: 25,
+            }}
+          >
+            {profile?.full_name || user?.email?.split('@')[0] || 'User'}
+          </motion.span>
+          
+          {/* Chevron with rotation */}
+          <motion.div
+            animate={{ rotate: isOpen ? 180 : 0 }}
+            transition={{ type: "spring" as const, stiffness: 300, damping: 25 }}
+            className="flex-shrink-0"
+          >
+            <ChevronDown className={cn(
+              "h-4 w-4 transition-colors",
+              isOpen ? "text-white" : "text-white/60"
+            )} />
+          </motion.div>
+        </motion.button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        sideOffset={12}
+        className="w-72 rounded-2xl border border-white/15 shadow-[0_12px_48px_rgba(0,0,0,0.6)] text-[0.92rem] text-white p-0 relative"
+        style={{
+          backgroundColor: 'rgba(18, 18, 22, 0.98)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+        }}
+      >
+        {/* Visual connector arrow */}
+        <div 
+          className="absolute -top-[6px] right-6 w-3 h-3 rotate-45 border-l border-t border-white/15"
+          style={{ backgroundColor: 'rgba(18, 18, 22, 0.98)' }}
+        />
+        {/* User Info Section */}
+        <div className="px-3 py-2.5 border-b border-white/10 relative z-10">
+          <div className="flex items-center gap-3">
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt={profile.full_name || 'User'}
+                className="h-10 w-10 rounded-full object-cover"
+              />
+            ) : (
+              <div className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-semibold">
+                {getUserInitials()}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">
+                {profile?.full_name || 'User'}
+              </p>
+              <p className="text-xs text-white/60 truncate">
+                {user?.email || ''}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="p-2 relative z-10">
+          <DropdownMenuItem onClick={() => navigate('/')} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
+            <Sparkles className="h-4 w-4 text-white/75" /> Marketing Engine
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigate('/media-plan-lite')} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
+            <FolderOpen className="h-4 w-4 text-white/75" /> Media Plan Lite
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="bg-white/10 my-2" />
+          <DropdownMenuItem onClick={onOpenSettings} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
+            <Settings className="h-4 w-4 text-white/75" /> Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setShowFeedback(true)} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
+            <MessageCircle className="h-4 w-4 text-white/75" /> Share Feedback
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onHelp} className="gap-2 hover:bg-emerald-500/10 focus:bg-emerald-500/10 cursor-pointer rounded-lg px-3 py-2">
+            <HelpCircle className="h-4 w-4 text-white/75" /> Help
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="bg-white/10 my-2" />
+          <DropdownMenuItem
+            onClick={onSignOut}
+            className="gap-2 text-red-400 hover:bg-red-500/10 focus:bg-red-500/10 hover:text-red-300 cursor-pointer rounded-lg px-3 py-2"
+          >
+            <LogOut className="h-4 w-4" /> Sign out
+          </DropdownMenuItem>
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

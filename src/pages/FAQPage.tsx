@@ -50,7 +50,7 @@ const faqData: FAQCategory[] = [
         id: "platform-1",
         title: "What can I create with SINAIQ?",
         content:
-          "Content: AI-written copy for ads, social posts, emails, landing pages. Images: Professional visuals using DALL·E, FLUX, Stability, and Ideogram. Videos: Marketing videos with Runway and Luma AI models. Media Plans: Data-driven campaign planning with our Media Planner.",
+          "Content: AI-written copy for ads, social posts, emails, landing pages. Images: Professional visuals using GPT Image (OpenAI), FLUX, Stability, and Ideogram. Videos: Marketing videos with Runway and Luma AI models. Media Plans: Data-driven campaign planning with our Media Planner.",
       },
       {
         id: "platform-2",
@@ -68,7 +68,7 @@ const faqData: FAQCategory[] = [
         id: "platform-4",
         title: "Which AI models do you use?",
         content:
-          "Content: GPT-4o-mini, GPT-4o, GPT-5. Images: DALL·E 3, FLUX Pro, Stability SD 3.5, Ideogram. Video: Runway Gen-4 Turbo, Runway Gen-3 Alpha, Veo 3, Luma Ray-2.",
+          "Content: GPT-4o-mini, GPT-4o, GPT-5. Images: GPT Image 1.5 (gpt-image-1.5), FLUX Pro, Stability SD 3.5, Ideogram. Video: Runway Gen-4 Turbo, Runway Gen-3 Alpha, Veo 3, Luma Ray-2.",
       },
       {
         id: "platform-5",

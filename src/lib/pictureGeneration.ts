@@ -1,6 +1,7 @@
 import type {
   AiAttachment,
   GeneratedPictures,
+  PicAspect,
   PictureAsset,
   PictureResultMeta,
   PictureProvider,
@@ -30,6 +31,12 @@ type ImageGatewayRequest = {
   // DALL-E specific
   dalleQuality?: string;
   dalleStyle?: string;
+  // OpenAI GPT Image specific
+  openaiImageModel?: string;
+  openaiQuality?: string;
+  openaiOutputFormat?: string;
+  openaiBackground?: string;
+  openaiOutputCompression?: number;
   // FLUX specific
   fluxMode?: string;
   fluxGuidance?: number;
@@ -75,7 +82,7 @@ const FALLBACK_IMAGE_URLS = [
   'https://images.unsplash.com/photo-1454165205744-3b78555e5572?auto=format&fit=crop&w=1200&q=80',
 ];
 
-const ASPECT_DIMENSIONS: Record<PicturesQuickProps['aspect'], { width: number; height: number; size: string }> = {
+const ASPECT_DIMENSIONS: Record<PicAspect, { width: number; height: number; size: string }> = {
   '1:1': { width: 1024, height: 1024, size: '1024x1024' },
   '4:5': { width: 1024, height: 1280, size: '1024x1280' },
   '16:9': { width: 1536, height: 864, size: '1536x864' },
@@ -84,6 +91,9 @@ const ASPECT_DIMENSIONS: Record<PicturesQuickProps['aspect'], { width: number; h
   '7:9': { width: 1120, height: 1440, size: '1120x1440' },
   '9:7': { width: 1440, height: 1120, size: '1440x1120' },
 };
+
+const getAspectDimensions = (aspect: PicAspect | undefined) => 
+  ASPECT_DIMENSIONS[aspect ?? '1:1'] ?? ASPECT_DIMENSIONS['1:1'];
 
 const pick = <T,>(list: T[], index: number) => list[index % list.length];
 
@@ -108,22 +118,16 @@ const resolveImageGatewayEndpoint = () => {
     return `${base.replace(/\/$/, '')}/v1/images/generate`;
   }
 
-  // Default to localhost gateway (not the Vite dev server)
-  return 'http://localhost:8787/v1/images/generate';
+  // Use environment variable for API URL
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+  return `${apiBase}/v1/images/generate`;
 };
 
 const basePromptFromQuickProps = (brief: string, quickProps: PicturesQuickProps, uploads: string[]): string => {
   const segments = [
     brief.trim(),
-    `Desired visual style: ${quickProps.style}.`,
-    `Aspect ratio: ${quickProps.aspect}.`,
-    quickProps.lockBrandColors
-      ? 'Honor brand palette and keep tones consistent with uploaded assets.'
-      : 'Use complementary colors that feel on-brand.',
-    quickProps.backdrop ? `Backdrop preference: ${quickProps.backdrop}.` : null,
-    quickProps.lighting ? `Lighting preference: ${quickProps.lighting}.` : null,
-    quickProps.quality ? `Quality preference: ${quickProps.quality}.` : null,
-    quickProps.negative ? `Avoid: ${quickProps.negative}.` : null,
+    quickProps.style ? `Desired visual style: ${quickProps.style}.` : null,
+    quickProps.aspect ? `Aspect ratio: ${quickProps.aspect}.` : null,
     uploads.length ? `Reference imagery provided: ${uploads.length} asset${uploads.length > 1 ? 's' : ''}.` : null,
   ];
   return segments.filter(Boolean).join(' ');
@@ -133,7 +137,7 @@ const simulateOpenAIAssets = (
   request: ImageGatewayRequest,
   versionIndex: number
 ): PictureAsset[]=> {
-  const dims = ASPECT_DIMENSIONS[request.aspect] ?? ASPECT_DIMENSIONS['1:1'];
+  const dims = getAspectDimensions(request.aspect);
   const count = Math.max(2, Math.min(request.count ?? 3, 6));
   return Array.from({ length: count }).map((_, idx) => {
     const url = pick(FALLBACK_IMAGE_URLS, versionIndex + idx);
@@ -177,18 +181,35 @@ const requestUnifiedImages = async (
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Image gateway error (${response.status}):`, errorText);
+      
+      // For Runway, don't fallback - surface the error (usually missing reference images)
+      if (payload.provider === 'runway') {
+        const message = errorText.includes('reference image') 
+          ? 'Runway Gen-4 Image requires at least 1 reference image. Please upload an image first.'
+          : `Runway API error: ${errorText}`;
+        throw new Error(message);
+      }
+      
       throw new Error(`Image gateway responded with ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
     const assets = parseGatewayResponse(data);
     if (!assets.length) {
+      // For Runway, don't fallback - surface the error
+      if (payload.provider === 'runway') {
+        throw new Error('Runway returned no images. Please try again with a different prompt or reference image.');
+      }
       console.warn(`No assets returned from ${payload.provider}, using fallback`);
       return simulateOpenAIAssets(payload, versionIndex);
     }
     return assets;
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
+      throw error;
+    }
+    // For Runway, don't fallback - let error propagate
+    if (payload.provider === 'runway') {
       throw error;
     }
     console.error(`Image gateway request failed for ${payload.provider}, falling back to simulated assets:`, error);
@@ -265,7 +286,6 @@ function buildMeta(
   const meta: PictureResultMeta = {
     style: quickProps.style,
     aspect: quickProps.aspect,
-    lockBrandColors: quickProps.lockBrandColors,
     createdAt: new Date().toISOString(),
     provider,
     mode: normalizedMode,
@@ -287,9 +307,9 @@ function buildMeta(
       meta.steps = quickProps.stabilitySteps;
       break;
     case 'openai':
-      meta.model = 'dall-e-3';
-      meta.quality = quickProps.dalleQuality;
-      meta.outputFormat = 'png';
+      meta.model = quickProps.openaiImageModel || 'gpt-image-1.5';
+      meta.quality = quickProps.openaiQuality || quickProps.dalleQuality;
+      meta.outputFormat = quickProps.openaiOutputFormat || 'png';
       break;
     case 'ideogram':
       meta.model = quickProps.ideogramModel;
@@ -335,6 +355,11 @@ async function requestAssetsForProvider(
   // Add provider-specific settings
   switch (provider) {
     case 'openai':
+      payload.openaiImageModel = qp.openaiImageModel;
+      payload.openaiQuality = qp.openaiQuality;
+      payload.openaiOutputFormat = qp.openaiOutputFormat;
+      payload.openaiBackground = qp.openaiBackground;
+      payload.openaiOutputCompression = qp.openaiOutputCompression;
       payload.dalleQuality = qp.dalleQuality;
       payload.dalleStyle = qp.dalleStyle;
       break;
@@ -390,7 +415,7 @@ const generateImageResults = async (
 ): Promise<GeneratedPictures[]> => {
   const results: GeneratedPictures[] = [];
   const count = Math.max(1, config.versions);
-  const dims = ASPECT_DIMENSIONS[config.quickProps.aspect] ?? ASPECT_DIMENSIONS['1:1'];
+  const dims = getAspectDimensions(config.quickProps.aspect);
 
   for (let version = 0; version < count; version += 1) {
     if (config.signal?.aborted) {
@@ -412,9 +437,8 @@ const generateImageResults = async (
       meta: {
         ...buildMeta(provider, 'images', promptForVersion, config.quickProps),
         prompt: promptForVersion,
-        // Add reference images to meta for history panel display
+        // Only store count, NOT the actual base64 images (too large for DB)
         ...(uploads.length > 0 && { 
-          referenceImages: uploads,
           referenceImageCount: uploads.length 
         }),
       },

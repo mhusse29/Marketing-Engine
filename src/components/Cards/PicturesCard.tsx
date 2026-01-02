@@ -12,7 +12,7 @@ import { useEdgeBlendSettings } from '../../contexts/EdgeBlendSettingsContext';
 const PROVIDER_LABELS: Record<GeneratedPictures['provider'], string> = {
   flux: 'FLUX Pro 1.1',
   stability: 'Stable Diffusion 3.5',
-  openai: 'DALL·E 3',
+  openai: 'GPT Image',
   ideogram: 'Ideogram v1',
   gemini: 'Nano Banana',
   runway: 'Runway Gen-4',
@@ -37,7 +37,7 @@ async function downloadAsset(asset: PictureAsset) {
     if (explicit && explicit.trim().length > 0) {
       return explicit.replace(/\/$/, '');
     }
-    return 'http://localhost:8787';
+    return import.meta.env.VITE_API_URL || 'http://localhost:8787';
   };
   
   try {
@@ -140,6 +140,7 @@ interface PicturesCardProps {
   pictures: GeneratedPictures[];
   currentVersion: number;
   status: GridStepState;
+  errorMessage?: string;
   onHide?: () => void;
 };
 
@@ -147,6 +148,7 @@ export function PicturesCard({
   pictures,
   currentVersion,
   status,
+  errorMessage,
   onHide,
 }: PicturesCardProps) {
   const [selectedAssetIndex, setSelectedAssetIndex] = useState(0);
@@ -458,10 +460,18 @@ export function PicturesCard({
                 </div>
           ) : (
             <div className="flex h-[500px] items-center justify-center bg-black/10">
-              <div className="text-center">
-                <p className="text-sm text-white/50">
-                  {isBusy ? 'Generating images...' : 'No images generated yet'}
-                </p>
+              <div className="text-center max-w-md px-4">
+                {status === 'error' && errorMessage ? (
+                  <div className="rounded-xl border border-red-400/30 bg-red-400/10 p-6">
+                    <div className="text-3xl mb-3">⚠️</div>
+                    <p className="text-sm font-medium text-red-300 mb-2">Generation Failed</p>
+                    <p className="text-xs text-red-200/80">{errorMessage}</p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-white/50">
+                    {isBusy ? 'Generating images...' : 'No images generated yet'}
+                  </p>
+                )}
           </div>
           </div>
         )}

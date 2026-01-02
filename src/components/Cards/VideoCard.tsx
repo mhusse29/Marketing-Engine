@@ -6,52 +6,25 @@ import { cn } from '../../lib/format';
 import type { GeneratedVideo } from '../../types';
 import type { GridStepState } from '../../state/ui';
 import CardShell from '../Outputs/CardShell';
-import { YouTubeVideoPlayer } from './YouTubeVideoPlayer';
 
 function videoModelBadge(video?: GeneratedVideo): string {
   if (!video) return 'VIDEO';
-  
   const provider = video.provider?.toUpperCase() || 'UNKNOWN';
-  const model = video.model;
-
-  // Runway models
-  if (video.provider === 'runway') {
-    switch (model) {
-      case 'gen3a_turbo':
-        return 'RUNWAY-GEN3A-TURBO';
-      case 'gen4_turbo':
-        return 'RUNWAY-GEN4-TURBO';
-      case 'gen4_aleph':
-        return 'RUNWAY-GEN4-ALEPH';
-      case 'veo3':
-        return 'RUNWAY-VEO-3';
-      default:
-        return `RUNWAY-${model?.toUpperCase() || 'VIDEO'}`;
-    }
-  }
-  
-  // Luma models
-  if (video.provider === 'luma') {
-    if (model === 'ray-2') {
-      return 'LUMA-RAY-2';
-    }
-    return `LUMA-${model?.toUpperCase() || 'RAY-2'}`;
-  }
-
-  return `${provider}-${model?.toUpperCase() || 'VIDEO'}`;
+  const model = video.model?.toUpperCase() || 'VIDEO';
+  return `${provider}-${model}`;
 }
-
-// Removed STATUS_LABELS - not needed in minimal design
 
 interface VideoCardProps {
   videos: GeneratedVideo[];
   status: GridStepState;
+  errorMessage?: string;
   onHide?: () => void;
 }
 
 export function VideoCard({
   videos,
   status,
+  errorMessage,
   onHide,
 }: VideoCardProps) {
   const [showFullscreen, setShowFullscreen] = useState(false);
@@ -61,31 +34,40 @@ export function VideoCard({
   const totalVideos = videos.length;
   const isBusy = status === 'queued' || status === 'thinking' || status === 'rendering';
 
-
   return (
     <>
-      <CardShell sheen={false} className="relative p-6 bg-white/[0.03] border border-white/10" aria-busy={isBusy}>
+      <CardShell sheen={false} className="relative p-4 bg-white/[0.03] border border-white/10" aria-busy={isBusy}>
         {!video ? (
-          <div className="flex h-full min-h-[400px] items-center justify-center rounded-xl border border-white/6 bg-white/[0.03] px-6 text-sm text-white/60">
-            Video will appear here after generation runs.
+          <div className="flex h-full min-h-[300px] items-center justify-center rounded-lg border border-white/6 bg-white/[0.03] px-6 text-sm text-white/60">
+            {status === 'error' && errorMessage ? (
+              <div className="rounded-xl border border-red-400/30 bg-red-400/10 p-6 max-w-md text-center">
+                <div className="text-3xl mb-3">⚠️</div>
+                <p className="text-sm font-medium text-red-300 mb-2">Video Generation Failed</p>
+                <p className="text-xs text-red-200/80">{errorMessage}</p>
+              </div>
+            ) : (
+              <span>{isBusy ? 'Generating video...' : 'Video will appear here after generation runs.'}</span>
+            )}
           </div>
         ) : (
-          <div className="space-y-4">
-            {/* YouTube-style Video Player with Waveform */}
-            <YouTubeVideoPlayer
+          <div className="space-y-3">
+            {/* Model badge */}
+            <div className="text-[10px] font-medium text-white/40 tracking-wider">
+              PREVIEW
+              <span className="ml-2 text-white/60">{videoModelBadge(video)}</span>
+            </div>
+
+            {/* Simple native video player */}
+            <video
               src={video.url}
-              aspectRatio={video.aspect}
-              autoPlay={false}
-              loop={true}
-              className="max-h-[500px] rounded-xl"
-              modelBadge={videoModelBadge(video)}
-              videoMetadata={{
-                provider: video.provider,
-                model: video.model,
-                duration: video.duration,
-                aspect: video.aspect,
-                prompt: video.prompt,
+              controls
+              loop
+              className="w-full rounded-lg bg-black"
+              style={{ 
+                aspectRatio: video.aspect?.replace(':', '/') || '16/9',
+                objectFit: 'contain'
               }}
+              onClick={(e) => e.stopPropagation()}
             />
 
             {/* Dot navigation for multiple videos */}
@@ -109,16 +91,18 @@ export function VideoCard({
 
             {/* Footer metadata */}
             <div className="flex items-center justify-between text-xs text-white/50">
-              <span>
-                {totalVideos > 1
-                  ? `Video ${currentIndex + 1} of ${totalVideos} • ${video.duration}s • ${video.aspect}`
-                  : `${video.duration}s • ${video.aspect}`}
-              </span>
+              <span>{video.duration || '?'}s • {video.aspect || '16:9'}</span>
+              <button
+                onClick={() => setShowFullscreen(true)}
+                className="text-white/40 hover:text-white/70 transition text-xs"
+              >
+                Fullscreen
+              </button>
             </div>
           </div>
         )}
         
-        {/* X button in card padding area - NOT over video */}
+        {/* X button */}
         {onHide && video && (
           <button
             onClick={(e) => {
@@ -126,8 +110,8 @@ export function VideoCard({
               e.stopPropagation();
               onHide();
             }}
-            className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-lg bg-black/60 hover:bg-red-500/60 text-white/80 backdrop-blur-sm transition hover:text-white z-10"
-            title="Hide from main screen"
+            className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg bg-black/60 hover:bg-red-500/60 text-white/80 transition hover:text-white z-10"
+            title="Hide"
             aria-label="Hide card"
           >
             <X className="h-4 w-4" />
@@ -135,31 +119,27 @@ export function VideoCard({
         )}
       </CardShell>
 
-      {/* Fullscreen popup */}
+      {/* Fullscreen popup - simple native video */}
       {showFullscreen && video && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 p-8"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black"
           onClick={() => setShowFullscreen(false)}
         >
-          <div className="relative max-h-[90vh] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
-            <YouTubeVideoPlayer
-              src={video.url}
-              aspectRatio={video.aspect}
-              autoPlay={true}
-              loop={true}
-              onClose={() => setShowFullscreen(false)}
-              showCloseButton={true}
-              className="rounded-2xl shadow-2xl"
-              modelBadge={videoModelBadge(video)}
-              videoMetadata={{
-                provider: video.provider,
-                model: video.model,
-                duration: video.duration,
-                aspect: video.aspect,
-                prompt: video.prompt,
-              }}
-            />
-          </div>
+          <button
+            onClick={() => setShowFullscreen(false)}
+            className="absolute top-4 right-4 z-10 p-2 text-white/60 hover:text-white"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <video
+            src={video.url}
+            controls
+            autoPlay
+            loop
+            className="max-w-full max-h-full"
+            style={{ objectFit: 'contain' }}
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>,
         document.body
       )}

@@ -14,7 +14,7 @@ import { PicturesCard } from './Cards/PicturesCard';
 import { VideoCard } from './Cards/VideoCard';
 import SmartOutputGrid from './Outputs/SmartOutputGrid';
 import DraggableCard from './Outputs/DraggableCard';
-import type { CardKey, SettingsState, ContentGenerationMeta, ContentVariantResult } from '../types';
+import type { CardKey, SettingsState, ContentGenerationMeta, ContentVariantResult, GeneratedPictures, GeneratedVideo } from '../types';
 
 interface PersistentCardsDisplayProps {
   settings: SettingsState;
@@ -71,6 +71,11 @@ export default function PersistentCardsDisplay({
       const snapshot = card.snapshot;
       let element: ReactNode = null;
 
+      // Skip if snapshot data hasn't loaded yet (progressive loading)
+      if (!snapshot?.data) {
+        return;
+      }
+
       // Render based on card type
       if (card.cardType === 'content') {
         const data = snapshot.data as { 
@@ -119,11 +124,11 @@ export default function PersistentCardsDisplay({
           );
         }
       } else if (card.cardType === 'pictures') {
-        const data = snapshot.data as { versions?: Array<{ assets?: Array<{ url: string }> }> };
+        const data = snapshot.data as { versions?: GeneratedPictures[] };
         if (data.versions && data.versions.length > 0) {
           element = (
             <PicturesCard
-              pictures={data.versions as any}
+              pictures={data.versions}
               currentVersion={0}
               status="ready"
               onHide={() => hideCard(card.generationId)}
@@ -131,11 +136,12 @@ export default function PersistentCardsDisplay({
           );
         }
       } else if (card.cardType === 'video') {
-        const data = snapshot.data as { versions?: Array<{ assets?: Array<{ url: string }> }> };
-        if (data.versions && data.versions.length > 0) {
+        // Video structure: { versions: GeneratedVideo[] } where GeneratedVideo has url directly
+        const data = snapshot.data as { versions?: GeneratedVideo[] };
+        if (data.versions && data.versions.length > 0 && data.versions[0].url) {
           element = (
             <VideoCard
-              videos={data.versions as any}
+              videos={data.versions}
               status="ready"
               onHide={() => hideCard(card.generationId)}
             />

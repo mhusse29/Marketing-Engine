@@ -46,21 +46,84 @@ const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 
-// Validate file
+// Compress image using canvas - auto-compresses large images
+const compressImage = (file: File, maxSizeBytes: number = MAX_FILE_SIZE_BYTES): Promise<{ file: File; compressed: boolean }> => {
+  return new Promise((resolve) => {
+    // If file is already small enough, return as-is
+    if (file.size <= maxSizeBytes) {
+      resolve({ file, compressed: false });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve({ file, compressed: false });
+          return;
+        }
+
+        // Calculate target dimensions - scale down if very large
+        let { width, height } = img;
+        const maxDimension = 2048; // Max dimension to keep quality reasonable
+        
+        if (width > maxDimension || height > maxDimension) {
+          const ratio = Math.min(maxDimension / width, maxDimension / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Try progressively lower quality until under size limit
+        const tryCompress = (quality: number): void => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                resolve({ file, compressed: false });
+                return;
+              }
+
+              if (blob.size <= maxSizeBytes || quality <= 0.3) {
+                // Create new File from blob
+                const compressedFile = new File([blob], file.name, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                });
+                console.log(`[Compress] ${file.name}: ${(file.size / 1024 / 1024).toFixed(1)}MB → ${(blob.size / 1024 / 1024).toFixed(1)}MB (quality: ${quality})`);
+                resolve({ file: compressedFile, compressed: true });
+              } else {
+                // Try lower quality
+                tryCompress(quality - 0.1);
+              }
+            },
+            'image/jpeg',
+            quality
+          );
+        };
+
+        tryCompress(0.85); // Start with 85% quality
+      };
+      img.onerror = () => resolve({ file, compressed: false });
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve({ file, compressed: false });
+    reader.readAsDataURL(file);
+  });
+};
+
+// Validate file (only checks MIME type now - size handled by compression)
 const validateFile = (file: File): { valid: boolean; error?: string } => {
   // Check MIME type
   if (!ALLOWED_MIME_TYPES.includes(file.type)) {
     return {
       valid: false,
       error: `Invalid file type. Only PNG, JPG, JPEG, and WebP images are allowed.`,
-    };
-  }
-  
-  // Check file size
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    return {
-      valid: false,
-      error: `File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is ${MAX_FILE_SIZE_MB}MB.`,
     };
   }
   
@@ -427,31 +490,36 @@ export function BaduAssistantEnhanced() {
     [handleSend]
   );
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
     const fileArray = Array.from(files);
     const errors: string[] = [];
-    const validFiles: File[] = [];
+    const processedFiles: File[] = [];
     
     // Check total attachment count
     if (attachments.length + fileArray.length > MAX_ATTACHMENTS) {
       errors.push(`Maximum ${MAX_ATTACHMENTS} attachments allowed. You already have ${attachments.length}.`);
     } else {
-      // Validate each file
+      // Validate and compress each file
       for (const file of fileArray) {
         const validation = validateFile(file);
         if (validation.valid) {
-          validFiles.push(file);
+          // Compress if needed (auto-handles large files)
+          const { file: processedFile, compressed } = await compressImage(file);
+          processedFiles.push(processedFile);
+          if (compressed) {
+            console.log(`[BADU] Auto-compressed ${file.name} from ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+          }
         } else if (validation.error) {
           errors.push(validation.error);
         }
       }
       
-      // Add valid files
-      if (validFiles.length > 0) {
-        setAttachments(prev => [...prev, ...validFiles]);
+      // Add processed files
+      if (processedFiles.length > 0) {
+        setAttachments(prev => [...prev, ...processedFiles]);
       }
     }
     

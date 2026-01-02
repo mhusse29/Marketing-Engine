@@ -43,7 +43,8 @@ export default function FeedbackDashboard() {
 
   const fetchFeedback = async () => {
     try {
-      const response = await fetch('http://localhost:8787/api/feedback/history?limit=100', {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+      const response = await fetch(`${apiUrl}/api/feedback/history?limit=100`, {
         headers: {
           'Content-Type': 'application/json',
         }

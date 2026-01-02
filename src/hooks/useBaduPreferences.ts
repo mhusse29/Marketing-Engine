@@ -41,7 +41,7 @@ interface UseBaduPreferencesReturn {
   updatePreferences: (updates: Partial<BaduPreferences>) => Promise<void>
 }
 
-const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'http://localhost:8787'
+const GATEWAY_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
 
 export function useBaduPreferences(): UseBaduPreferencesReturn {
   const { user } = useAuth()

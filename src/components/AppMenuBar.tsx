@@ -155,38 +155,6 @@ const PICTURE_ASPECT_HINTS: Record<PicAspect, string> = {
   '9:7': 'Editorial leaning crop with space for overlays.',
 };
 
-const PICTURE_BACKDROP_OPTIONS = ['Clean', 'Gradient', 'Real-world'] as const;
-const PICTURE_BACKDROP_HINTS: Record<(typeof PICTURE_BACKDROP_OPTIONS)[number], string> = {
-  Clean: 'Studio seamless background.',
-  Gradient: 'Soft colour gradient backdrops.',
-  'Real-world': 'Environmental, on-location scenes.',
-};
-
-const PICTURE_LIGHTING_OPTIONS = ['Soft', 'Hard', 'Neon'] as const;
-const PICTURE_LIGHTING_HINTS: Record<(typeof PICTURE_LIGHTING_OPTIONS)[number], string> = {
-  Soft: 'Diffused lighting with gentle shadows.',
-  Hard: 'Directional light with crisp contrast.',
-  Neon: 'Bold, neon-accent lighting cues.',
-};
-
-const PICTURE_QUALITY_OPTIONS = ['High detail', 'Sharp', 'Minimal noise'] as const;
-const PICTURE_QUALITY_HINTS: Record<(typeof PICTURE_QUALITY_OPTIONS)[number], string> = {
-  'High detail': 'Maximum texture and fine detail.',
-  Sharp: 'Extra crisp focus and edges.',
-  'Minimal noise': 'Smooth finish with low grain.',
-};
-
-const PICTURE_NEGATIVE_OPTIONS = ['None', 'Logos', 'Busy background', 'Extra hands', 'Glare'] as const;
-const PICTURE_NEGATIVE_HINTS: Record<(typeof PICTURE_NEGATIVE_OPTIONS)[number], string> = {
-  None: 'No additional negative guidance applied.',
-  Logos: 'Avoid third-party logos and trademarks.',
-  'Busy background': 'Keep backgrounds uncluttered.',
-  'Extra hands': 'Prevent extra limbs or duplicate hands.',
-  Glare: 'Reduce reflective glare and hotspots.',
-};
-
-// Video constants - all moved to MenuVideo.tsx
-const BRAND_LOCK_HINT = 'Locks palettes to your brand colours for consistency.';
 
 // Glass-morphism style used across all menu panels
 const glassStyle: React.CSSProperties = {
@@ -290,10 +258,10 @@ export function AppMenuBar({ settings, onGenerate, isGenerating = false }: AppMe
                     // CSV export logic - flatten settings to CSV
                     const csvRows = [
                       ['Setting', 'Value'],
-                      ['Format', settings.format],
-                      ['Language', settings.language],
-                      ['Tone', settings.tone],
-                      ['Persona', settings.persona],
+                      ['Format', settings.quickProps.content.format || ''],
+                      ['Language', settings.quickProps.content.language || ''],
+                      ['Tone', settings.quickProps.content.tone || ''],
+                      ['Persona', settings.quickProps.content.persona || ''],
                       ['Platforms', settings.platforms.join(', ')],
                       ['Content Validated', settings.quickProps.content.validated ? 'Yes' : 'No'],
                       ['Pictures Validated', settings.quickProps.pictures.validated ? 'Yes' : 'No'],
@@ -376,6 +344,7 @@ export function HintChip({
   onClick,
   disabled,
   size = 'default',
+  tooltipSide = 'bottom',
 }: {
   label: string;
   hint?: string;
@@ -383,9 +352,10 @@ export function HintChip({
   onClick?: () => void;
   disabled?: boolean;
   size?: 'default' | 'small';
+  tooltipSide?: 'top' | 'bottom';
 }) {
   return (
-    <TooltipPrimitive label={hint ?? label}>
+    <TooltipPrimitive label={hint ?? label} side={tooltipSide}>
       <CTAChip label={label} active={active} onClick={onClick} size={size} disabled={disabled} />
     </TooltipPrimitive>
   );
@@ -1007,7 +977,7 @@ export function MenuPictures({
 
   // Provider configuration - must be defined before handlers use it
   const providers = [
-    { id: 'openai', label: 'DALL·E 3', desc: 'Fast, vivid', supportsImageRef: false, imageLimit: 0 },
+    { id: 'openai', label: 'GPT Image', desc: 'gpt-image-1.5', supportsImageRef: false, imageLimit: 0 },
     { id: 'flux', label: 'FLUX Pro', desc: 'Photoreal', supportsImageRef: true, imageLimit: 1 },
     { id: 'stability', label: 'SD 3.5', desc: 'CFG control', supportsImageRef: true, imageLimit: 10 },
     { id: 'ideogram', label: 'Ideogram', desc: 'Typography', supportsImageRef: true, imageLimit: 3 },
@@ -1047,11 +1017,41 @@ export function MenuPictures({
         return;
       }
 
-      // Read and add to array
+      // Compress image using canvas to avoid Runway 413 errors
+      const compressImage = (dataUrl: string, maxSize = 1024, quality = 0.8): Promise<string> => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let { width, height } = img;
+            
+            // Scale down if larger than maxSize
+            if (width > maxSize || height > maxSize) {
+              const ratio = Math.min(maxSize / width, maxSize / height);
+              width = Math.round(width * ratio);
+              height = Math.round(height * ratio);
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(img, 0, 0, width, height);
+            
+            // Convert to JPEG for better compression
+            const compressed = canvas.toDataURL('image/jpeg', quality);
+            console.log(`[Image] Compressed: ${Math.round(dataUrl.length / 1024)}KB → ${Math.round(compressed.length / 1024)}KB`);
+            resolve(compressed);
+          };
+          img.src = dataUrl;
+        });
+      };
+
+      // Read, compress, and add to array
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         if (e.target?.result) {
-          const newImages = [...currentImages, e.target.result as string];
+          const compressed = await compressImage(e.target.result as string);
+          const newImages = [...currentImages, compressed];
           setPictures({ promptImages: newImages });
           setAttachmentError('');
         }
@@ -1081,7 +1081,7 @@ export function MenuPictures({
   }, [setPictures, setCardEnabled]);
 
   const aspectsByProvider: Record<string, PicAspect[]> = {
-    openai: ['1:1', '16:9'],
+    openai: ['1:1', '4:5', '16:9'],
     flux: ['1:1', '16:9', '2:3', '3:2', '7:9', '9:7'],
     stability: ['1:1', '2:3', '3:2', '16:9'],
     ideogram: ['1:1', '16:9'],
@@ -1332,7 +1332,7 @@ export function MenuPictures({
                 label={style}
                 hint={PICTURE_STYLE_HINTS[style]}
                 active={qp.style === style}
-                      onClick={() => setPictures({ style })}
+                      onClick={() => setPictures({ style: qp.style === style ? undefined : style })}
                       size="small"
               />
             ))}
@@ -1340,7 +1340,7 @@ export function MenuPictures({
         </div>
 
               <div>
-                <Label>Aspect</Label>
+                <Label required>Aspect</Label>
                 <div className="flex flex-wrap gap-2">
                   {availableAspects.map((aspect) => (
               <HintChip
@@ -1348,7 +1348,7 @@ export function MenuPictures({
                 label={aspect}
                 hint={PICTURE_ASPECT_HINTS[aspect]}
                 active={qp.aspect === aspect}
-                      onClick={() => setPictures({ aspect })}
+                      onClick={() => setPictures({ aspect: qp.aspect === aspect ? undefined : aspect })}
                       size="small"
               />
             ))}
@@ -1361,21 +1361,55 @@ export function MenuPictures({
           {/* Provider-specific controls - Sectioned Panels */}
           {activeProvider === 'openai' && (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="mb-3 text-sm font-medium text-white/90">DALL·E Settings</div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Quality</Label>
-                  <div className="flex gap-2">
-                    <HintChip label="Standard" hint="Faster generation" active={qp.dalleQuality === 'standard'} onClick={() => setPictures({ dalleQuality: 'standard' })} size="small" />
-                    <HintChip label="HD" hint="Higher detail" active={qp.dalleQuality === 'hd'} onClick={() => setPictures({ dalleQuality: 'hd' })} size="small" />
+              <div className="mb-3 text-sm font-medium text-white/90">OpenAI Image Settings</div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <div className="col-span-2">
+                  <Label required>Model</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <HintChip label="GPT Image 1.5" hint="Best quality" active={qp.openaiImageModel === 'gpt-image-1.5' || !qp.openaiImageModel} onClick={() => setPictures({ openaiImageModel: qp.openaiImageModel === 'gpt-image-1.5' ? undefined : 'gpt-image-1.5' })} size="small" />
+                    <HintChip label="GPT Image 1" hint="Previous gen" active={qp.openaiImageModel === 'gpt-image-1'} onClick={() => setPictures({ openaiImageModel: qp.openaiImageModel === 'gpt-image-1' ? undefined : 'gpt-image-1' })} size="small" />
+                    <HintChip label="GPT Image 1 Mini" hint="Faster / cheaper" active={qp.openaiImageModel === 'gpt-image-1-mini'} onClick={() => setPictures({ openaiImageModel: qp.openaiImageModel === 'gpt-image-1-mini' ? undefined : 'gpt-image-1-mini' })} size="small" />
                   </div>
                 </div>
                 <div>
-                  <Label>Style</Label>
-                  <div className="flex gap-2">
-                    <HintChip label="Vivid" hint="Dramatic colors" active={qp.dalleStyle === 'vivid'} onClick={() => setPictures({ dalleStyle: 'vivid' })} size="small" />
-                    <HintChip label="Natural" hint="Subtle tones" active={qp.dalleStyle === 'natural'} onClick={() => setPictures({ dalleStyle: 'natural' })} size="small" />
+                  <Label>Quality</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <HintChip label="Auto" hint="Balanced" active={qp.openaiQuality === 'auto' || !qp.openaiQuality} onClick={() => setPictures({ openaiQuality: qp.openaiQuality === 'auto' ? undefined : 'auto' })} size="small" />
+                    <HintChip label="High" hint="Maximum detail" active={qp.openaiQuality === 'high'} onClick={() => setPictures({ openaiQuality: qp.openaiQuality === 'high' ? undefined : 'high' })} size="small" />
+                    <HintChip label="Medium" hint="Balanced quality" active={qp.openaiQuality === 'medium'} onClick={() => setPictures({ openaiQuality: qp.openaiQuality === 'medium' ? undefined : 'medium' })} size="small" />
+                    <HintChip label="Low" hint="Fastest" active={qp.openaiQuality === 'low'} onClick={() => setPictures({ openaiQuality: qp.openaiQuality === 'low' ? undefined : 'low' })} size="small" />
                   </div>
+                </div>
+                <div>
+                  <Label>Output</Label>
+                  <div className="flex gap-2">
+                    <HintChip label="PNG" hint="Lossless" active={qp.openaiOutputFormat === 'png' || !qp.openaiOutputFormat} onClick={() => setPictures({ openaiOutputFormat: qp.openaiOutputFormat === 'png' ? undefined : 'png' })} size="small" />
+                    <HintChip label="JPEG" hint="Smaller files" active={qp.openaiOutputFormat === 'jpeg'} onClick={() => setPictures({ openaiOutputFormat: qp.openaiOutputFormat === 'jpeg' ? undefined : 'jpeg' })} size="small" />
+                    <HintChip label="WebP" hint="Modern" active={qp.openaiOutputFormat === 'webp'} onClick={() => setPictures({ openaiOutputFormat: qp.openaiOutputFormat === 'webp' ? undefined : 'webp' })} size="small" />
+                  </div>
+                </div>
+                <div>
+                  <Label>Background</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <HintChip label="Auto" hint="Let model decide" active={qp.openaiBackground === 'auto' || !qp.openaiBackground} onClick={() => setPictures({ openaiBackground: qp.openaiBackground === 'auto' ? undefined : 'auto' })} size="small" />
+                    <HintChip label="Transparent" hint="PNG/WebP only" active={qp.openaiBackground === 'transparent'} onClick={() => setPictures({ openaiBackground: qp.openaiBackground === 'transparent' ? undefined : 'transparent' })} size="small" />
+                    <HintChip label="Opaque" hint="Solid background" active={qp.openaiBackground === 'opaque'} onClick={() => setPictures({ openaiBackground: qp.openaiBackground === 'opaque' ? undefined : 'opaque' })} size="small" />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 flex items-center justify-between text-xs text-white/60">
+                    <span>Compression</span>
+                    <span className="text-white/80">{qp.openaiOutputCompression ?? 100}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={qp.openaiOutputCompression ?? 100}
+                    onChange={(e) => setPictures({ openaiOutputCompression: Number(e.target.value) })}
+                    className="h-2 w-full appearance-none rounded-full bg-white/10 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
+                  />
                 </div>
               </div>
             </div>
@@ -1384,20 +1418,44 @@ export function MenuPictures({
           {activeProvider === 'flux' && (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="mb-3 text-sm font-medium text-white/90">FLUX Settings</div>
-              <div className="space-y-3">
-                <div>
-                  <Label>Mode</Label>
-                  <div className="flex gap-2">
-                    <HintChip label="Standard" hint="Balanced quality" active={qp.fluxMode === 'standard'} onClick={() => setPictures({ fluxMode: 'standard' })} size="small" />
-                    <HintChip label="Ultra" hint="Max detail" active={qp.fluxMode === 'ultra'} onClick={() => setPictures({ fluxMode: 'ultra' })} size="small" />
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <div className="col-span-2">
+                  <Label required>Model</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <HintChip label="FLUX.2 Pro" hint="Latest, best quality" active={qp.fluxMode === 'flux2-pro'} onClick={() => setPictures({ fluxMode: qp.fluxMode === 'flux2-pro' ? undefined : 'flux2-pro' })} size="small" />
+                    <HintChip label="FLUX.2 Flex" hint="Configurable steps" active={qp.fluxMode === 'flux2-flex'} onClick={() => setPictures({ fluxMode: qp.fluxMode === 'flux2-flex' ? undefined : 'flux2-flex' })} size="small" />
+                    <HintChip label="FLUX 1.1 Pro" hint="Fast, reliable" active={qp.fluxMode === 'standard'} onClick={() => setPictures({ fluxMode: qp.fluxMode === 'standard' ? undefined : 'standard' })} size="small" />
+                    <HintChip label="FLUX 1.1 Ultra" hint="Max detail" active={qp.fluxMode === 'ultra'} onClick={() => setPictures({ fluxMode: qp.fluxMode === 'ultra' ? undefined : 'ultra' })} size="small" />
                   </div>
                 </div>
-                {qp.fluxMode === 'standard' && (
-                  <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Output Format</Label>
+                  <div className="flex gap-2">
+                    <HintChip label="JPEG" hint="Smaller files" active={qp.fluxOutputFormat === 'jpeg'} onClick={() => setPictures({ fluxOutputFormat: qp.fluxOutputFormat === 'jpeg' ? undefined : 'jpeg' })} size="small" />
+                    <HintChip label="PNG" hint="Lossless" active={qp.fluxOutputFormat === 'png'} onClick={() => setPictures({ fluxOutputFormat: qp.fluxOutputFormat === 'png' ? undefined : 'png' })} size="small" />
+                    <HintChip label="WebP" hint="Modern" active={qp.fluxOutputFormat === 'webp'} onClick={() => setPictures({ fluxOutputFormat: qp.fluxOutputFormat === 'webp' ? undefined : 'webp' })} size="small" />
+                  </div>
+                </div>
+                <div>
+                  <Label>Prompt Upsampling</Label>
+                  <div className="flex gap-2">
+                    <HintChip label="Off" hint="Use as-is" active={qp.fluxPromptUpsampling === false} onClick={() => setPictures({ fluxPromptUpsampling: qp.fluxPromptUpsampling === false ? undefined : false })} size="small" />
+                    <HintChip label="On" hint="Enhance prompt" active={qp.fluxPromptUpsampling === true} onClick={() => setPictures({ fluxPromptUpsampling: qp.fluxPromptUpsampling === true ? undefined : true })} size="small" />
+                  </div>
+                </div>
+                <div>
+                  <Label>RAW Mode</Label>
+                  <div className="flex gap-2">
+                    <HintChip label="Off" hint="Standard" active={qp.fluxRaw === false} onClick={() => setPictures({ fluxRaw: qp.fluxRaw === false ? undefined : false })} size="small" />
+                    <HintChip label="On" hint="Unprocessed" active={qp.fluxRaw === true} onClick={() => setPictures({ fluxRaw: qp.fluxRaw === true ? undefined : true })} size="small" />
+                  </div>
+                </div>
+                {(qp.fluxMode === 'standard' || qp.fluxMode === 'flux2-flex') && (
+                  <>
                     <div>
                       <label className="mb-1.5 flex items-center justify-between text-xs text-white/60">
                         <span>Guidance</span>
-                        <span className="text-white/80">{qp.fluxGuidance ?? 3}</span>
+                        <span className="text-white/80">{qp.fluxGuidance ?? '—'}</span>
                       </label>
                       <input
                         type="range"
@@ -1412,7 +1470,7 @@ export function MenuPictures({
                     <div>
                       <label className="mb-1.5 flex items-center justify-between text-xs text-white/60">
                         <span>Steps</span>
-                        <span className="text-white/80">{qp.fluxSteps ?? 40}</span>
+                        <span className="text-white/80">{qp.fluxSteps ?? '—'}</span>
                       </label>
                       <input
                         type="range"
@@ -1424,32 +1482,8 @@ export function MenuPictures({
                         className="h-2 w-full appearance-none rounded-full bg-white/10 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
                       />
                     </div>
-                  </div>
+                  </>
                 )}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Prompt Upsampling</Label>
-                    <div className="flex gap-2">
-                      <HintChip label="Off" hint="Use as-is" active={!qp.fluxPromptUpsampling} onClick={() => setPictures({ fluxPromptUpsampling: false })} size="small" />
-                      <HintChip label="On" hint="Enhance prompt" active={qp.fluxPromptUpsampling} onClick={() => setPictures({ fluxPromptUpsampling: true })} size="small" />
-                    </div>
-                  </div>
-                  <div>
-                    <Label>RAW Mode</Label>
-                    <div className="flex gap-2">
-                      <HintChip label="Off" hint="Standard" active={!qp.fluxRaw} onClick={() => setPictures({ fluxRaw: false })} size="small" />
-                      <HintChip label="On" hint="Unprocessed" active={qp.fluxRaw} onClick={() => setPictures({ fluxRaw: true })} size="small" />
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <Label>Output Format</Label>
-                  <div className="flex gap-2">
-                    <HintChip label="JPEG" hint="Smaller files" active={qp.fluxOutputFormat === 'jpeg'} onClick={() => setPictures({ fluxOutputFormat: 'jpeg' })} size="small" />
-                    <HintChip label="PNG" hint="Lossless" active={qp.fluxOutputFormat === 'png'} onClick={() => setPictures({ fluxOutputFormat: 'png' })} size="small" />
-                    <HintChip label="WebP" hint="Modern" active={qp.fluxOutputFormat === 'webp'} onClick={() => setPictures({ fluxOutputFormat: 'webp' })} size="small" />
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -1457,55 +1491,23 @@ export function MenuPictures({
           {activeProvider === 'stability' && (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="mb-3 text-sm font-medium text-white/90">Stability Settings</div>
-              <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                 <div>
-                  <Label>Model</Label>
+                  <Label required>Model</Label>
                   <div className="flex gap-2">
-                    <HintChip label="Large" hint="Best quality" active={qp.stabilityModel === 'large'} onClick={() => setPictures({ stabilityModel: 'large' })} size="small" />
-                    <HintChip label="Turbo" hint="Faster" active={qp.stabilityModel === 'large-turbo'} onClick={() => setPictures({ stabilityModel: 'large-turbo' })} size="small" />
-                    <HintChip label="Medium" hint="Balanced" active={qp.stabilityModel === 'medium'} onClick={() => setPictures({ stabilityModel: 'medium' })} size="small" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1.5 flex items-center justify-between text-xs text-white/60">
-                      <span>CFG Scale</span>
-                      <span className="text-white/80">{qp.stabilityCfg ?? 7}</span>
-                    </label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="20"
-                      step="0.5"
-                      value={qp.stabilityCfg ?? 7}
-                      onChange={(e) => setPictures({ stabilityCfg: Number(e.target.value) })}
-                      className="h-2 w-full appearance-none rounded-full bg-white/10 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 flex items-center justify-between text-xs text-white/60">
-                      <span>Steps</span>
-                      <span className="text-white/80">{qp.stabilitySteps ?? 40}</span>
-                    </label>
-                    <input
-                      type="range"
-                      min="20"
-                      max="60"
-                      step="5"
-                      value={qp.stabilitySteps ?? 40}
-                      onChange={(e) => setPictures({ stabilitySteps: Number(e.target.value) })}
-                      className="h-2 w-full appearance-none rounded-full bg-white/10 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
-                    />
+                    <HintChip label="Large" hint="Best quality" active={qp.stabilityModel === 'large'} onClick={() => setPictures({ stabilityModel: qp.stabilityModel === 'large' ? undefined : 'large' })} size="small" />
+                    <HintChip label="Turbo" hint="Faster" active={qp.stabilityModel === 'large-turbo'} onClick={() => setPictures({ stabilityModel: qp.stabilityModel === 'large-turbo' ? undefined : 'large-turbo' })} size="small" />
+                    <HintChip label="Medium" hint="Balanced" active={qp.stabilityModel === 'medium'} onClick={() => setPictures({ stabilityModel: qp.stabilityModel === 'medium' ? undefined : 'medium' })} size="small" />
                   </div>
                 </div>
                 <div>
                   <Label>Style Preset</Label>
                   <select
                     value={qp.stabilityStylePreset || ''}
-                    onChange={(e) => setPictures({ stabilityStylePreset: e.target.value })}
+                    onChange={(e) => setPictures({ stabilityStylePreset: e.target.value || undefined })}
                     className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/35"
                   >
-                    <option value="">None</option>
+                    <option value="">Select style...</option>
                     <option value="3d-model">3D Model</option>
                     <option value="analog-film">Analog Film</option>
                     <option value="anime">Anime</option>
@@ -1526,10 +1528,40 @@ export function MenuPictures({
                   </select>
                 </div>
                 <div>
+                  <label className="mb-1.5 flex items-center justify-between text-xs text-white/60">
+                    <span>CFG Scale</span>
+                    <span className="text-white/80">{qp.stabilityCfg ?? '—'}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    step="0.5"
+                    value={qp.stabilityCfg ?? 7}
+                    onChange={(e) => setPictures({ stabilityCfg: Number(e.target.value) })}
+                    className="h-2 w-full appearance-none rounded-full bg-white/10 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 flex items-center justify-between text-xs text-white/60">
+                    <span>Steps</span>
+                    <span className="text-white/80">{qp.stabilitySteps ?? '—'}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="20"
+                    max="60"
+                    step="5"
+                    value={qp.stabilitySteps ?? 40}
+                    onChange={(e) => setPictures({ stabilitySteps: Number(e.target.value) })}
+                    className="h-2 w-full appearance-none rounded-full bg-white/10 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
+                  />
+                </div>
+                <div className="col-span-2">
                   <Label>Negative Prompt</Label>
                   <textarea
                     value={qp.stabilityNegativePrompt || ''}
-                    onChange={(e) => setPictures({ stabilityNegativePrompt: e.target.value.slice(0, 500) })}
+                    onChange={(e) => setPictures({ stabilityNegativePrompt: e.target.value.slice(0, 500) || undefined })}
                     placeholder="Things to avoid..."
                     className="min-h-[60px] w-full resize-none rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-white/90 placeholder-white/40 focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/35"
                   />
@@ -1542,31 +1574,31 @@ export function MenuPictures({
           {activeProvider === 'ideogram' && (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="mb-3 text-sm font-medium text-white/90">Ideogram Settings</div>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Model</Label>
-                    <div className="flex gap-2">
-                      <HintChip label="V2" hint="Latest" active={qp.ideogramModel === 'v2'} onClick={() => setPictures({ ideogramModel: 'v2' })} size="small" />
-                      <HintChip label="V1" hint="Classic" active={qp.ideogramModel === 'v1'} onClick={() => setPictures({ ideogramModel: 'v1' })} size="small" />
-                      <HintChip label="Turbo" hint="Fast" active={qp.ideogramModel === 'turbo'} onClick={() => setPictures({ ideogramModel: 'turbo' })} size="small" />
-                    </div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <div className="col-span-2">
+                  <Label required>Model</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <HintChip label="V2" hint="Latest quality" active={qp.ideogramModel === 'v2'} onClick={() => setPictures({ ideogramModel: qp.ideogramModel === 'v2' ? undefined : 'v2' })} size="small" />
+                    <HintChip label="V2 Turbo" hint="Fast V2" active={qp.ideogramModel === 'v2-turbo'} onClick={() => setPictures({ ideogramModel: qp.ideogramModel === 'v2-turbo' ? undefined : 'v2-turbo' })} size="small" />
+                    <HintChip label="V1" hint="Classic" active={qp.ideogramModel === 'v1'} onClick={() => setPictures({ ideogramModel: qp.ideogramModel === 'v1' ? undefined : 'v1' })} size="small" />
+                    <HintChip label="V1 Turbo" hint="Fast V1" active={qp.ideogramModel === 'v1-turbo'} onClick={() => setPictures({ ideogramModel: qp.ideogramModel === 'v1-turbo' ? undefined : 'v1-turbo' })} size="small" />
                   </div>
-                  <div>
-                    <Label>Magic Prompt</Label>
-                    <div className="flex gap-2">
-                      <HintChip label="On" hint="AI enhancement" active={qp.ideogramMagicPrompt} onClick={() => setPictures({ ideogramMagicPrompt: true })} size="small" />
-                      <HintChip label="Off" hint="Use as-is" active={!qp.ideogramMagicPrompt} onClick={() => setPictures({ ideogramMagicPrompt: false })} size="small" />
-                    </div>
+                </div>
+                <div>
+                  <Label>Magic Prompt</Label>
+                  <div className="flex gap-2">
+                    <HintChip label="On" hint="AI enhancement" active={qp.ideogramMagicPrompt === true} onClick={() => setPictures({ ideogramMagicPrompt: qp.ideogramMagicPrompt === true ? undefined : true })} size="small" />
+                    <HintChip label="Off" hint="Use as-is" active={qp.ideogramMagicPrompt === false} onClick={() => setPictures({ ideogramMagicPrompt: qp.ideogramMagicPrompt === false ? undefined : false })} size="small" />
                   </div>
                 </div>
                 <div>
                   <Label>Style Type</Label>
                   <select
-                    value={qp.ideogramStyleType || 'AUTO'}
-                    onChange={(e) => setPictures({ ideogramStyleType: e.target.value as PicturesQuickProps['ideogramStyleType'] })}
+                    value={qp.ideogramStyleType || ''}
+                    onChange={(e) => setPictures({ ideogramStyleType: (e.target.value || undefined) as PicturesQuickProps['ideogramStyleType'] })}
                     className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/35"
                   >
+                    <option value="">Select style...</option>
                     <option value="AUTO">Auto</option>
                     <option value="GENERAL">General</option>
                     <option value="REALISTIC">Realistic</option>
@@ -1579,7 +1611,7 @@ export function MenuPictures({
                   <Label>Negative Prompt</Label>
                   <textarea
                     value={qp.ideogramNegativePrompt || ''}
-                    onChange={(e) => setPictures({ ideogramNegativePrompt: e.target.value.slice(0, 500) })}
+                    onChange={(e) => setPictures({ ideogramNegativePrompt: e.target.value.slice(0, 500) || undefined })}
                     placeholder="Things to avoid..."
                     className="min-h-[60px] w-full resize-none rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-white/90 placeholder-white/40 focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/35"
                   />
@@ -1591,10 +1623,47 @@ export function MenuPictures({
 
           {activeProvider === 'gemini' && (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="mb-3 text-sm font-medium text-white/90">Nano Banana Settings</div>
-              <div className="space-y-3">
-                {/* Style - same as other providers */}
-                <div>
+              <div className="mb-3 text-sm font-medium text-white/90">Google Image AI Settings</div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <div className="col-span-2">
+                  <Label required>Model</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <HintChip label="Imagen 4" hint="Latest, best quality" active={qp.geminiModel === 'imagen-4.0-generate-001'} onClick={() => setPictures({ geminiModel: qp.geminiModel === 'imagen-4.0-generate-001' ? undefined : 'imagen-4.0-generate-001' })} size="small" />
+                    <HintChip label="Imagen 4 Ultra" hint="Maximum quality" active={qp.geminiModel === 'imagen-4.0-ultra-generate-001'} onClick={() => setPictures({ geminiModel: qp.geminiModel === 'imagen-4.0-ultra-generate-001' ? undefined : 'imagen-4.0-ultra-generate-001' })} size="small" />
+                    <HintChip label="Imagen 4 Fast" hint="Quick generation" active={qp.geminiModel === 'imagen-4.0-fast-generate-001'} onClick={() => setPictures({ geminiModel: qp.geminiModel === 'imagen-4.0-fast-generate-001' ? undefined : 'imagen-4.0-fast-generate-001' })} size="small" />
+                    <HintChip label="Gemini Pro" hint="4K, Thinking" active={qp.geminiModel === 'gemini-3-pro-image-preview'} onClick={() => setPictures({ geminiModel: qp.geminiModel === 'gemini-3-pro-image-preview' ? undefined : 'gemini-3-pro-image-preview' })} size="small" />
+                    <HintChip label="Gemini Flash" hint="Fast, 1K" active={qp.geminiModel === 'gemini-2.5-flash-image-preview'} onClick={() => setPictures({ geminiModel: qp.geminiModel === 'gemini-2.5-flash-image-preview' ? undefined : 'gemini-2.5-flash-image-preview' })} size="small" />
+                  </div>
+                </div>
+                {(qp.geminiModel === 'gemini-3-pro-image-preview' || qp.geminiModel === 'gemini-2.5-flash-image-preview') && (
+                  <div>
+                    <Label>Resolution</Label>
+                    <div className="flex gap-2">
+                      <HintChip label="1K" hint="1024px (fast)" active={qp.geminiResolution === '1K'} onClick={() => setPictures({ geminiResolution: qp.geminiResolution === '1K' ? undefined : '1K' })} size="small" />
+                      <HintChip label="2K" hint="2048px" active={qp.geminiResolution === '2K'} onClick={() => setPictures({ geminiResolution: qp.geminiResolution === '2K' ? undefined : '2K' })} size="small" />
+                      <HintChip label="4K" hint="4096px (Pro only)" active={qp.geminiResolution === '4K'} onClick={() => setPictures({ geminiResolution: qp.geminiResolution === '4K' ? undefined : '4K' })} size="small" disabled={qp.geminiModel !== 'gemini-3-pro-image-preview'} />
+                    </div>
+                  </div>
+                )}
+                {qp.geminiModel === 'gemini-3-pro-image-preview' && (
+                  <>
+                    <div>
+                      <Label>Thinking Mode</Label>
+                      <div className="flex gap-2">
+                        <HintChip label="On" hint="Refines composition" active={qp.geminiThinking === true} onClick={() => setPictures({ geminiThinking: qp.geminiThinking === true ? undefined : true })} size="small" />
+                        <HintChip label="Off" hint="Direct generation" active={qp.geminiThinking === false} onClick={() => setPictures({ geminiThinking: qp.geminiThinking === false ? undefined : false })} size="small" />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Google Search</Label>
+                      <div className="flex gap-2">
+                        <HintChip label="On" hint="Real-world grounding" active={qp.geminiGrounding === true} onClick={() => setPictures({ geminiGrounding: qp.geminiGrounding === true ? undefined : true })} size="small" />
+                        <HintChip label="Off" hint="No search" active={qp.geminiGrounding === false} onClick={() => setPictures({ geminiGrounding: qp.geminiGrounding === false ? undefined : false })} size="small" />
+                      </div>
+                    </div>
+                  </>
+                )}
+                <div className="col-span-2">
                   <Label>Style</Label>
                   <div className="flex flex-wrap gap-2">
                     {PICTURE_STYLE_OPTIONS.map((style) => (
@@ -1603,61 +1672,41 @@ export function MenuPictures({
                         label={style}
                         hint={PICTURE_STYLE_HINTS[style]}
                         active={qp.style === style}
-                        onClick={() => setPictures({ style })}
+                        onClick={() => setPictures({ style: qp.style === style ? undefined : style })}
                         size="small"
                       />
                     ))}
                   </div>
                 </div>
-                {/* Aspect Ratio - Gemini supported ratios */}
-                <div>
-                  <Label>Aspect Ratio</Label>
+                <div className="col-span-2">
+                  <Label required>Aspect Ratio</Label>
                   <div className="flex flex-wrap gap-2">
-                    <HintChip label="1:1" hint="Square" active={qp.aspect === '1:1'} onClick={() => setPictures({ aspect: '1:1' })} size="small" />
-                    <HintChip label="16:9" hint="Landscape wide" active={qp.aspect === '16:9'} onClick={() => setPictures({ aspect: '16:9' })} size="small" />
-                    <HintChip label="4:5" hint="Portrait feed" active={qp.aspect === '4:5'} onClick={() => setPictures({ aspect: '4:5' })} size="small" />
-                    <HintChip label="3:2" hint="Classic photo" active={qp.aspect === '3:2'} onClick={() => setPictures({ aspect: '3:2' })} size="small" />
-                    <HintChip label="2:3" hint="Portrait tall" active={qp.aspect === '2:3'} onClick={() => setPictures({ aspect: '2:3' })} size="small" />
+                    {qp.geminiModel?.startsWith('imagen') ? (
+                      <>
+                        <HintChip label="1:1" hint="Square" active={qp.aspect === '1:1'} onClick={() => setPictures({ aspect: qp.aspect === '1:1' ? undefined : '1:1' })} size="small" />
+                        <HintChip label="16:9" hint="Landscape wide" active={qp.aspect === '16:9'} onClick={() => setPictures({ aspect: qp.aspect === '16:9' ? undefined : '16:9' })} size="small" />
+                        <HintChip label="9:16" hint="Portrait tall" active={qp.aspect === '9:16' as any} onClick={() => setPictures({ aspect: '9:16' as any })} size="small" />
+                        <HintChip label="4:3" hint="Classic" active={qp.aspect === '4:3' as any} onClick={() => setPictures({ aspect: '4:3' as any })} size="small" />
+                        <HintChip label="3:4" hint="Portrait" active={qp.aspect === '3:4' as any} onClick={() => setPictures({ aspect: '3:4' as any })} size="small" />
+                      </>
+                    ) : (
+                      <>
+                        <HintChip label="1:1" hint="Square" active={qp.aspect === '1:1'} onClick={() => setPictures({ aspect: qp.aspect === '1:1' ? undefined : '1:1' })} size="small" />
+                        <HintChip label="16:9" hint="Landscape wide" active={qp.aspect === '16:9'} onClick={() => setPictures({ aspect: qp.aspect === '16:9' ? undefined : '16:9' })} size="small" />
+                        <HintChip label="4:5" hint="Portrait feed" active={qp.aspect === '4:5'} onClick={() => setPictures({ aspect: qp.aspect === '4:5' ? undefined : '4:5' })} size="small" />
+                        <HintChip label="3:2" hint="Classic photo" active={qp.aspect === '3:2'} onClick={() => setPictures({ aspect: qp.aspect === '3:2' ? undefined : '3:2' })} size="small" />
+                        <HintChip label="2:3" hint="Portrait tall" active={qp.aspect === '2:3'} onClick={() => setPictures({ aspect: qp.aspect === '2:3' ? undefined : '2:3' })} size="small" />
+                      </>
+                    )}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Model</Label>
-                    <div className="flex flex-col gap-2">
-                      <HintChip label="Nano Banana Pro" hint="4K, Thinking, Grounding" active={qp.geminiModel === 'gemini-3-pro-image-preview'} onClick={() => setPictures({ geminiModel: 'gemini-3-pro-image-preview' })} size="small" />
-                      <HintChip label="Nano Banana" hint="Fast, 1K" active={qp.geminiModel === 'gemini-2.5-flash-preview-image'} onClick={() => setPictures({ geminiModel: 'gemini-2.5-flash-preview-image' })} size="small" />
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Resolution</Label>
-                    <div className="flex flex-col gap-2">
-                      <HintChip label="1K" hint="1024px (fast)" active={qp.geminiResolution === '1K'} onClick={() => setPictures({ geminiResolution: '1K' })} size="small" />
-                      <HintChip label="2K" hint="2048px" active={qp.geminiResolution === '2K'} onClick={() => setPictures({ geminiResolution: '2K' })} size="small" />
-                      <HintChip label="4K" hint="4096px (Pro only)" active={qp.geminiResolution === '4K'} onClick={() => setPictures({ geminiResolution: '4K' })} size="small" disabled={qp.geminiModel !== 'gemini-3-pro-image-preview'} />
-                    </div>
-                  </div>
-                </div>
-                {qp.geminiModel === 'gemini-3-pro-image-preview' && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Thinking Mode</Label>
-                      <div className="flex gap-2">
-                        <HintChip label="On" hint="Refines composition" active={qp.geminiThinking} onClick={() => setPictures({ geminiThinking: true })} size="small" />
-                        <HintChip label="Off" hint="Direct generation" active={!qp.geminiThinking} onClick={() => setPictures({ geminiThinking: false })} size="small" />
-                      </div>
-                    </div>
-                    <div>
-                      <Label>Google Search</Label>
-                      <div className="flex gap-2">
-                        <HintChip label="On" hint="Real-world grounding" active={qp.geminiGrounding} onClick={() => setPictures({ geminiGrounding: true })} size="small" />
-                        <HintChip label="Off" hint="No search" active={!qp.geminiGrounding} onClick={() => setPictures({ geminiGrounding: false })} size="small" />
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-3">
+                <div className="col-span-2 rounded-lg bg-blue-500/10 border border-blue-500/20 p-3">
                   <p className="text-xs text-blue-200">
-                    <strong>Nano Banana Pro</strong> supports up to 14 reference images, 4K output, thinking mode for complex prompts, and Google Search grounding for real-time data.
+                    {qp.geminiModel?.startsWith('imagen') ? (
+                      <><strong>Imagen 4</strong> is Google's latest image generation model with superior photorealism and text rendering. Supports 1:1, 16:9, 9:16, 4:3, 3:4 aspect ratios.</>
+                    ) : (
+                      <><strong>Gemini Pro</strong> supports up to 14 reference images, 4K output, thinking mode for complex prompts, and Google Search grounding.</>
+                    )}
                   </p>
                 </div>
               </div>
@@ -1667,8 +1716,14 @@ export function MenuPictures({
           {activeProvider === 'runway' && (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="mb-3 text-sm font-medium text-white/90">Runway Gen-4 Image Settings</div>
-              <div className="space-y-3">
-                {/* Style - for prompt context */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <div>
+                  <Label required>Model</Label>
+                  <div className="flex gap-2">
+                    <HintChip label="Gen-4 Image" hint="Best quality" active={qp.runwayImageModel === 'gen4_image'} onClick={() => setPictures({ runwayImageModel: qp.runwayImageModel === 'gen4_image' ? undefined : 'gen4_image' })} size="small" />
+                    <HintChip label="Gen-4 Turbo" hint="Faster" active={qp.runwayImageModel === 'gen4_image_turbo'} onClick={() => setPictures({ runwayImageModel: qp.runwayImageModel === 'gen4_image_turbo' ? undefined : 'gen4_image_turbo' })} size="small" />
+                  </div>
+                </div>
                 <div>
                   <Label>Style</Label>
                   <div className="flex flex-wrap gap-2">
@@ -1678,32 +1733,23 @@ export function MenuPictures({
                         label={style}
                         hint={PICTURE_STYLE_HINTS[style]}
                         active={qp.style === style}
-                        onClick={() => setPictures({ style })}
+                        onClick={() => setPictures({ style: qp.style === style ? undefined : style })}
                         size="small"
                       />
                     ))}
                   </div>
                 </div>
-                {/* Resolution - Runway uses pixel dimensions */}
-                <div>
-                  <Label>Output Size</Label>
+                <div className="col-span-2">
+                  <Label required>Output Size</Label>
                   <div className="flex flex-wrap gap-2">
-                    <HintChip label="1024×1024" hint="Square 1:1" active={qp.runwayImageRatio === '1024:1024'} onClick={() => setPictures({ runwayImageRatio: '1024:1024' })} size="small" />
-                    <HintChip label="1920×1080" hint="Landscape 16:9" active={qp.runwayImageRatio === '1920:1080'} onClick={() => setPictures({ runwayImageRatio: '1920:1080' })} size="small" />
-                    <HintChip label="1080×1920" hint="Portrait 9:16" active={qp.runwayImageRatio === '1080:1920'} onClick={() => setPictures({ runwayImageRatio: '1080:1920' })} size="small" />
-                    <HintChip label="1440×1080" hint="Standard 4:3" active={qp.runwayImageRatio === '1440:1080'} onClick={() => setPictures({ runwayImageRatio: '1440:1080' })} size="small" />
-                    <HintChip label="1280×720" hint="HD 16:9" active={qp.runwayImageRatio === '1280:720'} onClick={() => setPictures({ runwayImageRatio: '1280:720' })} size="small" />
+                    <HintChip label="1024×1024" hint="Square 1:1" active={qp.runwayImageRatio === '1024:1024'} onClick={() => setPictures({ runwayImageRatio: qp.runwayImageRatio === '1024:1024' ? undefined : '1024:1024' })} size="small" />
+                    <HintChip label="1920×1080" hint="Landscape 16:9" active={qp.runwayImageRatio === '1920:1080'} onClick={() => setPictures({ runwayImageRatio: qp.runwayImageRatio === '1920:1080' ? undefined : '1920:1080' })} size="small" />
+                    <HintChip label="1080×1920" hint="Portrait 9:16" active={qp.runwayImageRatio === '1080:1920'} onClick={() => setPictures({ runwayImageRatio: qp.runwayImageRatio === '1080:1920' ? undefined : '1080:1920' })} size="small" />
+                    <HintChip label="1440×1080" hint="Standard 4:3" active={qp.runwayImageRatio === '1440:1080'} onClick={() => setPictures({ runwayImageRatio: qp.runwayImageRatio === '1440:1080' ? undefined : '1440:1080' })} size="small" />
+                    <HintChip label="1280×720" hint="HD 16:9" active={qp.runwayImageRatio === '1280:720'} onClick={() => setPictures({ runwayImageRatio: qp.runwayImageRatio === '1280:720' ? undefined : '1280:720' })} size="small" />
                   </div>
                 </div>
-                {/* Model */}
-                <div>
-                  <Label>Model</Label>
-                  <div className="flex gap-2">
-                    <HintChip label="Gen-4 Image" hint="Best quality" active={qp.runwayImageModel === 'gen4_image'} onClick={() => setPictures({ runwayImageModel: 'gen4_image' })} size="small" />
-                    <HintChip label="Gen-4 Turbo" hint="Faster" active={qp.runwayImageModel === 'gen4_image_turbo'} onClick={() => setPictures({ runwayImageModel: 'gen4_image_turbo' })} size="small" />
-                  </div>
-                </div>
-                <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
+                <div className="col-span-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
                   <p className="text-xs text-amber-200">
                     <strong>⚠️ Requires reference image.</strong> Upload 1-3 images. Click the purple tags on thumbnails to insert them, or we'll auto-add them for you.
                   </p>
@@ -1711,86 +1757,6 @@ export function MenuPictures({
               </div>
             </div>
           )}
-
-          {/* Advanced */}
-        <AdvancedSection>
-          <div>
-              <Label>Brand colors</Label>
-              <div className="flex flex-wrap gap-2">
-              <HintChip
-                  label={qp.lockBrandColors ? 'Locked' : 'Flexible'}
-                hint={BRAND_LOCK_HINT}
-                active={qp.lockBrandColors}
-                  onClick={() => setPictures({ lockBrandColors: !qp.lockBrandColors })}
-                  size="small"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label>Backdrop</Label>
-              <div className="flex flex-wrap gap-2">
-              {PICTURE_BACKDROP_OPTIONS.map((item) => (
-                <HintChip
-                  key={item}
-                  label={item}
-                  hint={PICTURE_BACKDROP_HINTS[item]}
-                  active={qp.backdrop === item}
-                    onClick={() => setPictures({ backdrop: item })}
-                  size="small"
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <Label>Lighting</Label>
-              <div className="flex flex-wrap gap-2">
-              {PICTURE_LIGHTING_OPTIONS.map((item) => (
-                <HintChip
-                  key={item}
-                  label={item}
-                  hint={PICTURE_LIGHTING_HINTS[item]}
-                  active={qp.lighting === item}
-                    onClick={() => setPictures({ lighting: item })}
-                  size="small"
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-              <Label>Quality</Label>
-              <div className="flex flex-wrap gap-2">
-              {PICTURE_QUALITY_OPTIONS.map((item) => (
-                <HintChip
-                  key={item}
-                  label={item}
-                  hint={PICTURE_QUALITY_HINTS[item]}
-                  active={qp.quality === item}
-                    onClick={() => setPictures({ quality: item })}
-                  size="small"
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-              <Label>Avoid</Label>
-              <div className="flex flex-wrap gap-2">
-              {PICTURE_NEGATIVE_OPTIONS.map((item) => (
-                <HintChip
-                  key={item}
-                  label={item}
-                  hint={PICTURE_NEGATIVE_HINTS[item]}
-                  active={qp.negative === item}
-                    onClick={() => setPictures({ negative: item })}
-                  size="small"
-                />
-              ))}
-            </div>
-          </div>
-        </AdvancedSection>
 
           {/* Validation CTA */}
           <div className="pt-1">
@@ -1881,43 +1847,11 @@ export function MenuPictures({
 
 // MenuVideoLegacy removed - see MenuVideo.tsx for implementation
 
-function AdvancedSection({ children }: { children: ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
-
+function Label({ children, required }: { children: ReactNode; required?: boolean }) {
   return (
-    <div className="mt-5 rounded-2xl border border-white/10 bg-white/5">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between rounded-2xl px-4 py-3 transition focus:outline-none focus:ring-2 focus:ring-blue-500/35"
-      >
-        <span className="text-sm font-medium text-white/90">Advanced</span>
-        <ChevronRight
-          className={cn(
-            'h-4 w-4 text-white/60 transition-transform duration-200',
-            isOpen && 'rotate-90 text-white/80'
-          )}
-        />
-      </button>
-      <AnimatePresence initial={false}>
-        {isOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-            className="overflow-hidden"
-          >
-            <div className="space-y-4 px-4 pb-4 pt-1">
-            {children}
-          </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white/50">
+      {children}
+      {required && <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" title="Required" />}
     </div>
   );
-}
-
-function Label({ children }: { children: ReactNode }) {
-  return <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/50">{children}</div>;
 }

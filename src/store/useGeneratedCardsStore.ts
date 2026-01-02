@@ -4,12 +4,13 @@
  */
 
 import { create } from 'zustand';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { CardKey } from '../types';
 import type { GeneratedCard } from '../lib/cardPersistence';
 import {
   loadUserGenerations,
   loadAllUserGenerations,
+  loadAllSnapshots,
   saveGeneration,
   updateCardPosition,
   deleteGeneration,
@@ -23,7 +24,8 @@ import {
 
 interface GeneratedCardsState {
   // State
-  cards: GeneratedCard[];
+  cards: GeneratedCard[];  // Active cards (not hidden) for main canvas
+  allCards: GeneratedCard[];  // All cards including hidden for history panel
   isLoading: boolean;
   isHydrated: boolean;
   error: string | null;
@@ -51,18 +53,50 @@ interface GeneratedCardsState {
 export const useGeneratedCardsStore = create<GeneratedCardsState>((set, get) => ({
   // Initial state
   cards: [],
+  allCards: [],
   isLoading: false,
   isHydrated: false,
   error: null,
   currentBatchId: null,
 
   // Load visible cards from database (not hidden)
+  // Uses two-phase loading: fast metadata first, then snapshots progressively
   loadCards: async () => {
     set({ isLoading: true, error: null });
     
     try {
+      // Phase 1: Load lightweight card metadata (fast)
       const cards = await loadUserGenerations();
-      set({ cards, isLoading: false, isHydrated: true });
+      const existingSnapshotById = new Map(get().cards.map((c) => [c.generationId, c.snapshot] as const));
+      const cardsWithSnapshots = cards.map((card) => {
+        const existingSnapshot = existingSnapshotById.get(card.generationId);
+        if (existingSnapshot?.data) {
+          return { ...card, snapshot: existingSnapshot };
+        }
+        return card;
+      });
+
+      set({ cards: cardsWithSnapshots, isLoading: false, isHydrated: true });
+      
+      // Phase 2: Load all snapshots in single batch request
+      const cardsNeedingSnapshots = cardsWithSnapshots.filter(c => !c.snapshot?.data);
+      if (cardsNeedingSnapshots.length > 0) {
+        console.log(`[CardsStore] Loading ${cardsNeedingSnapshots.length} snapshots in batch...`);
+        
+        const snapshotMap = await loadAllSnapshots();
+        
+        // Update all cards with their snapshots
+        set((state) => ({
+          cards: state.cards.map((card) => {
+            const snapshot = snapshotMap.get(card.generationId);
+            if (snapshot) {
+              return { ...card, snapshot };
+            }
+            return card;
+          })
+        }));
+        console.log('[CardsStore] All snapshots loaded');
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load cards';
       set({ error: errorMessage, isLoading: false });
@@ -70,13 +104,13 @@ export const useGeneratedCardsStore = create<GeneratedCardsState>((set, get) => 
     }
   },
 
-  // Load ALL cards including hidden (for history panel)
+  // Load ALL cards including hidden (for history panel) - stores in allCards, not cards
   loadAllCards: async () => {
     set({ isLoading: true, error: null });
     
     try {
-      const cards = await loadAllUserGenerations();
-      set({ cards, isLoading: false, isHydrated: true });
+      const allCards = await loadAllUserGenerations();
+      set({ allCards, isLoading: false, isHydrated: true });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load all cards';
       set({ error: errorMessage, isLoading: false });
@@ -131,8 +165,9 @@ export const useGeneratedCardsStore = create<GeneratedCardsState>((set, get) => 
         updatedAt: new Date().toISOString(),
       };
 
-      // Optimistically update UI
-      set({ cards: [...cards, newCard] });
+      // Optimistically update UI - add to both cards and allCards
+      const { allCards } = get();
+      set({ cards: [...cards, newCard], allCards: [...allCards, newCard] });
 
       return generationId;
     } catch (error) {
@@ -145,16 +180,19 @@ export const useGeneratedCardsStore = create<GeneratedCardsState>((set, get) => 
 
   // Remove a card (permanent delete)
   removeCard: async (generationId) => {
-    const { cards } = get();
+    const { cards, allCards } = get();
     
-    // Optimistically remove from UI
-    set({ cards: cards.filter(c => c.generationId !== generationId) });
+    // Optimistically remove from both lists
+    set({ 
+      cards: cards.filter(c => c.generationId !== generationId),
+      allCards: allCards.filter(c => c.generationId !== generationId),
+    });
 
     try {
       await deleteGeneration(generationId);
     } catch (error) {
       // Rollback on error
-      set({ cards });
+      set({ cards, allCards });
       const errorMessage = error instanceof Error ? error.message : 'Failed to remove card';
       set({ error: errorMessage });
       console.error('Failed to remove card:', error);
@@ -164,16 +202,19 @@ export const useGeneratedCardsStore = create<GeneratedCardsState>((set, get) => 
 
   // Hide a card from main screen (keeps in history)
   hideCard: async (generationId) => {
-    const { cards } = get();
+    const { cards, allCards } = get();
     
-    // Optimistically remove from UI
-    set({ cards: cards.filter(c => c.generationId !== generationId) });
+    // Optimistically remove from main canvas, mark as hidden in allCards
+    set({ 
+      cards: cards.filter(c => c.generationId !== generationId),
+      allCards: allCards.map(c => c.generationId === generationId ? { ...c, isHidden: true } : c),
+    });
 
     try {
       await hideCardGeneration(generationId);
     } catch (error) {
       // Rollback on error
-      set({ cards });
+      set({ cards, allCards });
       const errorMessage = error instanceof Error ? error.message : 'Failed to hide card';
       set({ error: errorMessage });
       console.error('Failed to hide card:', error);
@@ -183,14 +224,13 @@ export const useGeneratedCardsStore = create<GeneratedCardsState>((set, get) => 
 
   // Restore a hidden card to main screen
   restoreCard: async (generationId) => {
-    const { cards } = get();
-    
     try {
       await restoreCardGeneration(generationId);
-      
-      // Reload cards to show the restored one
-      const updatedCards = await loadUserGenerations();
-      set({ cards: updatedCards });
+
+      // Reload both lists using store actions.
+      // loadCards does two-phase loading so we don't wipe already-loaded snapshots.
+      await get().loadCards();
+      await get().loadAllCards();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to restore card';
       set({ error: errorMessage });
@@ -315,10 +355,13 @@ export const useGeneratedCardsStore = create<GeneratedCardsState>((set, get) => 
 // Helper hook for loading cards on mount
 export function useLoadGeneratedCards() {
   const { loadCards, isHydrated } = useGeneratedCardsStore();
+  const didLoadRef = useRef(false);
 
   // Load cards on mount if not already hydrated
   useEffect(() => {
+    if (didLoadRef.current) return;
     if (!isHydrated) {
+      didLoadRef.current = true;
       loadCards();
     }
   }, [isHydrated, loadCards]);

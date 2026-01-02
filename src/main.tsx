@@ -14,8 +14,8 @@ import { EdgeBlendSettingsProvider } from './contexts/EdgeBlendSettingsContext'
 import ErrorBoundary from './ErrorBoundary'
 import { smartZoomAdapter } from './utils/smartZoomAdapter'
 
-// Use basename only in production (GitHub Pages), not in local dev
-const basename = import.meta.env.MODE === 'production' ? '/Marketing-Engine' : '';
+// No basename needed for Vercel deployment
+const basename = '';
 
 // Debug log to verify app is loading
 console.log('🚀 Marketing Engine starting...', {

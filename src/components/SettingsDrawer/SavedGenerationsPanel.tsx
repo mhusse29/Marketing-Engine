@@ -3,13 +3,14 @@
  * Interactive gallery showing all user's saved generations with full previews
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RotateCcw, Trash2, Calendar, Search, X, Maximize2, EyeOff, ChevronLeft, ChevronRight, ImageIcon as ImageIconLucide, Download } from 'lucide-react';
 import { useGeneratedCardsStore } from '../../store/useGeneratedCardsStore';
 import type { CardKey } from '../../types';
 import type { GeneratedCard } from '../../lib/cardPersistence';
+import { loadGenerationSnapshotCompact, loadUserPicturePrompts } from '../../lib/cardPersistence';
 import PlatformIcon from '../../ui/PlatformIcon';
 import { YouTubeVideoPlayer } from '../Cards/YouTubeVideoPlayer';
 
@@ -30,6 +31,149 @@ function generateSmartVideoTitle(prompt?: string): string {
   const firstPhrase = prompt.split(/[,.]/)[0]?.trim() || prompt.trim();
   if (firstPhrase.length > 50) return firstPhrase.slice(0, 47) + '...';
   return firstPhrase;
+}
+
+function generateSmartPictureTitle(prompt?: string): string {
+  if (!prompt || prompt.trim().length === 0) return 'Generated image';
+
+  const cleaned = prompt
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/^\s*(generate|create|make|design|produce)\b\s*/i, '')
+    .replace(/\b--(ar|aspect|seed|stylize|style|v|niji)\b[^,;.]*/gi, '')
+    .replace(/\b(negative prompt|neg prompt)\b\s*:?\s*[^.]+/gi, '')
+    .trim();
+
+  const lower = cleaned.toLowerCase();
+
+  const titleCase = (value: string) =>
+    value
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+
+  const styleKeywords: Array<[string, string]> = [
+    ['editorial', 'Editorial'],
+    ['cinematic', 'Cinematic'],
+    ['photorealistic', 'Photoreal'],
+    ['hyperrealistic', 'Photoreal'],
+    ['high-end', 'Luxury'],
+    ['luxury', 'Luxury'],
+    ['minimalist', 'Minimal'],
+    ['vintage', 'Vintage'],
+    ['noir', 'Noir'],
+    ['dramatic', 'Dramatic'],
+    ['studio', 'Studio'],
+  ];
+
+  const subjectKeywords: Array<[string, string]> = [
+    ['photoshoot', 'Photoshoot'],
+    ['editorial shoot', 'Photoshoot'],
+    ['portrait', 'Portrait'],
+    ['fashion', 'Fashion'],
+    ['model', 'Fashion'],
+    ['runway', 'Fashion'],
+    ['product', 'Product'],
+    ['perfume', 'Perfume'],
+    ['watch', 'Watch'],
+    ['sneaker', 'Sneakers'],
+    ['car', 'Car'],
+    ['automotive', 'Car'],
+    ['scene', 'Scene'],
+    ['landscape', 'Landscape'],
+    ['city', 'City'],
+    ['desert', 'Desert'],
+    ['beach', 'Beach'],
+    ['mountain', 'Mountains'],
+    ['forest', 'Forest'],
+  ];
+
+  const style = styleKeywords.find(([k]) => lower.includes(k))?.[1];
+  let subject = subjectKeywords.find(([k]) => lower.includes(k))?.[1];
+
+  // Try to extract a short subject phrase (best effort)
+  const extractPhrase = (re: RegExp) => {
+    const match = cleaned.match(re);
+    if (!match?.[1]) return undefined;
+    return match[1]
+      .replace(/\b(a|an|the|with|and|of|in|on|at|for)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const subjectPhrase =
+    extractPhrase(/\b(?:photo|photograph|portrait|shot|image)\b[^.]*?\bof\s+([^,.;]+)/i) ||
+    extractPhrase(/\bof\s+([^,.;]+)/i);
+
+  const settingPhrase =
+    extractPhrase(/\b(?:in|at|on)\s+([^,.;]+)/i) ||
+    extractPhrase(/\b(?:inside|within|near)\s+([^,.;]+)/i);
+
+  const stopWords = new Set([
+    'high',
+    'end',
+    'high-end',
+    'ultra',
+    'realistic',
+    'highly',
+    'cinematic',
+    'editorial',
+    'magazine',
+    'style',
+    'photograph',
+    'photography',
+    'photo',
+    'shot',
+    'image',
+    'scene',
+    'set',
+  ]);
+
+  const settingKeywords: Array<[string, string]> = [
+    ['studio', 'Studio'],
+    ['desert', 'Desert'],
+    ['beach', 'Beach'],
+    ['mountain', 'Mountains'],
+    ['forest', 'Forest'],
+    ['city', 'City'],
+    ['street', 'Street'],
+    ['indoors', 'Indoor'],
+    ['outdoors', 'Outdoor'],
+    ['sunset', 'Sunset'],
+    ['night', 'Night'],
+    ['golden hour', 'Golden Hour'],
+  ];
+
+  const pickKeywords = (phrase?: string, max = 2) => {
+    if (!phrase) return [] as string[];
+    return phrase
+      .split(/\s+/)
+      .map((w) => w.replace(/[^a-zA-Z0-9'-]/g, ''))
+      .filter((w) => w.length > 1)
+      .filter((w) => !stopWords.has(w.toLowerCase()))
+      .slice(0, max);
+  };
+
+  const subjectTokens = pickKeywords(subjectPhrase, 2);
+  if (!subject && subjectTokens.length > 0) {
+    subject = titleCase(subjectTokens.join(' '));
+  }
+
+  const settingFromKeyword = settingKeywords.find(([k]) => lower.includes(k))?.[1];
+  const settingFromPhrase = pickKeywords(settingPhrase, 1)[0];
+  const setting = settingFromKeyword || (settingFromPhrase ? titleCase(settingFromPhrase) : undefined);
+
+  const parts: string[] = [];
+  if (style) parts.push(style);
+  if (subject) parts.push(subject);
+  if (setting) parts.push(setting);
+
+  // If we still don't have enough signal, fall back to a generic but still "headline"-like title.
+  if (parts.length === 0) return 'Generated image';
+
+  // Keep it short and headline-like (2–4 words). Never return the original prompt.
+  return parts.slice(0, 4).join(' ');
 }
 
 function getVideoModelBadge(provider?: string, model?: string): string {
@@ -68,11 +212,19 @@ type SortOption = 'date-desc' | 'date-asc' | 'type' | 'hidden';
 type FilterOption = 'all' | 'content' | 'pictures' | 'video';
 
 export default function SavedGenerationsPanel() {
-  const { cards, removeCard, restoreCard, isLoading, loadAllCards } = useGeneratedCardsStore();
+  const { allCards, removeCard, restoreCard, isLoading, loadAllCards } = useGeneratedCardsStore();
+  const didLoadRef = useRef(false);
+  const [picturePromptMap, setPicturePromptMap] = useState<Map<string, string>>(new Map());
   
   // Load all cards (including hidden) when component mounts
   useEffect(() => {
+    if (didLoadRef.current) return;
+    didLoadRef.current = true;
     loadAllCards();
+
+    loadUserPicturePrompts(200)
+      .then((map) => setPicturePromptMap(map))
+      .catch(() => setPicturePromptMap(new Map()));
   }, [loadAllCards]);
   const [sortBy, setSortBy] = useState<SortOption>('date-desc');
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
@@ -81,7 +233,7 @@ export default function SavedGenerationsPanel() {
 
   // Filter and sort cards
   const filteredCards = useMemo(() => {
-    let result = [...cards];
+    let result = [...allCards];
 
     // Apply type filter
     if (filterBy !== 'all') {
@@ -93,8 +245,9 @@ export default function SavedGenerationsPanel() {
       const query = searchQuery.toLowerCase();
       result = result.filter(card => {
         const snapshot = card.snapshot;
-        const dataStr = JSON.stringify(snapshot.data).toLowerCase();
-        return dataStr.includes(query) || card.cardType.includes(query);
+        const dataStr = JSON.stringify(snapshot?.data ?? '').toLowerCase();
+        const picturePrompt = card.cardType === 'pictures' ? (picturePromptMap.get(card.generationId) || '') : '';
+        return dataStr.includes(query) || picturePrompt.toLowerCase().includes(query) || card.cardType.includes(query);
       });
     }
 
@@ -116,19 +269,19 @@ export default function SavedGenerationsPanel() {
     });
 
     return result;
-  }, [cards, filterBy, sortBy, searchQuery]);
+  }, [allCards, filterBy, picturePromptMap, searchQuery, sortBy]);
 
   const stats = useMemo(() => {
     return {
-      total: cards.length,
-      content: cards.filter(c => c.cardType === 'content').length,
-      pictures: cards.filter(c => c.cardType === 'pictures').length,
-      video: cards.filter(c => c.cardType === 'video').length,
-      'media-plan': cards.filter(c => c.cardType === 'media-plan').length,
-      hidden: cards.filter(c => c.isHidden).length,
-      visible: cards.filter(c => !c.isHidden).length,
+      total: allCards.length,
+      content: allCards.filter((c: GeneratedCard) => c.cardType === 'content').length,
+      pictures: allCards.filter((c: GeneratedCard) => c.cardType === 'pictures').length,
+      video: allCards.filter((c: GeneratedCard) => c.cardType === 'video').length,
+      'media-plan': allCards.filter((c: GeneratedCard) => c.cardType === 'media-plan').length,
+      hidden: allCards.filter((c: GeneratedCard) => c.isHidden).length,
+      visible: allCards.filter((c: GeneratedCard) => !c.isHidden).length,
     };
-  }, [cards]);
+  }, [allCards]);
 
   if (isLoading) {
     return (
@@ -242,9 +395,10 @@ export default function SavedGenerationsPanel() {
               <GenerationCard
                 key={card.generationId}
                 card={card}
+                picturePrompt={picturePromptMap.get(card.generationId)}
                 onDelete={removeCard}
                 onRestore={restoreCard}
-                onView={setSelectedCard}
+                onView={(card) => setSelectedCard(card)}
               />
             ))}
           </AnimatePresence>
@@ -277,14 +431,15 @@ interface GenerationCardProps {
   onDelete: (id: string) => void;
   onRestore: (id: string) => void;
   onView: (card: GeneratedCard) => void;
+  picturePrompt?: string;
 }
 
-function GenerationCard({ card, onDelete, onRestore, onView }: GenerationCardProps) {
+function GenerationCard({ card, onDelete, onRestore, onView, picturePrompt }: GenerationCardProps) {
   const cardTypeColors: Record<CardKey, string> = {
     content: 'bg-blue-500/20 text-blue-200 border-blue-500/30',
     pictures: 'bg-purple-500/20 text-purple-200 border-purple-500/30',
-    video: 'bg-pink-500/20 text-pink-200 border-pink-500/30',
-    'media-plan': 'bg-emerald-500/20 text-emerald-200 border-emerald-500/30',
+    video: 'bg-emerald-500/20 text-emerald-200 border-emerald-500/30',
+    'media-plan': 'bg-amber-500/20 text-amber-200 border-amber-500/30',
   };
 
   const formatDate = (dateStr: string) => {
@@ -304,6 +459,13 @@ function GenerationCard({ card, onDelete, onRestore, onView }: GenerationCardPro
 
   const getPreviewText = (card: GeneratedCard): string => {
     const { cardType, snapshot } = card;
+
+    if (!snapshot?.data) {
+      if (cardType === 'pictures') {
+        return generateSmartPictureTitle(picturePrompt);
+      }
+      return cardType === 'media-plan' ? 'Media plan' : `${cardType} generation`;
+    }
     
     if (cardType === 'content') {
       const data = snapshot.data as { variants?: Array<{ headline?: string; primary_text?: string }> };
@@ -319,16 +481,8 @@ function GenerationCard({ card, onDelete, onRestore, onView }: GenerationCardPro
       };
       
       // Extract prompt from first version
-      const prompt = data.versions?.[0]?.meta?.prompt || data.versions?.[0]?.assets?.[0]?.prompt;
-      
-      if (prompt) {
-        // Create short title from first 5 words
-        const words = prompt.trim().split(/\s+/);
-        const shortTitle = words.slice(0, 5).join(' ');
-        return shortTitle + (words.length > 5 ? '...' : '');
-      }
-      
-      return 'Generated image';
+      const prompt = data.versions?.[0]?.meta?.prompt || data.versions?.[0]?.assets?.[0]?.prompt || picturePrompt;
+      return generateSmartPictureTitle(prompt);
     }
     
     if (cardType === 'video') {
@@ -378,6 +532,12 @@ function GenerationCard({ card, onDelete, onRestore, onView }: GenerationCardPro
                 muted
                 playsInline
               />
+            ) : card.cardType === 'pictures' ? (
+              <img
+                src={card.thumbnailUrl}
+                alt="Preview"
+                className="h-full w-full object-contain object-center bg-black/10"
+              />
             ) : (
               <img
                 src={card.thumbnailUrl}
@@ -412,18 +572,16 @@ function GenerationCard({ card, onDelete, onRestore, onView }: GenerationCardPro
               )}
             </div>
             <div className="flex items-center gap-1">
-              {card.isHidden && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRestore(card.generationId);
-                  }}
-                  className="p-1.5 rounded-lg bg-white/0 text-white/40 hover:bg-emerald-500/20 hover:text-emerald-300 transition-all"
-                  title="Restore to main screen"
-                >
-                  <RotateCcw size={12} />
-                </button>
-              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRestore(card.generationId);
+                }}
+                className="p-1.5 rounded-lg bg-white/0 text-white/40 hover:bg-emerald-500/20 hover:text-emerald-300 transition-all"
+                title={card.isHidden ? "Restore to main screen" : "Show on main screen"}
+              >
+                <RotateCcw size={12} />
+              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -464,9 +622,43 @@ interface FullViewModalProps {
 function FullViewModal({ card, onClose, onDelete, onRestore }: FullViewModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [expandedRefImage, setExpandedRefImage] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState(card.snapshot);
+  const [isSnapshotLoading, setIsSnapshotLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSnapshot(card.snapshot);
+
+    if (card.snapshot?.data) return;
+
+    setIsSnapshotLoading(true);
+    loadGenerationSnapshotCompact(card.generationId)
+      .then((loaded) => {
+        if (cancelled) return;
+        if (loaded) setSnapshot(loaded);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsSnapshotLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [card.generationId]);
   
   const renderContent = () => {
-    const { cardType, snapshot } = card;
+    const { cardType } = card;
+
+    if (!snapshot?.data) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-white/60 text-sm">
+            {isSnapshotLoading ? 'Loading generation…' : 'No data available'}
+          </div>
+        </div>
+      );
+    }
 
     if (cardType === 'content') {
       const data = snapshot.data as { variants?: Array<{ platform?: string; headline?: string; primary_text?: string; body?: string }> };

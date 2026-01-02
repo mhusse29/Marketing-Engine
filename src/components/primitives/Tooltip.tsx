@@ -6,9 +6,10 @@ type TooltipProps = {
   children: ReactNode;
   delay?: number;
   hideDelay?: number;
+  side?: 'top' | 'bottom';
 };
 
-export default function Tooltip({ label, children, delay = 400, hideDelay = 100 }: TooltipProps) {
+export default function Tooltip({ label, children, delay = 400, hideDelay = 100, side = 'top' }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const anchorRef = useRef<HTMLSpanElement>(null);
@@ -21,8 +22,9 @@ export default function Tooltip({ label, children, delay = 400, hideDelay = 100 
     const anchor = anchorRef.current;
     if (!anchor) return;
     const rect = anchor.getBoundingClientRect();
-    setCoords({ x: rect.left + rect.width / 2, y: rect.top });
-  }, []);
+    const y = side === 'bottom' ? rect.bottom : rect.top;
+    setCoords({ x: rect.left + rect.width / 2, y });
+  }, [side]);
 
   useEffect(() => {
     const anchor = anchorRef.current;
@@ -105,7 +107,12 @@ export default function Tooltip({ label, children, delay = 400, hideDelay = 100 
       {children}
       {open &&
         createPortal(
-          <div role="tooltip" id={tooltipId} className="ui-tip" style={{ left: coords.x, top: coords.y }}>
+          <div 
+            role="tooltip" 
+            id={tooltipId} 
+            className={side === 'bottom' ? 'ui-tip ui-tip-bottom' : 'ui-tip'} 
+            style={{ left: coords.x, top: coords.y }}
+          >
             {label}
             <i className="ui-tip-arrow" />
           </div>,

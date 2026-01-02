@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { CardKey, ContentGenerationMeta, ContentVariantResult } from './types'
 import { generationProgressActions } from '@/store/generationProgress'
 
-const API_BASE: string = ((import.meta.env?.VITE_API_BASE as string | undefined) ?? 'http://localhost:8787').replace(/\/$/, '')
+const API_BASE: string = ((import.meta.env?.VITE_API_URL as string | undefined) ?? 'http://localhost:8787').replace(/\/$/, '')
 const EVENTS_PATH: string = (import.meta.env?.VITE_EVENTS_PATH as string | undefined) ?? '/events'
 const EVENTS_PATH_NORMALIZED = EVENTS_PATH.startsWith('/') ? EVENTS_PATH : `/${EVENTS_PATH}`
 

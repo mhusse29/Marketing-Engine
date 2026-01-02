@@ -42,9 +42,12 @@ export type PicAspect = '1:1' | '4:5' | '16:9' | '2:3' | '3:2' | '7:9' | '9:7';
 export type PicturesProvider = 'flux' | 'stability' | 'openai' | 'ideogram' | 'gemini' | 'runway';
 export type PicturesProviderKey = PicturesProvider | 'auto';
 export type PictureOutputFormat = 'png' | 'jpeg' | 'webp';
-export type FluxMode = 'standard' | 'ultra';
+export type OpenAIImageModel = 'gpt-image-1.5' | 'gpt-image-1' | 'gpt-image-1-mini';
+export type OpenAIImageQuality = 'low' | 'medium' | 'high' | 'auto';
+export type OpenAIImageBackground = 'transparent' | 'opaque' | 'auto';
+export type FluxMode = 'standard' | 'ultra' | 'flux2-pro' | 'flux2-flex';
 export type StabilityModel = 'large-turbo' | 'large' | 'medium';
-export type IdeogramModel = 'v1' | 'v2' | 'turbo';
+export type IdeogramModel = 'v1' | 'v1-turbo' | 'v2' | 'v2-turbo';
 export type IdeogramMagicPrompt = 'auto' | 'on' | 'off';
 export type IdeogramStyleType =
   | 'auto'
@@ -58,8 +61,8 @@ export type IdeogramStyleType =
   | 'poster'
   | 'product';
 
-// Gemini Imagen 3 types
-export type GeminiModel = 'gemini-3-pro-image-preview' | 'gemini-2.5-flash-preview-image';
+// Gemini Imagen types
+export type GeminiModel = 'gemini-3-pro-image-preview' | 'gemini-2.5-flash-image-preview' | 'imagen-4.0-generate-001' | 'imagen-4.0-ultra-generate-001' | 'imagen-4.0-fast-generate-001';
 export type GeminiResolution = '1K' | '2K' | '4K';
 export type GeminiAspectRatio = '1:1' | '2:3' | '3:2' | '3:4' | '4:3' | '4:5' | '5:4' | '9:16' | '16:9' | '21:9';
 
@@ -73,17 +76,21 @@ export type VideoAspect = '9:16' | '1:1' | '16:9';
 // Runway Video Models - Supported by API key
 export type RunwayModel = 
   | 'gen4_turbo'   // Gen-4 Turbo - Fast, high quality (5s or 10s)
-  | 'gen3a_turbo'  // Gen-3 Alpha Turbo - Legacy, reliable (5s or 10s)
-  | 'veo3';        // Google Veo 3 via Runway (8s fixed)
+  | 'gen3a_turbo'; // Gen-3 Alpha Turbo - Legacy, reliable (5s or 10s)
+
+// Google Veo Video Models - Native Google API (62.5% cheaper than via Runway)
+export type GoogleVeoModel = 
+  | 'veo-3'        // Google Veo 3 - High quality ($0.40/sec)
+  | 'veo-3-fast';  // Google Veo 3 Fast - Budget-friendly ($0.15/sec)
 
 export type LumaModel = 'ray-2'; // Luma Ray model (ray-2 is currently available)
-export type VideoModel = RunwayModel | LumaModel;
+export type VideoModel = RunwayModel | LumaModel | GoogleVeoModel;
 
 // Duration types per model
 export type Gen4TurboDuration = 5 | 10;  // Gen-4 Turbo supports 5s or 10s
 export type Gen3aTurboDuration = 5 | 10; // Gen-3 Alpha Turbo supports 5s or 10s
-export type Veo3Duration = 8;            // Veo-3 fixed 8-second duration
-export type VideoDuration = Gen4TurboDuration | Gen3aTurboDuration | Veo3Duration;
+export type GoogleVeoDuration = 5 | 6 | 7 | 8; // Google Veo 3 supports 5-8 seconds
+export type VideoDuration = Gen4TurboDuration | Gen3aTurboDuration | GoogleVeoDuration;
 export type LumaDuration = '5s' | '9s'; // Luma Ray-2 duration options
 export type LumaResolution = '720p' | '1080p'; // Luma resolution options
 
@@ -105,7 +112,37 @@ export type LumaQuality = 'standard' | 'high' | 'premium';
 export type LumaColorGrading = 'natural' | 'warm' | 'cool' | 'dramatic' | 'desaturated';
 export type LumaFilmLook = 'digital' | '35mm' | '16mm' | 'vintage';
 export type RunwayRatio = Gen4TurboRatio | Gen3aTurboRatio;
-export type VideoProvider = 'runway' | 'luma' | 'auto';
+export type VideoProvider = 'runway' | 'luma' | 'google' | 'sora' | 'auto';
+
+// OpenAI Sora-specific types
+export type SoraModel = 'sora-2' | 'sora-2-pro';
+export type SoraQuality = 'standard' | 'hd';
+export type SoraDuration = 5 | 10 | 15 | 20;
+export type SoraSize = '720x1280' | '1280x720' | '1024x1792' | '1792x1024';
+
+// Sora model configuration metadata
+export type SoraModelConfig = {
+  id: SoraModel;
+  name: string;
+  description: string;
+  durations: SoraDuration[];
+  sizes: SoraSize[];
+  features: string[];
+  costPerSecond: number;
+  maxPromptLength: number;
+};
+
+// Google Veo model configuration metadata
+export type GoogleVeoModelConfig = {
+  id: GoogleVeoModel;
+  name: string;
+  description: string;
+  durations: number[];
+  aspects: string[];
+  features: string[];
+  costPerSecond: number;
+  maxPromptLength: number;
+};
 
 // Runway model configuration metadata
 export type RunwayModelConfig = {
@@ -181,52 +218,45 @@ export type PicturesValidatedPrompts = Partial<Record<PicturesProvider, string>>
 export type PicturesQuickProps = {
   imageProvider: PicturesProviderKey;
   mode: 'images' | 'prompt';
-  style: PicStyle;
-  aspect: PicAspect;
+  style?: PicStyle; // Optional - user selects
+  aspect?: PicAspect; // Optional - user selects (required for generation)
   promptText: string;
   promptImages?: string[]; // Base64 images for reference (FLUX: 1, Stability: multiple, Ideogram: up to 3)
   validated: boolean;
-  // DALL-E settings
-  dalleQuality: 'standard' | 'hd';
-  dalleStyle: 'vivid' | 'natural';
-  // FLUX settings
-  fluxMode: FluxMode;
-  fluxGuidance: number;
-  fluxSteps: number;
-  fluxPromptUpsampling: boolean;
-  fluxRaw: boolean;
-  fluxOutputFormat: 'jpeg' | 'png' | 'webp';
-  // Stability settings
-  stabilityModel: StabilityModel;
-  stabilityCfg: number;
-  stabilitySteps: number;
-  stabilityNegativePrompt: string;
-  stabilityStylePreset: string;
-  // Ideogram settings
-  ideogramModel: IdeogramModel;
-  ideogramMagicPrompt: boolean;
-  ideogramStyleType: 'AUTO' | 'GENERAL' | 'REALISTIC' | 'DESIGN' | 'RENDER_3D' | 'ANIME';
-  ideogramNegativePrompt: string;
-  // Gemini Imagen 3 settings
-  geminiModel: GeminiModel;
-  geminiResolution: GeminiResolution;
-  geminiThinking: boolean; // Enable thinking mode for complex prompts
-  geminiGrounding: boolean; // Enable Google Search grounding
-  // Runway Gen-4 Image settings
-  runwayImageModel: RunwayImageModel;
-  runwayImageRatio: RunwayImageRatio;
-  // Advanced settings
-  lockBrandColors: boolean;
-  backdrop?: 'Clean' | 'Gradient' | 'Real-world' | string;
-  lighting?: 'Soft' | 'Hard' | 'Neon' | string;
-  negative?: string;
-  quality?: 'High detail' | 'Sharp' | 'Minimal noise' | string;
-  composition?: string;
-  camera?: string;
-  mood?: string;
-  colourPalette?: string;
-  finish?: string;
-  texture?: string;
+  // DALL-E settings - all optional, user selects
+  dalleQuality?: 'standard' | 'hd'; // Required for DALL-E generation
+  dalleStyle?: 'vivid' | 'natural';
+  openaiImageModel?: OpenAIImageModel;
+  openaiQuality?: OpenAIImageQuality;
+  openaiOutputFormat?: PictureOutputFormat;
+  openaiBackground?: OpenAIImageBackground;
+  openaiOutputCompression?: number;
+  // FLUX settings - all optional, user selects
+  fluxMode?: FluxMode; // Required for FLUX generation
+  fluxGuidance?: number;
+  fluxSteps?: number;
+  fluxPromptUpsampling?: boolean;
+  fluxRaw?: boolean;
+  fluxOutputFormat?: 'jpeg' | 'png' | 'webp';
+  // Stability settings - all optional, user selects
+  stabilityModel?: StabilityModel; // Required for Stability generation
+  stabilityCfg?: number;
+  stabilitySteps?: number;
+  stabilityNegativePrompt?: string;
+  stabilityStylePreset?: string;
+  // Ideogram settings - all optional, user selects
+  ideogramModel?: IdeogramModel; // Required for Ideogram generation
+  ideogramMagicPrompt?: boolean;
+  ideogramStyleType?: 'AUTO' | 'GENERAL' | 'REALISTIC' | 'DESIGN' | 'RENDER_3D' | 'ANIME';
+  ideogramNegativePrompt?: string;
+  // Gemini Imagen 3 settings - all optional, user selects
+  geminiModel?: GeminiModel; // Required for Gemini generation
+  geminiResolution?: GeminiResolution;
+  geminiThinking?: boolean; // Enable thinking mode for complex prompts
+  geminiGrounding?: boolean; // Enable Google Search grounding
+  // Runway Gen-4 Image settings - all optional, user selects
+  runwayImageModel?: RunwayImageModel; // Required for Runway generation
+  runwayImageRatio?: RunwayImageRatio; // Required for Runway generation
 };
 
 export type VideoQuickProps = {
@@ -240,8 +270,17 @@ export type VideoQuickProps = {
   aspect: VideoAspect;
   watermark: boolean;
   seed?: number;
-  // Runway model-specific duration (gen4_turbo/gen3a_turbo: 5|10, veo3: 8 fixed)
+  // Runway model-specific duration (gen4_turbo/gen3a_turbo: 5|10)
   runwayDuration?: number;
+  // Google Veo-specific parameters
+  googleVeoModel?: GoogleVeoModel; // veo-3 or veo-3-fast
+  googleVeoDuration?: GoogleVeoDuration; // 5-8 seconds
+  googleVeoAudio?: boolean; // Enable native audio generation
+  // OpenAI Sora-specific parameters
+  soraModel?: SoraModel; // sora-2 or sora-2-pro
+  soraDuration?: SoraDuration; // 5, 10, 15, or 20 seconds
+  soraQuality?: SoraQuality; // standard or hd
+  soraSize?: SoraSize; // 1024x1024, 1080x1920, 1920x1080
   // Luma-specific parameters
   lumaLoop?: boolean; // Whether to make the video loop seamlessly
   lumaDuration?: LumaDuration; // Luma duration: 5s or 9s (ray-2)
@@ -405,9 +444,8 @@ export type PictureAsset = {
 };
 
 export type PictureResultMeta = {
-  style: PicStyle;
-  aspect: PicAspect;
-  lockBrandColors: boolean;
+  style?: PicStyle;
+  aspect?: PicAspect;
   createdAt: string;
   provider: PictureProvider;
   mode: 'prompt' | 'image';
@@ -419,6 +457,7 @@ export type PictureResultMeta = {
   steps?: number;
   blend?: number;
   safetyTolerance?: number;
+  referenceImageCount?: number;
 };
 
 export type PictureProvider = 'flux' | 'stability' | 'openai' | 'ideogram' | 'gemini' | 'runway';
@@ -456,6 +495,16 @@ export type GeneratedVideo = {
   watermark: boolean;
   prompt: string;
   createdAt: string;
+  // Meta field for consistency with pictures
+  meta?: {
+    prompt: string;
+    provider: string;
+    model: string;
+    aspect: string;
+    duration: number;
+    referenceImages?: string[];
+    referenceImageCount?: number;
+  };
 };
 
 export type AiUIState = {
@@ -465,6 +514,7 @@ export type AiUIState = {
   generating: boolean;
   steps: CardKey[];
   stepStatus: Partial<Record<CardKey, 'queued' | 'thinking' | 'rendering' | 'ready' | 'error'>>;
+  errorMessages: Partial<Record<CardKey, string>>;
   outputs: {
     content?: { versions: GeneratedContent[][] }; // per version -> per platform
     pictures?: { versions: GeneratedPictures[] };
